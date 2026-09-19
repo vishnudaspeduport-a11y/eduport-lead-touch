@@ -1,0 +1,20 @@
+{
+  "name": "eduport-lead-touch",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Eduport Lead Touch & Conversion analytics (Postgres + Cloudflare Workers + React)",
+  "scripts": {
+    "install:all": "npm --prefix api install && npm --prefix web install && npm --prefix sync install",
+    "dev:api": "npm --prefix api run dev",
+    "dev:web": "npm --prefix web run dev",
+    "typecheck": "npm --prefix api run typecheck && npm --prefix web run typecheck && npm --prefix sync run typecheck",
+    "build": "npm --prefix web run build",
+    "deploy": "npm --prefix api run deploy",
+    "sync": "npm --prefix sync run sync",
+    "db:setup": "psql \"$ADMIN_DATABASE_URL\" -v ON_ERROR_STOP=1 -f sql/001_schema_roles.sql",
+    "db:all": "for f in sql/00[1-6]*.sql; do psql \"$ADMIN_DATABASE_URL\" -v ON_ERROR_STOP=1 -f $f || exit 1; done",
+    "db:analytics": "psql \"$OWNER_DATABASE_URL\" -v ON_ERROR_STOP=1 -f sql/002_functions.sql -f sql/003_views.sql -f sql/004_matviews.sql -f sql/006_data_quality.sql && psql \"$OWNER_DATABASE_URL\" -f sql/005_indexes.sql",
+    "db:reconcile": "psql \"$RO_DATABASE_URL\" -v ON_ERROR_STOP=1 -f sql/900_reconciliation.sql",
+    "db:explain": "psql \"$RO_DATABASE_URL\" -f sql/910_explain.sql"
+  }
+}

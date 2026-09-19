@@ -1,0 +1,5 @@
+# Copy to .dev.vars for `wrangler dev` (never committed)
+AUTH_MODE=dev
+DEV_USER_EMAIL=bi_team@eduport.ai
+ADMIN_EMAILS=bi_team@eduport.ai
+WRANGLER_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE=postgres://lt_app_ro:CHANGE_ME_ro@127.0.0.1:5432/eduport?sslmode=require

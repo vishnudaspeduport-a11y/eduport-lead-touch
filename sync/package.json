@@ -1,0 +1,21 @@
+{
+  "name": "eduport-lead-touch-sync",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Incremental Salesforce -> Postgres replication for the Lead Touch dashboard",
+  "scripts": {
+    "sync": "tsx src/sync.ts",
+    "sync:full": "tsx src/sync.ts --full",
+    "refresh": "tsx src/sync.ts --refresh-only",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "postgres": "^3.4.5"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.7.0"
+  }
+}

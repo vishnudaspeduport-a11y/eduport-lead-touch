@@ -1,0 +1,24 @@
+{
+  "name": "eduport-lead-touch-api",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev --port 8787",
+    "deploy": "npm run --prefix ../web build && wrangler deploy",
+    "typecheck": "tsc --noEmit",
+    "tail": "wrangler tail",
+    "refresh:now": "curl -s -X POST http://localhost:8787/api/admin/refresh"
+  },
+  "dependencies": {
+    "hono": "^4.7.0",
+    "jose": "^5.9.6",
+    "postgres": "^3.4.5",
+    "zod": "^3.24.0"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^5.20260918.1",
+    "typescript": "^5.7.0",
+    "wrangler": "^4.20.0"
+  }
+}

@@ -1,0 +1,32 @@
+# Build the React app and deploy Worker + static assets to Cloudflare on every push to main.
+# Secrets: CLOUDFLARE_API_TOKEN (template "Edit Cloudflare Workers" + Hyperdrive read), CLOUDFLARE_ACCOUNT_ID
+name: deploy
+on:
+  push:
+    branches: [main]
+    paths: ['api/**', 'web/**', '.github/workflows/deploy.yml']
+  workflow_dispatch:
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - name: Install
+        run: |
+          npm --prefix web ci
+          npm --prefix api ci
+      - name: Typecheck
+        run: |
+          npm --prefix web run typecheck
+          npm --prefix api run typecheck
+      - name: Build web
+        run: npm --prefix web run build
+      - name: Deploy Worker (+ assets)
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: api
+          command: deploy

@@ -1,0 +1,44 @@
+# Salesforce + production DB -> Supabase, every 30 minutes, then refresh the MVs.
+# Secrets (repo Settings -> Secrets and variables -> Actions):
+#   SF_CLIENT_ID, SF_CLIENT_SECRET, SF_LOGIN_URL, DATABASE_URL, SOURCE_DATABASE_URL
+# Manual runs: Actions -> "sync" -> Run workflow (tick "full" for a full reload).
+name: sync
+on:
+  schedule:
+    - cron: '*/30 * * * *'
+  workflow_dispatch:
+    inputs:
+      full:
+        description: 'Full reload (ignore watermarks)'
+        type: boolean
+        default: false
+      objects:
+        description: 'Comma list to restrict (blank = all)'
+        type: string
+        default: ''
+concurrency:
+  group: lead-touch-sync
+  cancel-in-progress: false
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 340
+    defaults:
+      run: { working-directory: sync }
+    env:
+      SF_LOGIN_URL: ${{ secrets.SF_LOGIN_URL || 'https://login.salesforce.com' }}
+      SF_CLIENT_ID: ${{ secrets.SF_CLIENT_ID }}
+      SF_CLIENT_SECRET: ${{ secrets.SF_CLIENT_SECRET }}
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      SOURCE_DATABASE_URL: ${{ secrets.SOURCE_DATABASE_URL }}
+      LEAD_SINCE: ${{ vars.LEAD_SINCE || '2025-04-01T00:00:00Z' }}
+      TASK_SINCE: ${{ vars.TASK_SINCE || '2026-01-01T00:00:00Z' }}
+      SYNC_OBJECTS: ${{ inputs.objects }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm, cache-dependency-path: sync/package-lock.json }
+      - run: npm ci
+      - name: Sync
+        run: |
+          if [ "${{ inputs.full }}" = "true" ]; then npm run sync:full; else npm run sync; fi
