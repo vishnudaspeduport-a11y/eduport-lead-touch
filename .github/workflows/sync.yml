@@ -42,6 +42,7 @@ jobs:
       LEAD_SINCE: ${{ vars.LEAD_SINCE || '2025-04-01T00:00:00Z' }}
       TASK_SINCE: ${{ vars.TASK_SINCE || '2026-01-01T00:00:00Z' }}
       SYNC_OBJECTS: ${{ inputs.objects }}
+      SKIP_OBJECTS: ${{ vars.SKIP_OBJECTS }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4

@@ -38,7 +38,8 @@ const FULL = args.has('--full');
 const REFRESH_ONLY = args.has('--refresh-only');
 const REFRESH_AFTER = (process.env.REFRESH_AFTER_SYNC ?? '1') === '1';
 const ONLY = process.env.SYNC_OBJECTS?.split(',').map((x) => x.trim()).filter(Boolean) ?? [];
-const wanted = (name: string) => !ONLY.length || ONLY.includes(name);
+const SKIP = (process.env.SKIP_OBJECTS ?? '').split(',').map((x) => x.trim()).filter(Boolean);
+const wanted = (name: string) => (!ONLY.length || ONLY.includes(name)) && !SKIP.includes(name);
 
 const sql = postgres(env('DATABASE_URL'), { max: 4, idle_timeout: 30, transform: { undefined: null }, connection: { application_name: 'lead-touch-sync' } });
 
@@ -128,7 +129,7 @@ async function syncSalesforceObject(s: SfSession, spec: ObjectSpec): Promise<voi
   const since = await getState(spec.object);
   const where: string[] = [];
   if (since) where.push(`SystemModstamp > ${since.toISOString()}`);
-  else if (spec.initialWhere) where.push(spec.initialWhere);
+  if (spec.initialWhere) where.push(spec.initialWhere);   // window applies always, so old leads modified later never creep in
   const q = `SELECT ${spec.fields.join(', ')} FROM ${spec.object}` + (where.length ? ` WHERE ${where.join(' AND ')}` : '') + ' ORDER BY SystemModstamp ASC';
 
   console.log(`[${spec.object}] ${since ? `incremental since ${since.toISOString()}` : `FULL load${spec.initialWhere ? ` (${spec.initialWhere})` : ''}`}`);
@@ -210,6 +211,18 @@ async function syncAppTables(): Promise<void> {
   }
 }
 
+// ---------------------------------------------------------------- keep the replica minimal
+// queryAll delivers deleted rows (isdeleted = true) so watermarks stay correct; we then purge them,
+// together with anything outside the lead window, so storage stays small (Supabase free tier).
+async function cleanup(): Promise<void> {
+  const leadSince = process.env.LEAD_SINCE?.slice(0, 10) ?? '2025-04-01';
+  const r1 = await sql`DELETE FROM salesforce.lead_master__c WHERE isdeleted OR is_deleted__c OR createddate < ${leadSince}::date`;
+  const r2 = await sql`DELETE FROM salesforce.interested_course__c ic WHERE ic.isdeleted OR NOT EXISTS (SELECT 1 FROM salesforce.lead_master__c l WHERE l.id = ic.lead_master__c)`;
+  const r3 = await sql`DELETE FROM salesforce.lead_touch__c WHERE isdeleted`;
+  const r4 = await sql`DELETE FROM salesforce.task WHERE isdeleted`;
+  console.log(`[cleanup] removed leads=${r1.count} ics=${r2.count} touches=${r3.count} tasks=${r4.count} (window >= ${leadSince}, deleted rows purged)`);
+}
+
 // ---------------------------------------------------------------- refresh
 async function refreshViews(): Promise<void> {
   console.log('[refresh] analytics.refresh_all()');
@@ -226,6 +239,7 @@ async function refreshViews(): Promise<void> {
 async function main(): Promise<void> {
   // role-level statement_timeout (set for the web app's protection) must not cut the bulk load or the refresh
   await sql`SET statement_timeout = 0`;
+  await sql`SET default_transaction_read_only = off`;
   if (!REFRESH_ONLY) {
     const specs = OBJECTS.filter((o) => wanted(o.object));
     if (specs.length) {
@@ -233,6 +247,7 @@ async function main(): Promise<void> {
       for (const spec of specs) await syncSalesforceObject(s, spec);
     }
     await syncAppTables();
+    await cleanup();
   }
   if (REFRESH_ONLY || REFRESH_AFTER) await refreshViews();
 }
