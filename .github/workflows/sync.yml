@@ -1,11 +1,11 @@
-# Salesforce + production DB -> Supabase, every 30 minutes, then refresh the MVs.
+# Salesforce + production DB -> Supabase, every 4 hours, then refresh the MVs.
 # Secrets (repo Settings -> Secrets and variables -> Actions):
 #   SF_CLIENT_ID, SF_CLIENT_SECRET, SF_LOGIN_URL, DATABASE_URL, SOURCE_DATABASE_URL
 # Manual runs: Actions -> "sync" -> Run workflow (tick "full" for a full reload).
 name: sync
 on:
   schedule:
-    - cron: '*/30 * * * *'
+    - cron: '15 */4 * * *'   # every 4 hours UTC = 05:45, 09:45, 13:45, 17:45, 21:45, 01:45 IST
   workflow_dispatch:
     inputs:
       full:
