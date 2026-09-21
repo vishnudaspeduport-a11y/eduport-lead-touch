@@ -23,6 +23,7 @@
  */
 import postgres, { type Sql } from 'postgres';
 import { OBJECTS, type ObjectSpec } from './objects.js';
+import { txPooler } from './sync-url.js';
 
 const API_VERSION = 'v62.0';
 const BATCH = 1000;
@@ -41,7 +42,9 @@ const ONLY = process.env.SYNC_OBJECTS?.split(',').map((x) => x.trim()).filter(Bo
 const SKIP = (process.env.SKIP_OBJECTS ?? '').split(',').map((x) => x.trim()).filter(Boolean);
 const wanted = (name: string) => (!ONLY.length || ONLY.includes(name)) && !SKIP.includes(name);
 
-const sql = postgres(env('DATABASE_URL'), { max: 4, idle_timeout: 30, transform: { undefined: null }, connection: { application_name: 'lead-touch-sync' } });
+// Supabase: the session pooler (5432) allows only 15 clients on the free plan and Hyperdrive keeps most of
+// them; the transaction pooler (6543) allows far more. Rewrite the port and avoid session-level state.
+const sql = postgres(txPooler(env('DATABASE_URL')), { max: 2, prepare: false, idle_timeout: 20, transform: { undefined: null }, connection: { application_name: 'lead-touch-sync' } });
 
 // ---------------------------------------------------------------- watermark helpers
 async function getState(name: string): Promise<Date | null> {
@@ -225,11 +228,14 @@ async function syncAppTables(): Promise<void> {
 // together with anything outside the lead window, so storage stays small (Supabase free tier).
 async function cleanup(): Promise<void> {
   const leadSince = process.env.LEAD_SINCE?.slice(0, 10) ?? '2025-04-01';
+  await sql.begin(async (sql) => {
+  await sql`SET LOCAL statement_timeout = 0`;
   const r1 = await sql`DELETE FROM salesforce.lead_master__c WHERE isdeleted OR is_deleted__c OR createddate < ${leadSince}::date`;
   const r2 = await sql`DELETE FROM salesforce.interested_course__c ic WHERE ic.isdeleted OR NOT EXISTS (SELECT 1 FROM salesforce.lead_master__c l WHERE l.id = ic.lead_master__c)`;
   const r3 = await sql`DELETE FROM salesforce.lead_touch__c WHERE isdeleted`;
   const r4 = await sql`DELETE FROM salesforce.task WHERE isdeleted`;
   console.log(`[cleanup] removed leads=${r1.count} ics=${r2.count} touches=${r3.count} tasks=${r4.count} (window >= ${leadSince}, deleted rows purged)`);
+  });
 }
 
 // ---------------------------------------------------------------- refresh
@@ -237,9 +243,11 @@ async function refreshViews(): Promise<void> {
   console.log('[refresh] analytics.refresh_all()');
   const t0 = Date.now();
   // Supabase applies a per-role statement timeout; the refresh can legitimately take minutes.
-  await sql`SET statement_timeout = 0`;
-  await sql`SET lock_timeout = '2min'`;
-  const rows = await sql<{ view_name: string; row_count: number; seconds: number }[]>`SELECT * FROM analytics.refresh_all()`;
+  const rows = await sql.begin(async (tx) => {
+    await tx`SET LOCAL statement_timeout = 0`;
+    await tx`SET LOCAL lock_timeout = '2min'`;
+    return tx<{ view_name: string; row_count: number; seconds: number }[]>`SELECT * FROM analytics.refresh_all()`;
+  });
   for (const r of rows) console.log(`[refresh] ${r.view_name}: ${r.row_count} rows in ${r.seconds}s`);
   console.log(`[refresh] total ${((Date.now() - t0) / 1000).toFixed(1)}s`);
 }
