@@ -160,25 +160,34 @@ async function syncSalesforceObject(s: SfSession, spec: ObjectSpec): Promise<voi
 // ---------------------------------------------------------------- production app DB -> app.*
 interface AppTableSpec { name: string; select: (src: Sql, since: Date | null) => AsyncIterable<Record<string, unknown>[]>; stampCol: string; }
 
+// Minimal copy (Supabase free tier): only payments that can ever count as valid + the users behind them,
+// and only the columns the analytics views read. Validity is still evaluated in analytics.v_valid_payment,
+// so a payment that is refunded / deleted later is corrected by the 45-day incremental tail.
+const VALID = `p.payment_method = 0 AND p.deleted = false AND p.is_success = true AND p.payment_success = true`;
 const APP_TABLES: AppTableSpec[] = [
+  {
+    name: 'home_payment', stampCol: 'created',
+    select: (src, since) => (since
+      ? src`SELECT p.id, p.user_id, p.payment_method, p.payment_type, p.deleted, p.is_success, p.payment_success, p.payment_date, p.payment_time, p.created,
+                   p.amount, p.total, p.tuition_fees, p.discount, p.refund_amount, p.course_id, p.course_new_id, p.batch_id, p.sales_person_id, p.enrollment_id
+            FROM public.home_payment p
+            WHERE p.created > ${since}::timestamptz - interval '45 days' OR p.payment_date >= (${since}::date - 45)
+            ORDER BY p.id`.cursor(5000)
+      : src.unsafe(`SELECT p.id, p.user_id, p.payment_method, p.payment_type, p.deleted, p.is_success, p.payment_success, p.payment_date, p.payment_time, p.created,
+                   p.amount, p.total, p.tuition_fees, p.discount, p.refund_amount, p.course_id, p.course_new_id, p.batch_id, p.sales_person_id, p.enrollment_id
+            FROM public.home_payment p WHERE ${VALID} ORDER BY p.id`).cursor(5000)),
+  },
   {
     name: 'home_customuser', stampCol: 'updated_at',
     select: (src, since) => (since
-      ? src`SELECT id, phone, name, is_deleted, is_premium, premium_date, created, last_active, district, city, updated_at
-            FROM public.home_customuser WHERE updated_at > ${since} OR created > ${since} ORDER BY id`.cursor(5000)
-      : src`SELECT id, phone, name, is_deleted, is_premium, premium_date, created, last_active, district, city, updated_at
-            FROM public.home_customuser ORDER BY id`.cursor(5000)),
-  },
-  {
-    name: 'home_payment', stampCol: 'created',
-    // payments can flip flags (deleted / payment_success) after creation, so always re-copy a 45-day tail
-    select: (src, since) => (since
-      ? src`SELECT id, user_id, payment_method, payment_type, deleted, is_success, payment_success, payment_date, payment_time, created,
-                   amount, total, tuition_fees, discount, refund_amount, course_id, course_new_id, batch_id, sales_person_id, enrollment_id
-            FROM public.home_payment WHERE created > ${since} - interval '45 days' OR payment_date >= (${since}::date - 45) ORDER BY id`.cursor(5000)
-      : src`SELECT id, user_id, payment_method, payment_type, deleted, is_success, payment_success, payment_date, payment_time, created,
-                   amount, total, tuition_fees, discount, refund_amount, course_id, course_new_id, batch_id, sales_person_id, enrollment_id
-            FROM public.home_payment ORDER BY id`.cursor(5000)),
+      ? src`SELECT u.id, u.phone, u.is_deleted, u.created, u.updated_at
+            FROM public.home_customuser u
+            WHERE u.id IN (SELECT p.user_id FROM public.home_payment p WHERE p.created > ${since}::timestamptz - interval '45 days')
+               OR (u.updated_at > ${since}::timestamptz AND u.id IN (SELECT p.user_id FROM public.home_payment p WHERE p.payment_method = 0))
+            ORDER BY u.id`.cursor(5000)
+      : src.unsafe(`SELECT u.id, u.phone, u.is_deleted, u.created, u.updated_at
+            FROM public.home_customuser u
+            WHERE u.id IN (SELECT p.user_id FROM public.home_payment p WHERE ${VALID}) ORDER BY u.id`).cursor(5000)),
   },
 ];
 
