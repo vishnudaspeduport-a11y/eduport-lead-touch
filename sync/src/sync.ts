@@ -244,6 +244,11 @@ async function refreshViews(): Promise<void> {
   console.log('[refresh] analytics.refresh_all()');
   const t0 = Date.now();
   // Supabase applies a per-role statement timeout; the refresh can legitimately take minutes.
+  // Web sessions that died mid-transaction keep locks on the views; they are never legitimately older than a few minutes.
+  const stale = await sql<{ pid: number }[]>`SELECT pid FROM pg_stat_activity WHERE datname = current_database() AND pid <> pg_backend_pid()
+    AND application_name = 'postgres.js' AND xact_start < now() - interval '5 minutes'`;
+  for (const { pid } of stale) await sql`SELECT pg_terminate_backend(${pid})`;
+  if (stale.length) console.log(`[refresh] terminated ${stale.length} stale web session(s) holding old transactions`);
   const rows = await sql.begin(async (tx) => {
     await tx`SET LOCAL statement_timeout = 0`;
     await tx`SET LOCAL lock_timeout = '2min'`;

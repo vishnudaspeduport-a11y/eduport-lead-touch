@@ -26,9 +26,10 @@ run_worker_first = ["/api/*"]
 binding = "HYPERDRIVE"
 id = "c6890bf7a94c409e88a2fbcb42ee9bf6"
 
-# --- Materialized-view refresh (Cron Trigger; the sync job also refreshes) -----
+# --- Materialized-view refresh: done by the sync job (GitHub Actions) every 30 min. The Worker cron was
+# removed: a refresh through the pooled connection can be cut mid-transaction and leave the views locked.
 [triggers]
-crons = ["15 */2 * * *"]
+crons = []
 
 # --- Non-secret config ---------------------------------------------------------
 [vars]
