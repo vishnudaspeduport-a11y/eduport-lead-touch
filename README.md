@@ -32,44 +32,12 @@ public.home_customuser / home_payment (app DB) ───────────
 * **Read-only role** (`lt_app_ro`) for the Worker; `default_transaction_read_only=on`, 20 s statement timeout.
 * **Auth**: Cloudflare Access in front of the Worker; the Worker verifies the Access JWT (JWKS) on every `/api/*` call. Admin e-mails see raw phone/e-mail; viewers get masked values. No PII leaves the API except in the explorer / lead drawer / CSV export.
 
-## 1b. Hosting decision: Supabase (database) + Cloudflare (Worker + frontend) + GitHub (code + scheduled sync)
+## 1b. How it is actually deployed (as of 2026-09-21)
 
-```
-GitHub Actions (sync.yml, every 30 min) ──▶ Supabase Postgres  ◀── Hyperdrive ◀── Cloudflare Worker (API + React) ◀── Cloudflare Access (login)
-   reads Salesforce (REST) and the                salesforce.* / app.* / analytics.*
-   production Postgres (home_customuser, home_payment)
-GitHub Actions (deploy.yml, on push to main) ──▶ wrangler deploy
-```
-
-Do these once, in this order. Every step is either a UI click or a paste; nothing needs a local Postgres.
-
-**A. Supabase - create the analytics database**
-1. Dashboard -> your org -> **New project**. Name `eduport-lead-touch`, region **Mumbai (ap-south-1)** (closest to your users and to the production DB), generate a strong DB password and keep it.
-   Plan: the replica of all 1.4M leads plus MVs needs more than the free tier's 500 MB - use **Pro** (8 GB), or keep the free tier and leave `LEAD_SINCE=2025-04-01` (leads from FY 2025-26 onward, roughly a quarter of the data).
-2. **SQL Editor -> New query**. Paste and run, in order: `sql/001_schema_roles.sql` (change the two `CHANGE_ME_*` passwords first), `002`, `003`, `004`, `006`, then `005`. Each file is one paste; they are all safe in the editor (no psql meta-commands).
-3. **Project Settings -> Database -> Connection string -> Session pooler** (port 5432, IPv4). Copy it twice and replace the user:
-   * owner string for the sync: `postgres://lt_analytics_owner.PROJECT_REF:<owner pw>@aws-0-ap-south-1.pooler.supabase.com:5432/postgres?sslmode=require`
-   * read-only string for Hyperdrive: same with `lt_app_ro.PROJECT_REF:<ro pw>`
-4. Sanity check in the SQL editor: `SELECT * FROM analytics.class_group_selftest() WHERE NOT ok;` must return 0 rows.
-
-**B. GitHub - push the code and add secrets**
-1. Create an empty repo under your account (for example `vishnudaspeduport-a11y/eduport-lead-touch`), then from this folder:
-   ```bash
-   git init -b main && git add -A && git commit -m "Lead Touch analytics: SQL, sync, Worker API, React app" && git remote add origin https://github.com/vishnudaspeduport-a11y/eduport-lead-touch.git && git push -u origin main
-   ```
-2. Repo -> **Settings -> Secrets and variables -> Actions -> New repository secret**, add:
-   `SF_CLIENT_ID`, `SF_CLIENT_SECRET`, `SF_LOGIN_URL` (`https://login.salesforce.com`), `DATABASE_URL` (owner string from A3), `SOURCE_DATABASE_URL` (production Postgres, the read-only `eduport_ro` user is enough), `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID` (`ee558dc2a8ca2f421731d9b046ae5731`).
-3. **Actions -> sync -> Run workflow**, tick **full**. This is the initial load (Salesforce objects, then the two app tables, then `refresh_all()`); expect 30-90 minutes. Afterwards it runs every 30 minutes on its own.
-4. Salesforce side (needed for step B3): Setup -> App Manager -> **New Connected App** -> enable OAuth, scope `api`, tick **Enable Client Credentials Flow**, save, then **Manage -> Edit Policies -> Client Credentials Flow -> Run As** = an integration user with read access to `Lead_Master__c`, `Lead_Touch__c`, `Interested_Course__c`, `Task`, `User`, `Course__c`. Consumer key/secret = `SF_CLIENT_ID` / `SF_CLIENT_SECRET`.
-
-**C. Cloudflare - Hyperdrive, Access, deploy**
-1. Dashboard -> **Workers & Pages -> Hyperdrive -> Create**: name `eduport-lead-touch-ro`, paste the read-only Supabase Session-pooler string from A3. Copy the Hyperdrive **ID** into `api/wrangler.toml` (`[[hyperdrive]] id`).
-2. **Zero Trust -> Access -> Applications -> Add -> Self-hosted**: name `Lead Touch`, domain = the Worker's URL (`eduport-lead-touch.<your-subdomain>.workers.dev`, or a custom domain later). Policy *Allow*: **Emails ending in** `@eduport.ai`. Identity: One-time PIN (and Google if you like). After saving, open the application's **Overview** and copy the **Application Audience (AUD) tag** into `api/wrangler.toml` -> `ACCESS_AUD`; put `https://<your-team>.cloudflareaccess.com` into `ACCESS_TEAM_DOMAIN`.
-3. API token for GitHub: **My Profile -> API Tokens -> Create Token -> "Edit Cloudflare Workers"** template, add the permission **Account -> Hyperdrive -> Read**. Store as `CLOUDFLARE_API_TOKEN` (B2).
-4. Commit the two `wrangler.toml` edits and push. `deploy.yml` builds the React app and deploys the Worker with the static assets. First deploy: check **Workers & Pages -> eduport-lead-touch -> Settings -> Triggers** shows the cron `15 */2 * * *`, and open the URL; Access will ask for your e-mail PIN.
-5. Verify: `https://<worker-url>/api/health` returns `{"ok":true}`; the header chip shows "Data as of" with a timestamp; the Overview KPIs are non-zero.
-
-**D. Sign-off**: run `sql/900_reconciliation.sql` with psql against the owner string (`psql "$DATABASE_URL" -f sql/900_reconciliation.sql`) and compare with the Tableau workbook.
+* **Database**: Supabase project `duotauyrrxjmqpzdjtph` (Singapore). Schema created with `sql/ALL_supabase_simple.sql` (single `postgres` login, no extra roles). Role default `statement_timeout = 90s` protects against stuck web sessions; the sync sets it to 0 for its own session.
+* **Worker + site**: https://eduport-lead-touch.vishnudasp-eduport.workers.dev, deployed from a PC with `npx wrangler deploy` (wrangler logged in). Connects to Supabase through **Hyperdrive** (direct Worker->Supabase connections time out). No login page (`AUTH_MODE=none`, `PUBLIC_ROLE=viewer` masks phone/e-mail). Switch to Supabase e-mail login by setting `AUTH_MODE=supabase` and filling `web/.env.production`.
+* **Sync**: GitHub Actions `sync.yml` every 30 min. Salesforce login = client-credentials against the org My Domain (repo variable `SF_MY_DOMAIN=https://velocity-fun-1818.my.salesforce.com`). Secrets: `DATABASE_URL` (Supabase session pooler, port 5432, password URL-encoded), `SF_CLIENT_ID`, `SF_CLIENT_SECRET`, optional `SF_USERNAME/SF_PASSWORD/SF_SECURITY_TOKEN`, and `SOURCE_DATABASE_URL` (production Postgres, read-only) for the payment tables.
+* **Ops**: the sync workflow accepts a `sql` input (Actions -> sync -> Run workflow) that runs ad-hoc SQL against Supabase and prints the rows - use it for `SELECT * FROM analytics.refresh_all()`, `pg_stat_activity`, or the reconciliation queries.
 
 ## 2. Environment variables & secrets
 

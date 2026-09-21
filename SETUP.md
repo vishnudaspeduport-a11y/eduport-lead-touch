@@ -1,3 +1,5 @@
+> **Status 2026-09-21:** steps 1, 4, 5, 6 are DONE (Supabase created + schema, repo pushed, Hyperdrive created via CLI, Worker deployed at https://eduport-lead-touch.vishnudasp-eduport.workers.dev with no login). Salesforce sync logs in and loads. **Only `SOURCE_DATABASE_URL` (production Postgres, read-only `eduport_ro`) is still missing** - without it there are no payments, so conversions and revenue read zero. See README §1b for the final layout; the rest of this file is the original plan kept for reference.
+
 # Setup checklist (do in this order)
 
 Time needed: about 1.5 hours of clicking, plus 30–90 minutes waiting for the first data load.
