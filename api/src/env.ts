@@ -1,9 +1,12 @@
 export interface Env {
-  HYPERDRIVE: Hyperdrive;
+  /** Optional Hyperdrive binding; when absent the Worker uses DATABASE_URL (a Worker secret). */
+  HYPERDRIVE?: Hyperdrive;
+  DATABASE_URL?: string;
   ASSETS: Fetcher;
-  AUTH_MODE: 'access' | 'dev';
-  ACCESS_TEAM_DOMAIN: string;
-  ACCESS_AUD: string;
+  AUTH_MODE: 'supabase' | 'dev';
+  SUPABASE_URL: string;
+  /** Legacy HS256 projects only; new projects are verified via JWKS. */
+  SUPABASE_JWT_SECRET?: string;
   ADMIN_EMAILS: string;
   ALLOWED_EMAIL_DOMAIN?: string;
   DEV_USER_EMAIL?: string;

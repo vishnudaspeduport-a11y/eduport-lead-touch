@@ -2,4 +2,4 @@
 AUTH_MODE=dev
 DEV_USER_EMAIL=bi_team@eduport.ai
 ADMIN_EMAILS=bi_team@eduport.ai
-WRANGLER_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE=postgres://lt_app_ro:CHANGE_ME_ro@127.0.0.1:5432/eduport?sslmode=require
+DATABASE_URL=postgresql://postgres.PROJECT_REF:PASSWORD@aws-0-REGION.pooler.supabase.com:6543/postgres?sslmode=require

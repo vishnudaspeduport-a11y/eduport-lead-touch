@@ -1,5 +1,6 @@
 import { useQuery, type UseQueryOptions } from '@tanstack/react-query';
 import type { Envelope } from './types';
+import { getAccessToken } from './supabase';
 
 export class ApiError extends Error {
   constructor(public status: number, message: string, public issues?: unknown) { super(message); }
@@ -14,14 +15,19 @@ export function qs(params: Params): string {
   return s ? `?${s}` : '';
 }
 
+/** Listeners for auth failures (the app shows the login screen) */
+const authListeners = new Set<(status: 401 | 403, message: string) => void>();
+export function onAuthError(fn: (status: 401 | 403, message: string) => void) { authListeners.add(fn); return () => { authListeners.delete(fn); }; }
+
+export async function authHeaders(): Promise<Record<string, string>> {
+  const token = await getAccessToken();
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
+
 export async function apiFetch<T>(path: string, params: Params = {}): Promise<Envelope<T>> {
-  const res = await fetch(`/api${path}${qs(params)}`, { credentials: 'include', headers: { accept: 'application/json' } });
-  if (res.status === 401) {
-    // Cloudflare Access session expired: reload to re-authenticate
-    window.location.reload();
-    throw new ApiError(401, 'Session expired');
-  }
+  const res = await fetch(`/api${path}${qs(params)}`, { headers: { accept: 'application/json', ...(await authHeaders()) } });
   const body = (await res.json().catch(() => ({}))) as Envelope<T> & { error?: { message: string; issues?: unknown } };
+  if (res.status === 401 || res.status === 403) authListeners.forEach((l) => l(res.status as 401 | 403, body.error?.message ?? res.statusText));
   if (!res.ok) throw new ApiError(res.status, body.error?.message ?? res.statusText, body.error?.issues);
   return body;
 }
@@ -36,4 +42,14 @@ export function useApi<T>(path: string, params: Params = {}, opts: Partial<UseQu
 
 export function downloadUrl(path: string, params: Params): string {
   return `/api${path}${qs(params)}`;
+}
+
+/** Download with the auth header (plain <a href> cannot send it). */
+export async function downloadWithAuth(path: string, params: Params, filename: string): Promise<void> {
+  const res = await fetch(`/api${path}${qs(params)}`, { headers: await authHeaders() });
+  if (!res.ok) throw new ApiError(res.status, res.statusText);
+  const blob = await res.blob();
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob); a.download = filename; a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 2000);
 }

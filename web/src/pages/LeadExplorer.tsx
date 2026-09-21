@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useApi, downloadUrl } from '../lib/api';
+import { useApi, downloadWithAuth } from '../lib/api';
 import { useFilters } from '../lib/filters';
 import type { LeadsResponse, LeadRow } from '../lib/types';
 import { fmtDateTime, fmtINRfull, fmtInt, fmtPct } from '../lib/format';
@@ -24,7 +24,7 @@ export default function LeadExplorer() {
   return (
     <div className="space-y-3">
       <PageHeader title="Lead explorer" subtitle={d ? `${fmtInt(d.total)} leads match · ${d.masked ? 'phone/email masked (viewer)' : 'unmasked (admin)'}` : 'loading…'}
-        right={<a className="btn" href={downloadUrl('/leads/export.csv', { ...params, q: dq, sort, dir })} title="Server-streamed CSV of the current view (capped at 50,000 rows)"><Icon.Download /> Export CSV</a>} />
+        right={<button className="btn" title="Server-streamed CSV of the current view (capped at 50,000 rows)" onClick={() => downloadWithAuth('/leads/export.csv', { ...params, q: dq, sort, dir }, `leads_${params.from}_${params.to}.csv`).catch((e) => alert(String(e)))}><Icon.Download /> Export CSV</button>} />
       <div className="flex flex-wrap items-center gap-2">
         <input className="input w-72" placeholder="Search name, LM-number, phone (≥5 digits), email…" value={q} onChange={(e) => { setQ(e.target.value); setPage(1); }} />
         <select className="input" value={sort} onChange={(e) => setSort(e.target.value)}>{SORTS.map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select>

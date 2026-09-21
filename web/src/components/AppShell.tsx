@@ -4,6 +4,7 @@ import { useTheme } from '../lib/palette';
 import { fmtDateTime, fmtInt } from '../lib/format';
 import { FilterBar } from './FilterBar';
 import { ErrorBoundary, Icon, Popover } from './ui';
+import { supabase } from '../lib/supabase';
 
 export const NAV = [
   { to: '/', label: 'Overview' },
@@ -42,6 +43,7 @@ export function AppShell() {
         <div className="border-t border-line p-3 text-[11px] text-ink-3">
           {meta && <div className="truncate" title={meta.user.email}>{meta.user.email}</div>}
           {meta && <div>role: <span className="font-medium">{meta.user.role}</span> · v{meta.version}</div>}
+          {supabase && <button className="mt-1 text-ink-3 hover:text-ink" onClick={() => supabase?.auth.signOut()}>Sign out</button>}
         </div>
       </aside>
 
