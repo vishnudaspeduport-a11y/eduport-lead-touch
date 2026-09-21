@@ -224,6 +224,8 @@ async function refreshViews(): Promise<void> {
 
 // ---------------------------------------------------------------- main
 async function main(): Promise<void> {
+  // role-level statement_timeout (set for the web app's protection) must not cut the bulk load or the refresh
+  await sql`SET statement_timeout = 0`;
   if (!REFRESH_ONLY) {
     const specs = OBJECTS.filter((o) => wanted(o.object));
     if (specs.length) {
