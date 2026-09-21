@@ -15,7 +15,6 @@ export function getSql(env: Env): Sql {
     prepare: false,              // required for transaction pooling (Supavisor / Hyperdrive)
     idle_timeout: 20,
     connect_timeout: 10,
-    ssl: url.includes('sslmode=require') || url.includes('supabase.com') ? 'require' : undefined,
     transform: { undefined: null },
   });
 }

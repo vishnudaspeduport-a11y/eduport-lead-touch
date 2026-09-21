@@ -22,9 +22,9 @@ run_worker_first = ["/api/*"]
 #   -> paste the Supabase TRANSACTION pooler string (port 6543):
 #      postgresql://postgres.PROJECT_REF:PASSWORD@aws-0-REGION.pooler.supabase.com:6543/postgres?sslmode=require
 # Optional later: a Hyperdrive binding named HYPERDRIVE takes precedence when present.
-# [[hyperdrive]]
-# binding = "HYPERDRIVE"
-# id = "..."
+[[hyperdrive]]
+binding = "HYPERDRIVE"
+id = "c6890bf7a94c409e88a2fbcb42ee9bf6"
 
 # --- Materialized-view refresh (Cron Trigger; the sync job also refreshes) -----
 [triggers]
