@@ -71,19 +71,27 @@ async function upsert(table: string, rows: Record<string, unknown>[]): Promise<v
 interface SfSession { instanceUrl: string; token: string; }
 
 async function login(): Promise<SfSession> {
-  // Preferred: OAuth client-credentials (Connected App with "Enable Client Credentials Flow" + Run-As user).
-  // Fallback:  username-password flow when SF_USERNAME is set (password = login password + security token).
-  const body = process.env.SF_USERNAME
-    ? new URLSearchParams({ grant_type: 'password', client_id: env('SF_CLIENT_ID'), client_secret: env('SF_CLIENT_SECRET'),
-        username: env('SF_USERNAME'), password: env('SF_PASSWORD') + (process.env.SF_SECURITY_TOKEN ?? '') })
-    : new URLSearchParams({ grant_type: 'client_credentials', client_id: env('SF_CLIENT_ID'), client_secret: env('SF_CLIENT_SECRET') });
-  console.log(`[salesforce] login via ${process.env.SF_USERNAME ? 'username-password flow' : 'client-credentials flow'}`);
-  const res = await fetch(`${env('SF_LOGIN_URL', 'https://login.salesforce.com')}/services/oauth2/token`, {
-    method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' }, body,
-  });
-  if (!res.ok) throw new Error(`Salesforce login failed: ${res.status} ${await res.text()}`);
-  const j = (await res.json()) as { access_token: string; instance_url: string };
-  return { instanceUrl: j.instance_url, token: j.access_token };
+  // Tries OAuth client-credentials first (Connected App with "Enable Client Credentials Flow" + Run-As user),
+  // then the username-password flow when SF_USERNAME is set. Reports both errors if both fail.
+  const base = { client_id: env('SF_CLIENT_ID'), client_secret: env('SF_CLIENT_SECRET') };
+  const attempts: [string, URLSearchParams][] = [['client-credentials flow', new URLSearchParams({ grant_type: 'client_credentials', ...base })]];
+  if (process.env.SF_USERNAME) {
+    attempts.push(['username-password flow', new URLSearchParams({ grant_type: 'password', ...base,
+      username: env('SF_USERNAME'), password: env('SF_PASSWORD') + (process.env.SF_SECURITY_TOKEN ?? '') })]);
+  }
+  const errors: string[] = [];
+  for (const [name, body] of attempts) {
+    const res = await fetch(`${env('SF_LOGIN_URL', 'https://login.salesforce.com')}/services/oauth2/token`, {
+      method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' }, body,
+    });
+    if (res.ok) {
+      console.log(`[salesforce] logged in via ${name}`);
+      const j = (await res.json()) as { access_token: string; instance_url: string };
+      return { instanceUrl: j.instance_url, token: j.access_token };
+    }
+    errors.push(`${name}: ${res.status} ${await res.text()}`);
+  }
+  throw new Error(`Salesforce login failed - ${errors.join(' | ')}`);
 }
 
 async function* soql(s: SfSession, query: string, all: boolean): AsyncGenerator<Record<string, unknown>[]> {
