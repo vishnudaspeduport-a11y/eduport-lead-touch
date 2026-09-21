@@ -208,7 +208,8 @@ async function syncAppTables(): Promise<void> {
         for await (const batch of t.select(src, since)) {
           const rows: Record<string, unknown>[] = batch.map((r) => ({ ...(r as Record<string, unknown>), _synced_at: new Date() }));
           for (const r of rows) { const st = r[t.stampCol] as Date | null; if (st && (!maxStamp || st > maxStamp)) maxStamp = st; }
-          await upsert(`app.${t.name}`, rows); n += rows.length;
+          for (let i = 0; i < rows.length; i += BATCH) await upsert(`app.${t.name}`, rows.slice(i, i + BATCH));   // stay under the 65,534-parameter limit
+          n += rows.length;
           if (n % 50000 < 5000) console.log(`[${t.name}] ${n} rows...`);
         }
         await setState(t.name, maxStamp ?? new Date(), n, null);
