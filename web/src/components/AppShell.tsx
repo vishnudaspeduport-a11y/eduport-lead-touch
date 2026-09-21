@@ -5,6 +5,7 @@ import { fmtDateTime, fmtInt } from '../lib/format';
 import { FilterBar } from './FilterBar';
 import { ErrorBoundary, Icon, Popover } from './ui';
 import { supabase } from '../lib/supabase';
+import { SyncButton } from './SyncButton';
 
 export const NAV = [
   { to: '/', label: 'Overview' },
@@ -71,7 +72,10 @@ export function AppShell() {
               </div>
             </Popover>
           </div>
-          <button className="btn" onClick={toggle} title="Toggle theme">{dark ? <Icon.Sun /> : <Icon.Moon />}</button>
+          <div className="flex items-center gap-2">
+            <SyncButton />
+            <button className="btn" onClick={toggle} title="Toggle theme">{dark ? <Icon.Sun /> : <Icon.Moon />}</button>
+          </div>
         </header>
         <main className="flex-1 px-4 pb-8 pt-0">
           <FilterBar />

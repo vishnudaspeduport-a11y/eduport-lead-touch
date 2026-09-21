@@ -38,6 +38,7 @@ PUBLIC_ROLE = "viewer"                                        # with AUTH_MODE=n
 SUPABASE_URL = "https://duotauyrrxjmqpzdjtph.supabase.co"     # Project URL (Supabase -> Project Settings -> API)
 ADMIN_EMAILS = "bi_team@eduport.ai"                           # comma list; admins see unmasked phone/email
 ALLOWED_EMAIL_DOMAIN = "eduport.ai"                           # anyone with this domain can sign up as viewer
+GITHUB_REPO = "vishnudaspeduport-a11y/eduport-lead-touch"           # manual "Sync now" button; token via: npx wrangler secret put GITHUB_TOKEN
 APP_VERSION = "1.0.0"
 EXPORT_ROW_CAP = "50000"
 

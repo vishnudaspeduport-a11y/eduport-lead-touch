@@ -12,6 +12,9 @@ export interface Env {
   ADMIN_EMAILS: string;
   ALLOWED_EMAIL_DOMAIN?: string;
   DEV_USER_EMAIL?: string;
+  /** Manual sync button: fine-grained GitHub PAT (Actions: read+write on the repo) + owner/repo */
+  GITHUB_TOKEN?: string;
+  GITHUB_REPO: string;
   APP_VERSION?: string;
   EXPORT_ROW_CAP?: string;
 }
