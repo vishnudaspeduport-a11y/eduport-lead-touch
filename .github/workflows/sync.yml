@@ -16,6 +16,10 @@ on:
         description: 'Comma list to restrict (blank = all)'
         type: string
         default: ''
+      sql:
+        description: 'Ops only: run this SQL against the analytics DB instead of syncing'
+        type: string
+        default: ''
 concurrency:
   group: lead-touch-sync
   cancel-in-progress: false
@@ -43,6 +47,11 @@ jobs:
       - uses: actions/setup-node@v4
         with: { node-version: 22, cache: npm, cache-dependency-path: sync/package-lock.json }
       - run: npm ci
+      - name: Ad-hoc SQL (ops)
+        if: inputs.sql != ''
+        env: { ADHOC_SQL: ${{ inputs.sql }} }
+        run: npx tsx src/query.ts
       - name: Sync
+        if: inputs.sql == ''
         run: |
           if [ "${{ inputs.full }}" = "true" ]; then npm run sync:full; else npm run sync; fi
