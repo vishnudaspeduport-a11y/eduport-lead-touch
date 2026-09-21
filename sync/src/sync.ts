@@ -11,6 +11,7 @@
  *
  * Env (see .env.example):
  *   SF_LOGIN_URL, SF_CLIENT_ID, SF_CLIENT_SECRET   Salesforce connected app (client-credentials flow)
+ *   SF_USERNAME, SF_PASSWORD, SF_SECURITY_TOKEN   optional fallback: username-password flow
  *   DATABASE_URL            target  = Supabase, role lt_analytics_owner
  *   SOURCE_DATABASE_URL     source  = Eduport production Postgres (read-only user is enough)
  *   LEAD_SINCE              initial Lead_Master__c / Interested_Course__c lower bound (default 2025-04-01)
@@ -70,7 +71,13 @@ async function upsert(table: string, rows: Record<string, unknown>[]): Promise<v
 interface SfSession { instanceUrl: string; token: string; }
 
 async function login(): Promise<SfSession> {
-  const body = new URLSearchParams({ grant_type: 'client_credentials', client_id: env('SF_CLIENT_ID'), client_secret: env('SF_CLIENT_SECRET') });
+  // Preferred: OAuth client-credentials (Connected App with "Enable Client Credentials Flow" + Run-As user).
+  // Fallback:  username-password flow when SF_USERNAME is set (password = login password + security token).
+  const body = process.env.SF_USERNAME
+    ? new URLSearchParams({ grant_type: 'password', client_id: env('SF_CLIENT_ID'), client_secret: env('SF_CLIENT_SECRET'),
+        username: env('SF_USERNAME'), password: env('SF_PASSWORD') + (process.env.SF_SECURITY_TOKEN ?? '') })
+    : new URLSearchParams({ grant_type: 'client_credentials', client_id: env('SF_CLIENT_ID'), client_secret: env('SF_CLIENT_SECRET') });
+  console.log(`[salesforce] login via ${process.env.SF_USERNAME ? 'username-password flow' : 'client-credentials flow'}`);
   const res = await fetch(`${env('SF_LOGIN_URL', 'https://login.salesforce.com')}/services/oauth2/token`, {
     method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' }, body,
   });
