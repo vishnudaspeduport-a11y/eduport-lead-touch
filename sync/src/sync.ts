@@ -214,6 +214,9 @@ async function syncAppTables(): Promise<void> {
 async function refreshViews(): Promise<void> {
   console.log('[refresh] analytics.refresh_all()');
   const t0 = Date.now();
+  // Supabase applies a per-role statement timeout; the refresh can legitimately take minutes.
+  await sql`SET statement_timeout = 0`;
+  await sql`SET lock_timeout = '2min'`;
   const rows = await sql<{ view_name: string; row_count: number; seconds: number }[]>`SELECT * FROM analytics.refresh_all()`;
   for (const r of rows) console.log(`[refresh] ${r.view_name}: ${r.row_count} rows in ${r.seconds}s`);
   console.log(`[refresh] total ${((Date.now() - t0) / 1000).toFixed(1)}s`);
