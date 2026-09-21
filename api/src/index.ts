@@ -46,6 +46,9 @@ app.onError((err, c) => {
   if (err instanceof ZodError) {
     return c.json({ error: { code: 'bad_request', message: 'invalid filters', issues: err.issues } }, 400);
   }
+  if (err instanceof Error && err.message.startsWith('No database configured')) {
+    return c.json({ error: { code: 'not_configured', message: 'Database not connected yet: run `npx wrangler secret put DATABASE_URL` in the api folder.' } }, 503);
+  }
   const status = (err as { status?: number }).status;
   if (status && status >= 400 && status < 500) return c.json({ error: { code: 'bad_request', message: err.message } }, status as 400);
   console.error('unhandled', err);
