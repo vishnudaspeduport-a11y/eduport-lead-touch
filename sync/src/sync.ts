@@ -79,17 +79,21 @@ async function login(): Promise<SfSession> {
     attempts.push(['username-password flow', new URLSearchParams({ grant_type: 'password', ...base,
       username: env('SF_USERNAME'), password: env('SF_PASSWORD') + (process.env.SF_SECURITY_TOKEN ?? '') })]);
   }
+  // Client-credentials MUST hit the org's My Domain (https://xxx.my.salesforce.com); login.salesforce.com answers
+  // "request not supported on this domain". Try SF_MY_DOMAIN first, then SF_LOGIN_URL / login.salesforce.com.
+  const hosts = [...new Set([process.env.SF_MY_DOMAIN, process.env.SF_LOGIN_URL, 'https://login.salesforce.com']
+    .filter((h): h is string => !!h).map((h) => h.replace(/\/+$/, '')))];
   const errors: string[] = [];
   for (const [name, body] of attempts) {
-    const res = await fetch(`${env('SF_LOGIN_URL', 'https://login.salesforce.com')}/services/oauth2/token`, {
-      method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' }, body,
-    });
-    if (res.ok) {
-      console.log(`[salesforce] logged in via ${name}`);
-      const j = (await res.json()) as { access_token: string; instance_url: string };
-      return { instanceUrl: j.instance_url, token: j.access_token };
+    for (const host of hosts) {
+      const res = await fetch(`${host}/services/oauth2/token`, { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' }, body });
+      if (res.ok) {
+        console.log(`[salesforce] logged in via ${name} at ${host}`);
+        const j = (await res.json()) as { access_token: string; instance_url: string };
+        return { instanceUrl: j.instance_url, token: j.access_token };
+      }
+      errors.push(`${name} @ ${host}: ${res.status} ${await res.text()}`);
     }
-    errors.push(`${name}: ${res.status} ${await res.text()}`);
   }
   throw new Error(`Salesforce login failed - ${errors.join(' | ')}`);
 }

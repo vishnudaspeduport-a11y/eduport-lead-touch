@@ -27,6 +27,7 @@ jobs:
       run: { working-directory: sync }
     env:
       SF_LOGIN_URL: ${{ secrets.SF_LOGIN_URL || 'https://login.salesforce.com' }}
+      SF_MY_DOMAIN: ${{ vars.SF_MY_DOMAIN }}
       SF_CLIENT_ID: ${{ secrets.SF_CLIENT_ID }}
       SF_CLIENT_SECRET: ${{ secrets.SF_CLIENT_SECRET }}
       SF_USERNAME: ${{ secrets.SF_USERNAME }}
