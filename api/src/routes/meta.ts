@@ -20,6 +20,8 @@ meta.get('/meta', (c) =>
     const lastRefresh = await sql<{ view_name: string; finished_at: string | null; ok: boolean | null; row_count: number | null; error: string | null }[]>`
       SELECT DISTINCT ON (view_name) view_name, finished_at::text, ok, row_count::int, error
       FROM analytics.refresh_log ORDER BY view_name, started_at DESC`;
+    // refresh_one logs regclass::text, which drops the schema when analytics is on the search_path
+    if (!asOf.refreshed_at) asOf.refreshed_at = lastRefresh.find((r) => r.view_name.endsWith('mv_lead_base') && r.ok)?.finished_at ?? null;
     const user = c.get('user');
     return {
       user,

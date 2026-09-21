@@ -725,7 +725,7 @@ REVOKE ALL ON FUNCTION analytics.refresh_one(regclass) FROM PUBLIC;
 REVOKE ALL ON FUNCTION analytics.refresh_all()         FROM PUBLIC;
 CREATE OR REPLACE VIEW analytics.v_data_as_of AS
 SELECT
-  (SELECT max(finished_at) FROM analytics.refresh_log WHERE ok AND view_name = 'analytics.mv_lead_base') AS refreshed_at,
+  (SELECT max(finished_at) FROM analytics.refresh_log WHERE ok AND view_name IN ('analytics.mv_lead_base','mv_lead_base')) AS refreshed_at,
   (SELECT min(last_modstamp) FROM salesforce._sync_state WHERE object_name IN ('Lead_Master__c','Lead_Touch__c')) AS salesforce_as_of,
   (SELECT max(last_run_at) FROM salesforce._sync_state) AS last_sync_run_at,
   (SELECT max(_synced_at) FROM salesforce.lead_master__c) AS lead_master_synced_at,
