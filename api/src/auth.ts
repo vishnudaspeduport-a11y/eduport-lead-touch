@@ -46,6 +46,12 @@ export const authMiddleware = createMiddleware<AppEnv>(async (c, next) => {
   let email: string | undefined;
   let userId: string | null = null;
 
+  if (env.AUTH_MODE === 'none') {
+    // No login: everyone is the public user. PII stays masked unless PUBLIC_ROLE=admin.
+    c.set('user', { email: 'public', role: env.PUBLIC_ROLE === 'admin' ? 'admin' : 'viewer' });
+    await next();
+    return;
+  }
   if (env.AUTH_MODE === 'dev') {
     email = env.DEV_USER_EMAIL ?? 'dev@localhost';
   } else {

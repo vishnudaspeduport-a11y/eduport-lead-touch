@@ -3,7 +3,9 @@ export interface Env {
   HYPERDRIVE?: Hyperdrive;
   DATABASE_URL?: string;
   ASSETS: Fetcher;
-  AUTH_MODE: 'supabase' | 'dev';
+  /** none = no login (everyone gets PUBLIC_ROLE); supabase = Supabase Auth; dev = local */
+  AUTH_MODE: 'none' | 'supabase' | 'dev';
+  PUBLIC_ROLE?: 'admin' | 'viewer';
   SUPABASE_URL: string;
   /** Legacy HS256 projects only; new projects are verified via JWKS. */
   SUPABASE_JWT_SECRET?: string;
