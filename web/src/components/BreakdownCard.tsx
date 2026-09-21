@@ -35,7 +35,7 @@ export const BREAKDOWN_COLS: Col<BreakdownRow>[] = [
  * cross-filter (adds a filter chip), table toggle, CSV/PNG. Used across Segments,
  * Overview, Source & campaign.
  */
-export function BreakdownCard({ dim, title, subtitle, limit = 15, defaultMetric = 'leads', height = 300, help, minLeadsForRate = 20 }: {
+export function BreakdownCard({ dim, title, subtitle, limit = 12, defaultMetric = 'leads', height = 240, help, minLeadsForRate = 20 }: {
   dim: ListDim | BoolDim; title: string; subtitle?: string; limit?: number; defaultMetric?: Metric; height?: number; help?: string; minLeadsForRate?: number;
 }) {
   const { f, params, toggleValue, set } = useFilters();

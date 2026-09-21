@@ -49,17 +49,17 @@ export default function TouchAnalysis() {
   const st = stale.data?.data;
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-3">
       <PageHeader title="Touch analysis" subtitle="Does one more touch still add conversion? Where do touches happen, and which leads are going cold?" />
 
-      <div className="grid gap-4 xl:grid-cols-3">
-        <ChartCard className="xl:col-span-2" title="Conversion rate by number of touches" subtitle="the key curve · buckets with < 20 leads hidden" loading={curve.isLoading} error={curve.error} onRetry={curve.refetch} rows={curveTable} height={320}
+      <div className="grid gap-3 xl:grid-cols-3">
+        <ChartCard className="xl:col-span-2" title="Conversion rate by number of touches" subtitle="the key curve · buckets with < 20 leads hidden" loading={curve.isLoading} error={curve.error} onRetry={curve.refetch} rows={curveTable} height={210}
           help={<><p>Leads bucketed by pre-payment touch count; y = converted / leads in the bucket. Marginal lift = change vs the previous bucket. {curve.data?.data.rule}.</p><p className="mt-1">Caveat: this is correlational. Leads that convert fast get fewer touches, so a falling curve does not mean touches hurt.</p></>}
           actions={<Segmented size="xs" value={by} onChange={setBy} options={BY_OPTS} />}>
           <Lines data={curveRows} xKey="bucket" lines={groups.slice(0, 8).map((g) => ({ key: g.group, label: g.group }))} format={(v) => fmtPct(v)} yLabel="conv %" />
         </ChartCard>
 
-        <ChartCard title="Marginal lift & optimal touch count" loading={curve.isLoading} error={curve.error} height={320} rows={curveTable}
+        <ChartCard title="Marginal lift & optimal touch count" loading={curve.isLoading} error={curve.error} height={210} rows={curveTable}
           help="Optimal = the last touch count that still adds meaningful lift (rule shown on the curve card). Use it as the follow-up cap per segment, not as a target.">
           <div className="h-full overflow-auto text-xs">
             {groups.slice(0, 12).map((g) => (
@@ -80,37 +80,37 @@ export default function TouchAnalysis() {
         </ChartCard>
       </div>
 
-      <div className="grid gap-4 xl:grid-cols-3">
-        <ChartCard title="Touch-point mix" subtitle="distinct leads touched · click to filter" loading={mix.isLoading} error={mix.error} onRetry={mix.refetch} rows={mixRows} columns={BREAKDOWN_COLS} height={320}
+      <div className="grid gap-3 xl:grid-cols-3">
+        <ChartCard title="Touch-point mix" subtitle="distinct leads touched · click to filter" loading={mix.isLoading} error={mix.error} onRetry={mix.refetch} rows={mixRows} columns={BREAKDOWN_COLS} height={210}
           help="Per touch point: distinct leads with ≥1 such touch, distinct converted leads among them (touch before payment), and the conversion rate of touched leads.">
           <HBars data={mixRows.map((r) => ({ key: r.key, value: r.leads, secondary: r.conv_rate, extra: { Touches: fmtInt(r.touches), 'Conv. leads': fmtInt(r.converted) } }))} valueLabel="Leads touched" secondaryLabel="Conv %" onClick={(k) => toggleValue('touch_point', k)} />
         </ChartCard>
 
         <ChartCard title="Time between consecutive touches" subtitle={gaps.data ? `median ${fmtHours(gaps.data.data.overall.median_hours)} · p90 ${fmtHours(gaps.data.data.overall.p90_hours)}` : undefined} loading={gaps.isLoading} error={gaps.error} onRetry={gaps.refetch}
-          rows={gapRows} height={320} help="Each pre-payment touch after the first is bucketed by the hours since the lead's previous touch. Conversion % = converted leads with ≥1 gap in that bucket / leads with ≥1 gap in that bucket. Click a bucket to filter leads that have such a gap.">
+          rows={gapRows} height={210} help="Each pre-payment touch after the first is bucketed by the hours since the lead's previous touch. Conversion % = converted leads with ≥1 gap in that bucket / leads with ≥1 gap in that bucket. Click a bucket to filter leads that have such a gap.">
           <VBars data={gapRows.map((g) => ({ bucket: g.bucket, touches: g.touches, conv: g.conv_rate }))} xKey="bucket" bars={[{ key: 'touches', label: 'Touches' }]} onClick={(b) => toggleValue('gap_bucket', b)} />
         </ChartCard>
 
-        <ChartCard title="Conversion % by gap bucket" loading={gaps.isLoading} error={gaps.error} rows={gapRows} height={320} help="Same buckets; y = conversion rate of leads that experienced that gap at least once.">
+        <ChartCard title="Conversion % by gap bucket" loading={gaps.isLoading} error={gaps.error} rows={gapRows} height={210} help="Same buckets; y = conversion rate of leads that experienced that gap at least once.">
           <VBars data={gapRows.map((g) => ({ bucket: g.bucket, conv: g.conv_rate ?? 0 }))} xKey="bucket" bars={[{ key: 'conv', label: 'Conv %' }]} format={(v) => fmtPct(v)} />
         </ChartCard>
       </div>
 
-      <div className="grid gap-4 xl:grid-cols-2">
-        <ChartCard title="Touch cadence heatmap" subtitle="day of week × hour (IST)" loading={heat.isLoading} error={heat.error} onRetry={heat.refetch} rows={heatRows} height={300}
+      <div className="grid gap-3 xl:grid-cols-2">
+        <ChartCard title="Touch cadence heatmap" subtitle="day of week × hour (IST)" loading={heat.isLoading} error={heat.error} onRetry={heat.refetch} rows={heatRows} height={240}
           help="Touch volume by IST weekday and hour. Switch to 'converting touches' to see when the touches of eventually-converted leads happen."
           actions={<Segmented size="xs" value={heatMetric} onChange={setHeatMetric} options={[{ value: 'touches', label: 'All touches' }, { value: 'conv', label: 'Converting touches' }]} />}>
           <Heatmap rows={DOW} cols={HOURS} rowLabel="" colLabel="hour" get={(r, c) => { const v = heatIdx.get(`${DOW.indexOf(r)}|${Number(c)}`); return v ? (heatMetric === 'touches' ? v.t : v.c) : null; }} />
         </ChartCard>
 
-        <ChartCard title="First touch → last touch transition matrix" subtitle="rows = first touch point, columns = last touch point" loading={trans.isLoading} error={trans.error} onRetry={trans.refetch} rows={tr} height={300}
+        <ChartCard title="First touch → last touch transition matrix" subtitle="rows = first touch point, columns = last touch point" loading={trans.isLoading} error={trans.error} onRetry={trans.refetch} rows={tr} height={240}
           help="Leads with ≥1 touch, by their first touch point and their last pre-payment touch point (or last touch overall when not converted). Diagonal = single-channel journeys."
           actions={<Segmented size="xs" value={trMetric} onChange={setTrMetric} options={[{ value: 'leads', label: 'Leads' }, { value: 'conv', label: 'Conv %' }]} />}>
           <Heatmap rows={points} cols={points} rowLabel="first ↓ / last →" get={(r, c) => { const v = trIdx.get(`${r}|${c}`); return v ? (trMetric === 'leads' ? v.leads : v.conv_rate) : null; }} format={trMetric === 'leads' ? fmtInt : (v) => fmt1(v)} onClick={(r, c) => { toggleValue('first_touch_point', r); toggleValue('last_touch_point', c); }} />
         </ChartCard>
       </div>
 
-      <ChartCard title={`Stale leads: open, last touch > ${staleDays} days ago`} subtitle={st ? `${fmtInt(st.total)} leads (${fmtInt(st.never_touched)} never touched)` : undefined} loading={stale.isLoading} error={stale.error} onRetry={stale.refetch} rows={(st?.rows ?? []) as Record<string, unknown>[]} height={420}
+      <ChartCard title={`Stale leads: open, last touch > ${staleDays} days ago`} subtitle={st ? `${fmtInt(st.total)} leads (${fmtInt(st.never_touched)} never touched)` : undefined} loading={stale.isLoading} error={stale.error} onRetry={stale.refetch} rows={(st?.rows ?? []) as Record<string, unknown>[]} height={270}
         help="Open = not converted and stage not in (Converted, Disqualified). Sorted oldest-touch first. Click a row for the full timeline. 'Never touched' leads sort first."
         actions={<Segmented size="xs" value={String(staleDays)} onChange={(v) => { setStaleDays(Number(v)); setStalePage(1); }} options={['3', '7', '14', '30'].map((d) => ({ value: d, label: `${d}d` }))} />}>
         <div className="flex h-full flex-col gap-2">

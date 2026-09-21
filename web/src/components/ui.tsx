@@ -81,15 +81,15 @@ export function Toggle({ checked, onChange, label, title }: { checked: boolean; 
 }
 
 export function Note({ children }: { children: ReactNode }) {
-  return <div className="rounded-md border border-line bg-surface-2 px-3 py-2 text-xs leading-relaxed text-ink-2">{children}</div>;
+  return <div className="rounded-md border border-line bg-surface-2 px-2.5 py-1.5 text-[11px] leading-snug text-ink-2">{children}</div>;
 }
 
 export function PageHeader({ title, subtitle, right }: { title: string; subtitle?: string; right?: ReactNode }) {
   return (
-    <div className="mb-3 flex flex-wrap items-end justify-between gap-2">
-      <div>
-        <h1 className="text-lg font-semibold text-ink">{title}</h1>
-        {subtitle && <p className="text-xs text-ink-3">{subtitle}</p>}
+    <div className="mb-2 flex flex-wrap items-end justify-between gap-2">
+      <div className="flex flex-wrap items-baseline gap-x-2">
+        <h1 className="text-base font-semibold text-ink">{title}</h1>
+        {subtitle && <p className="text-[11px] text-ink-3">{subtitle}</p>}
       </div>
       {right}
     </div>

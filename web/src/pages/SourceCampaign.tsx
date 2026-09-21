@@ -47,11 +47,11 @@ export default function SourceCampaign() {
   const drillRows = drill.data?.data.rows ?? [];
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-3">
       <PageHeader title="Source & campaign" subtitle="Which channels and campaigns bring leads that actually convert, and which attract the wrong class" />
 
-      <div className="grid gap-4 xl:grid-cols-3">
-        <ChartCard className="xl:col-span-2" title="Source × Medium (touch level)" subtitle="click a cell to filter both" loading={matrix.isLoading} error={matrix.error} onRetry={matrix.refetch} rows={mrows as BreakdownRow[]} columns={[{ key: 'key', header: 'Source' }, { key: 'key2', header: 'Medium' }, ...BREAKDOWN_COLS.slice(1)]} height={340}
+      <div className="grid gap-3 xl:grid-cols-3">
+        <ChartCard className="xl:col-span-2" title="Source × Medium (touch level)" subtitle="click a cell to filter both" loading={matrix.isLoading} error={matrix.error} onRetry={matrix.refetch} rows={mrows as BreakdownRow[]} columns={[{ key: 'key', header: 'Source' }, { key: 'key2', header: 'Medium' }, ...BREAKDOWN_COLS.slice(1)]} height={270}
           help="Touch-level Source__c × Medium__c. Leads = distinct leads with such a touch; conv % = distinct converted leads (touched before payment) / leads; revenue = linear-attributed; avg touches = touches / leads."
           actions={<Segmented size="xs" value={mMetric} onChange={setMMetric} options={[{ value: 'leads', label: 'Leads' }, { value: 'conv_rate', label: 'Conv %' }, { value: 'revenue', label: 'Revenue' }, { value: 'avg_touches', label: 'Avg touches' }]} />}>
           <Heatmap rows={sources} cols={mediums} rowLabel="source ↓ / medium →" get={(r, c) => { const v = midx.get(`${r}|${c}`); return v ? ((v[mMetric] as number | null) ?? null) : null; }}
@@ -60,19 +60,19 @@ export default function SourceCampaign() {
             cellTitle={(r, c, v) => { const x = midx.get(`${r}|${c}`); return x ? `${r} × ${c}\nleads ${fmtInt(x.leads)} · conv ${fmtPct(x.conv_rate)} · revenue ${fmtINR(x.revenue)} · rev/lead ${fmtINR(x.revenue_per_lead)} · avg touches ${fmt2(x.avg_touches)}` : `${r} × ${c}: ${v ?? '–'}`; }} />
         </ChartCard>
 
-        <ChartCard title="Paid vs organic" subtitle="lead-level heuristic (see ?)" loading={paid.isLoading} error={paid.error} rows={paidRows} columns={BREAKDOWN_COLS} height={340}
+        <ChartCard title="Paid vs organic" subtitle="lead-level heuristic (see ?)" loading={paid.isLoading} error={paid.error} rows={paidRows} columns={BREAKDOWN_COLS} height={270}
           help="Paid = Lead_Source__c in (Fb Ad, Marketing Lead, Third Paid Party, Advertisement, Cbse 10 Marketing Lead, Google Ad, Meta Ad) OR any of gclid / fbclid / Meta_Lead_ID / Ad_Platform present. Defined once in analytics.is_paid_lead(). App addition - not in the Tableau workbook.">
           <VBars data={paidRows.map((r) => ({ key: r.key, leads: r.leads, converted: r.converted, conv: r.conv_rate }))} xKey="key" bars={[{ key: 'leads', label: 'Leads' }, { key: 'converted', label: 'Converted' }]} />
         </ChartCard>
       </div>
 
-      <div className="grid gap-4 xl:grid-cols-2">
-        <ChartCard title="Volume vs conversion: where to spend" subtitle="lead sources with ≥ 20 leads · medians split the quadrants · bubble = revenue" loading={scatterQ.isLoading} error={scatterQ.error} rows={scatter.data} height={360}
+      <div className="grid gap-3 xl:grid-cols-2">
+        <ChartCard title="Volume vs conversion: where to spend" subtitle="lead sources with ≥ 20 leads · medians split the quadrants · bubble = revenue" loading={scatterQ.isLoading} error={scatterQ.error} rows={scatter.data} height={290}
           help="x = leads (sqrt scale), y = conversion %. Quadrants at the medians: Scale winners (high volume, high conv), Fix or kill (high volume, low conv), Nurture (low volume, high conv), Low priority. Click a point to filter.">
           <QuadrantScatter data={scatter.data} xLabel="leads" yLabel="conv %" xMid={scatter.xMid} yMid={scatter.yMid} onClick={(k) => toggleValue('lead_source', k)} />
         </ChartCard>
 
-        <ChartCard title="Ad class vs actual class: mismatch by campaign" subtitle="Ad_Class_Match__c on the lead" loading={match.isLoading} error={match.error} rows={mismatch} height={360}
+        <ChartCard title="Ad class vs actual class: mismatch by campaign" subtitle="Ad_Class_Match__c on the lead" loading={match.isLoading} error={match.error} rows={mismatch} height={290}
           help="For each Ad_Campaign__c: how many leads Salesforce marked Match / Mismatch / Unknown between the class the ad targeted (Ad_Class__c) and the class the lead reported (Class__c). High mismatch % = the campaign attracts the wrong audience.">
           <DataTable rows={mismatch} compact initialSort={{ id: 'mismatch', desc: true }} onRowClick={(r) => toggleValue('ad_campaign', r.campaign)} columns={[
             { key: 'campaign', header: 'Ad campaign' }, { key: 'leads', header: 'Leads' }, { key: 'match', header: 'Match' }, { key: 'mismatch', header: 'Mismatch', bar: true }, { key: 'unknown', header: 'Unknown' },
@@ -80,13 +80,13 @@ export default function SourceCampaign() {
         </ChartCard>
       </div>
 
-      <ChartCard title="Campaign → ad set → ad drill-down" subtitle="lead-level Ad_Campaign__c / Ad_Set__c / Ad_Name__c · click a row to filter, then step down a level" loading={drill.isLoading} error={drill.error} onRetry={drill.refetch} rows={drillRows} columns={BREAKDOWN_COLS} height={440}
+      <ChartCard title="Campaign → ad set → ad drill-down" subtitle="lead-level Ad_Campaign__c / Ad_Set__c / Ad_Name__c · click a row to filter, then step down a level" loading={drill.isLoading} error={drill.error} onRetry={drill.refetch} rows={drillRows} columns={BREAKDOWN_COLS} height={290}
         help="Each row is one campaign / ad set / ad as stamped on the lead by the ad platform sync. Clicking a row adds it as a filter; switch the level to see its children."
         actions={<Segmented size="xs" value={level} onChange={setLevel} options={[{ value: 'ad_campaign', label: 'Campaign' }, { value: 'lead_ad_set', label: 'Ad set' }, { value: 'lead_ad_name', label: 'Ad' }]} />}>
         <DataTable rows={drillRows} compact initialSort={{ id: 'leads', desc: true }} onRowClick={(r) => toggleValue(level as ListDim, r.key)} columns={BREAKDOWN_COLS} />
       </ChartCard>
 
-      <div className="grid gap-4 xl:grid-cols-2">
+      <div className="grid gap-3 xl:grid-cols-2">
         <BreakdownCard dim="campaign" title="Campaign (touch level)" limit={20} />
         <BreakdownCard dim="lead_source_detail" title="Lead source detail" limit={20} />
       </div>

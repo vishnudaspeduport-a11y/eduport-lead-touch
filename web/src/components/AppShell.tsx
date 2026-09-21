@@ -28,20 +28,20 @@ export function AppShell() {
   const syncErr = meta?.syncState.some((s) => s.last_error);
   return (
     <div className="flex min-h-screen">
-      <aside className="hidden w-52 shrink-0 flex-col border-r border-line bg-surface md:flex">
-        <div className="border-b border-line px-4 py-3">
+      <aside className="hidden w-40 shrink-0 flex-col border-r border-line bg-surface md:flex">
+        <div className="border-b border-line px-3 py-2">
           <div className="text-sm font-bold tracking-tight">Eduport · Lead Touch</div>
           <div className="text-[11px] text-ink-3">Conversion analytics</div>
         </div>
-        <nav className="flex-1 space-y-0.5 p-2">
+        <nav className="flex-1 space-y-px p-1.5">
           {NAV.map((n) => (
             <NavLink key={n.to} to={{ pathname: n.to, search: window.location.search }} end={n.to === '/'}
-              className={({ isActive }) => `block rounded-md px-3 py-1.5 text-sm ${isActive ? 'bg-accent/10 font-medium text-accent' : 'text-ink-2 hover:bg-surface-2 hover:text-ink'}`}>
+              className={({ isActive }) => `block rounded px-2 py-1 text-xs ${isActive ? 'bg-accent/10 font-medium text-accent' : 'text-ink-2 hover:bg-surface-2 hover:text-ink'}`}>
               {n.label}
             </NavLink>
           ))}
         </nav>
-        <div className="border-t border-line p-3 text-[11px] text-ink-3">
+        <div className="border-t border-line p-2 text-[10px] text-ink-3">
           {meta && <div className="truncate" title={meta.user.email}>{meta.user.email}</div>}
           {meta && <div>role: <span className="font-medium">{meta.user.role}</span> · v{meta.version}</div>}
           {supabase && <button className="mt-1 text-ink-3 hover:text-ink" onClick={() => supabase?.auth.signOut()}>Sign out</button>}
@@ -49,7 +49,7 @@ export function AppShell() {
       </aside>
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="flex items-center justify-between gap-2 border-b border-line bg-surface px-4 py-2">
+        <header className="flex items-center justify-between gap-2 border-b border-line bg-surface px-3 py-1">
           <div className="flex items-center gap-2 md:hidden">
             <select className="input !py-1 text-xs" value={window.location.pathname} onChange={(e) => (window.location.href = e.target.value + window.location.search)}>
               {NAV.map((n) => <option key={n.to} value={n.to}>{n.label}</option>)}
@@ -77,7 +77,7 @@ export function AppShell() {
             <button className="btn" onClick={toggle} title="Toggle theme">{dark ? <Icon.Sun /> : <Icon.Moon />}</button>
           </div>
         </header>
-        <main className="flex-1 px-4 pb-8 pt-0">
+        <main className="flex-1 px-3 pb-6 pt-0">
           <FilterBar />
           <ErrorBoundary label="page"><Outlet /></ErrorBoundary>
         </main>

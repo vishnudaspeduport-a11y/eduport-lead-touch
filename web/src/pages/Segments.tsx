@@ -3,9 +3,9 @@ import { Note, PageHeader } from '../components/ui';
 
 export default function Segments() {
   return (
-    <div className="space-y-4">
+    <div className="space-y-3">
       <PageHeader title="Segments" subtitle="Who converts: class, geography, priority, lead type, app engagement, hot flags, repeat leads. Every bar is clickable." />
-      <div className="grid gap-4 xl:grid-cols-2">
+      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
         <BreakdownCard dim="class_group" title="Class group" help="Class__c normalised by analytics.class_group() into Class 4-12, Plus Two Completed, Repeater, Other, Unknown. Fix the mapping in sql/002_functions.sql - one place." />
         <BreakdownCard dim="app_tier" title="App engagement tier: does app usage predict conversion?" defaultMetric="conv_rate" help="App_Engagement_Tier__c (Hot / Warm / Cold / Inactive / null). Compare conversion % across tiers; '(null)' = no app activity synced." />
         <BreakdownCard dim="district" title="District (top 15 + rest in table)" limit={15} />

@@ -13,8 +13,8 @@ export function FilterBar() {
   if (f.paid) chips.push({ label: `${f.paid === 'paid' ? 'Paid' : 'Organic'} leads`, onRemove: () => set({ paid: undefined }) });
 
   return (
-    <div className="sticky top-0 z-30 -mx-4 mb-4 border-b border-line bg-surface-2/95 px-4 py-2 backdrop-blur">
-      <div className="flex flex-wrap items-center gap-2">
+    <div className="sticky top-0 z-30 -mx-3 mb-3 border-b border-line bg-surface-2/95 px-3 py-1.5 backdrop-blur">
+      <div className="flex flex-wrap items-center gap-1.5">
         {/* date preset */}
         <select className="input !py-1 text-xs" value={f.preset} onChange={(e) => { const p = PRESETS.find((x) => x.key === e.target.value)!; const [from, to] = p.range(); set({ preset: p.key, from, to }); }}>
           {PRESETS.map((p) => <option key={p.key} value={p.key}>{p.label}</option>)}
@@ -51,7 +51,7 @@ export function FilterBar() {
       </div>
 
       {chips.length > 0 && (
-        <div className="mt-2 flex flex-wrap gap-1">
+        <div className="mt-1 flex flex-wrap gap-1">
           {chips.map((c) => (
             <span key={c.label} className="chip">
               <button className="hover:text-ink" onClick={() => { const k = Object.keys(DIM_LABEL).find((k) => c.label.startsWith(`${DIM_LABEL[k]}:`)); if (k && FILTER_MENU.some((m) => m.key === k)) setOpenDim(k as ListDim); }}>{c.label}</button>

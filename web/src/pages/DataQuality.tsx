@@ -24,18 +24,18 @@ export default function DataQuality() {
   const checks = q.data?.data.checks ?? [];
   const r = rows.data?.data;
   return (
-    <div className="space-y-4">
+    <div className="space-y-3">
       <PageHeader title="Data quality" subtitle="How much of the data can you trust? Counts are for the whole replicated dataset; click a check to see the rows." />
       <Note>{q.data?.data.note} Severity thresholds are heuristics (see the colour key: ● good · ● watch · ● serious · ● critical).</Note>
       {q.isLoading && <div className="grid gap-3 md:grid-cols-3">{Array.from({ length: 9 }).map((_, i) => <Skeleton key={i} className="h-20" />)}</div>}
-      <div className="grid gap-3 md:grid-cols-3 xl:grid-cols-4">
+      <div className="grid gap-2 md:grid-cols-4 xl:grid-cols-6">
         {checks.map((c) => {
           const sev = (SEVERITY[c.check_key] ?? SEVERITY.default)(c.pct ?? 0);
           const icon = sev === 'good' ? '✓' : sev === 'warning' ? '!' : sev === 'serious' ? '!!' : '✕';
           return (
             <button key={c.check_key} className={`card text-left hover:border-accent ${check === c.check_key ? 'border-accent' : ''}`} onClick={() => { setCheck(c.check_key); setPage(1); }}>
               <div className="flex items-center gap-2 text-xs text-ink-2"><span className="inline-flex h-4 w-4 items-center justify-center rounded-full text-[9px] font-bold text-white" style={{ background: STATUS[sev] }}>{icon}</span>{c.label}</div>
-              <div className="mt-1 text-xl font-semibold tabular-nums">{fmtInt(c.bad_rows)}</div>
+              <div className="mt-0.5 text-base font-semibold leading-tight tabular-nums">{fmtInt(c.bad_rows)}</div>
               <div className="text-[11px] text-ink-3">{fmtPct(c.pct)} of {fmtInt(c.total_rows)}</div>
             </button>
           );
@@ -43,7 +43,7 @@ export default function DataQuality() {
       </div>
 
       {check && (
-        <ChartCard title={checks.find((c) => c.check_key === check)?.label ?? check} subtitle={r ? `${fmtInt(r.total)} rows · page ${r.page} of ${Math.max(1, Math.ceil(r.total / r.limit))}` : undefined} loading={rows.isLoading} error={rows.error} onRetry={rows.refetch} rows={r?.rows ?? []} height={520}
+        <ChartCard title={checks.find((c) => c.check_key === check)?.label ?? check} subtitle={r ? `${fmtInt(r.total)} rows · page ${r.page} of ${Math.max(1, Math.ceil(r.total / r.limit))}` : undefined} loading={rows.isLoading} error={rows.error} onRetry={rows.refetch} rows={r?.rows ?? []} height={270}
           help={`Rows from analytics.dq_${check}. Rows with a lead_id open the lead drawer. Phone keys are masked for viewers.`}
           actions={<>
             <button className="btn" disabled={!r?.rows.length} onClick={() => downloadText(`dq_${check}_p${page}.csv`, toCsv(r?.rows ?? []))}><Icon.Download /> CSV (page)</button>

@@ -54,37 +54,37 @@ export default function Overview() {
   const movers = mv.data?.data;
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-3">
       <PageHeader title="Overview" subtitle={`${f.from} → ${f.to} · basis: ${f.basis}${f.compare ? ' · vs previous period' : ''}`} />
       {k.error && <Note>⚠ {k.error.message}</Note>}
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-6">
+      <div className="grid grid-cols-3 gap-2 md:grid-cols-4 lg:grid-cols-6 2xl:grid-cols-12">
         {loading && Array.from({ length: 12 }).map((_, i) => <Skeleton key={i} className="h-24" />)}
         {cards.map((c) => <KpiCard key={c.key} defKey={c.key} title={c.title} value={c.value} delta={c.d ?? undefined} sub={c.sub} invert={c.invert} />)}
       </div>
 
-      <div className="grid gap-4 xl:grid-cols-3">
+      <div className="grid gap-3 xl:grid-cols-3">
         <ChartCard className="xl:col-span-2" title="Leads and conversion over time" subtitle={t.data ? `source: ${t.data.data.source}` : undefined}
-          loading={t.isLoading} error={t.error} onRetry={t.refetch} rows={trendRows} height={340}
+          loading={t.isLoading} error={t.error} onRetry={t.refetch} rows={trendRows} height={270}
           help="Bars: leads per period on the selected date basis. Line: converted / leads for that period. The two panels share the x-axis; each has its own single y-axis. Dashed = previous period aligned by position."
           actions={<Segmented size="xs" value={grain} onChange={setGrain} options={[{ value: 'day', label: 'Day' }, { value: 'week', label: 'Week' }, { value: 'month', label: 'Month' }]} />}>
           <TrendChart data={trendRows} compare={!!cmp} />
         </ChartCard>
 
-        <ChartCard title="Lead stage funnel" subtitle="click a stage to filter" loading={fun.isLoading} error={fun.error} onRetry={fun.refetch} height={340}
+        <ChartCard title="Lead stage funnel" subtitle="click a stage to filter" loading={fun.isLoading} error={fun.error} onRetry={fun.refetch} height={270}
           rows={stages} columns={[{ key: 'stage', header: 'Stage' }, { key: 'leads', header: 'Leads', bar: true }, { key: 'converted', header: 'Converted' }, { key: 'conv_rate', header: 'Conv %', render: (v) => fmtPct(v as number) }]}
           help="Current Lead_Stage__c distribution for the leads in the window, with the payment-based conversion rate of each stage. Stage history is not replicated, so this is a snapshot, not a flow.">
           <HBars data={stages.map((s) => ({ key: s.stage, value: s.leads, secondary: s.conv_rate, selected: (f.lists.lead_stage ?? []).includes(s.stage) }))} valueLabel="Leads" secondaryLabel="Conv %" onClick={(k) => toggleValue('lead_stage', k)} />
         </ChartCard>
       </div>
 
-      <div className="grid gap-4 xl:grid-cols-3">
-        <ChartCard title="Touches-to-convert distribution" subtitle="converted leads by number of pre-payment touches" loading={k.isLoading} error={k.error} height={260}
+      <div className="grid gap-3 xl:grid-cols-3">
+        <ChartCard title="Touches-to-convert distribution" subtitle="converted leads by number of pre-payment touches" loading={k.isLoading} error={k.error} height={210}
           rows={cur?.touch_buckets ?? []} help="Each converted lead is bucketed by the count of touches whose IST date is on or before its first valid payment date. '0' = converted without any prior touch (unattributed).">
           <VBars data={(cur?.touch_buckets ?? []).map((b) => ({ bucket: b.bucket, converted: b.converted, leads: b.leads }))} xKey="bucket" bars={[{ key: 'converted', label: 'Converted leads' }]} onClick={(b) => toggleValue('touch_bucket', b)} />
         </ChartCard>
 
         <ChartCard className="xl:col-span-2" title="Biggest movers vs previous period" subtitle={movers ? `segments with ≥ ${movers.min_leads} leads in both periods · previous = ${movers.previous.from} → ${movers.previous.to}` : undefined}
-          loading={mv.isLoading} error={mv.error} onRetry={mv.refetch} height={260} rows={[...(movers?.up ?? []), ...(movers?.down ?? [])]}
+          loading={mv.isLoading} error={mv.error} onRetry={mv.refetch} height={210} rows={[...(movers?.up ?? []), ...(movers?.down ?? [])]}
           help="For each dimension (lead source, class group, district, owner, lead type, first/last touch point, app tier, campaign quality) the conversion rate of every segment is compared with the immediately preceding period of the same length. Ranked by impact = change in percentage points × current leads.">
           <div className="grid h-full grid-cols-2 gap-3 overflow-auto text-xs">
             {(['up', 'down'] as const).map((dir) => (
@@ -103,7 +103,7 @@ export default function Overview() {
         </ChartCard>
       </div>
 
-      <div className="grid gap-4 xl:grid-cols-2">
+      <div className="grid gap-3 xl:grid-cols-2">
         <BreakdownCard dim="lead_source" title="By lead source" />
         <BreakdownCard dim="class_group" title="By class group" />
       </div>

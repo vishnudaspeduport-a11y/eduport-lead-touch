@@ -19,7 +19,7 @@ export default function SalesTeam() {
   const fmt = metric === 'conv_rate' || metric === 'contact_rate' ? (v: number) => fmtPct(v) : metric === 'median_response_hours' ? fmtHours : metric === 'revenue_per_lead' ? fmtINR : metric === 'avg_touches' ? fmt2 : fmtInt;
   const sorted = [...owners].sort((a, b) => (metric === 'median_response_hours' ? (a[metric] ?? 1e9) - (b[metric] ?? 1e9) : ((b[metric] as number) ?? -1) - ((a[metric] as number) ?? -1))).slice(0, 25);
   return (
-    <div className="space-y-4">
+    <div className="space-y-3">
       <PageHeader title="Sales team" subtitle="Per owner: leads handled, contact rate, touches, response time, conversion, revenue and call stats" />
       <Note><b>Fairness note.</b> {d?.fairness_note ?? 'Rates are normalised by leads assigned, not raw conversions.'} Owners with fewer than 20 leads in the window are hidden from the ranking chart but stay in the table.</Note>
 
@@ -29,7 +29,7 @@ export default function SalesTeam() {
         <HBars data={sorted.map((o) => ({ key: o.owner_name, value: (o[metric] as number | null) ?? 0, secondary: o.leads, extra: { Converted: fmtInt(o.converted), 'Conv %': fmtPct(o.conv_rate), Contact: fmtPct(o.contact_rate) } }))} format={fmt} valueLabel={metric} secondaryLabel="Leads" secondaryFormat={fmtInt} onClick={(k) => toggleValue('owner', k)} />
       </ChartCard>
 
-      <ChartCard title="Owner detail" loading={q.isLoading} error={q.error} rows={d?.owners ?? []} height={520} help="Call stats come from Task rows joined to the lead by normalised phone: attempts = tasks that look like calls, connected = Call_Status__c = ANSWERED or duration > 0.">
+      <ChartCard title="Owner detail" loading={q.isLoading} error={q.error} rows={d?.owners ?? []} height={270} help="Call stats come from Task rows joined to the lead by normalised phone: attempts = tasks that look like calls, connected = Call_Status__c = ANSWERED or duration > 0.">
         <DataTable rows={d?.owners ?? []} compact initialSort={{ id: 'leads', desc: true }} onRowClick={(r) => toggleValue('owner', r.owner_name)} columns={[
           { key: 'owner_name', header: 'Owner' }, { key: 'leads', header: 'Leads', bar: true }, { key: 'contact_rate', header: 'Contact %', render: (v) => fmtPct(v as number) },
           { key: 'touches', header: 'Touches' }, { key: 'avg_touches', header: 'Avg touches', render: (v) => fmt2(v as number) },
@@ -41,7 +41,7 @@ export default function SalesTeam() {
         ]} />
       </ChartCard>
 
-      <ChartCard title="Touch staff (Lead_Touch__c.Staff__c)" subtitle="who made the touches" loading={q.isLoading} error={q.error} rows={d?.staff ?? []} height={380}
+      <ChartCard title="Touch staff (Lead_Touch__c.Staff__c)" subtitle="who made the touches" loading={q.isLoading} error={q.error} rows={d?.staff ?? []} height={310}
         help="Touches grouped by the Staff__c stamped on the touch. Conversions are last-touch and linear credits; conv % = distinct converted leads touched / distinct leads touched.">
         <DataTable rows={d?.staff ?? []} compact initialSort={{ id: 'touches', desc: true }} onRowClick={(r) => toggleValue('staff', r.staff)} columns={[
           { key: 'staff', header: 'Staff' }, { key: 'touches', header: 'Touches', bar: true }, { key: 'leads', header: 'Leads touched' }, { key: 'touches_per_lead', header: 'Touches / lead', render: (v) => fmt2(v as number) },

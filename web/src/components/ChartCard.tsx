@@ -27,7 +27,7 @@ export function ChartCard<Row extends object>(p: ChartCardProps<Row>) {
   const [table, setTable] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   const name = (p.fileName ?? p.title).replace(/[^a-z0-9]+/gi, '_').toLowerCase();
-  const h = p.height ?? 280;
+  const h = p.height ?? 220;
 
   const downloadPng = async () => {
     const svg = ref.current?.querySelector('svg');
@@ -65,17 +65,17 @@ export function ChartCard<Row extends object>(p: ChartCardProps<Row>) {
 
   return (
     <section className={`card flex flex-col ${p.className ?? ''}`}>
-      <header className="mb-2 flex flex-wrap items-start justify-between gap-2">
+      <header className="mb-1.5 flex flex-wrap items-start justify-between gap-1.5">
         <div className="min-w-0">
           <div className="flex items-center gap-1.5">
-            <h3 className="truncate text-sm font-semibold text-ink">{p.title}</h3>
+            <h3 className="truncate text-xs font-semibold text-ink">{p.title}</h3>
             {p.help && (
               <Popover width="w-96" trigger={<button className="rounded p-0.5 text-ink-3 hover:text-ink" title="How is this computed?"><Icon.Help /></button>}>
                 <div className="text-xs leading-relaxed text-ink-2">{p.help}</div>
               </Popover>
             )}
           </div>
-          {p.subtitle && <div className="text-[11px] text-ink-3">{p.subtitle}</div>}
+          {p.subtitle && <div className="text-[10px] leading-tight text-ink-3">{p.subtitle}</div>}
         </div>
         <div className="flex items-center gap-1">
           {p.actions}

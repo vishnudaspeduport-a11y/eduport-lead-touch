@@ -22,17 +22,19 @@
   --accent: 57 135 229;        /* #3987e5 */
 }
 
+html { font-size: 13px; }
+
 @layer components {
-  .card { @apply rounded-xl border border-line bg-surface p-4 shadow-sm; }
-  .btn { @apply inline-flex items-center gap-1 rounded-md border border-line bg-surface px-2.5 py-1.5 text-xs font-medium text-ink-2 hover:bg-surface-2 hover:text-ink disabled:opacity-50; }
+  .card { @apply rounded-lg border border-line bg-surface p-2.5 shadow-sm; }
+  .btn { @apply inline-flex items-center gap-1 rounded-md border border-line bg-surface px-2 py-1 text-[11px] font-medium text-ink-2 hover:bg-surface-2 hover:text-ink disabled:opacity-50; }
   .btn-primary { @apply border-accent bg-accent text-white hover:bg-accent/90 hover:text-white; }
-  .chip { @apply inline-flex items-center gap-1 rounded-full border border-line bg-surface px-2 py-0.5 text-xs text-ink-2; }
-  .input { @apply rounded-md border border-line bg-surface px-2 py-1.5 text-sm text-ink outline-none focus:border-accent; }
-  .th { @apply sticky top-0 z-10 whitespace-nowrap border-b border-line bg-surface px-2 py-1.5 text-left text-[11px] font-semibold uppercase tracking-wide text-ink-3; }
-  .td { @apply whitespace-nowrap border-b border-line/60 px-2 py-1.5 text-sm tabular-nums; }
+  .chip { @apply inline-flex items-center gap-1 rounded-full border border-line bg-surface px-1.5 py-0 text-[11px] leading-5 text-ink-2; }
+  .input { @apply rounded-md border border-line bg-surface px-2 py-1 text-xs text-ink outline-none focus:border-accent; }
+  .th { @apply sticky top-0 z-10 whitespace-nowrap border-b border-line bg-surface px-1.5 py-1 text-left text-[10px] font-semibold uppercase tracking-wide text-ink-3; }
+  .td { @apply whitespace-nowrap border-b border-line/60 px-1.5 py-[3px] text-xs tabular-nums; }
 }
 
 .recharts-cartesian-grid line { stroke: rgb(var(--line)); }
-.recharts-text { fill: rgb(var(--ink-3)); font-size: 11px; }
+.recharts-text { fill: rgb(var(--ink-3)); font-size: 10px; }
 .recharts-tooltip-cursor { fill: rgb(var(--ink) / 0.04); }
 .skeleton { @apply animate-pulse rounded bg-ink/10; }

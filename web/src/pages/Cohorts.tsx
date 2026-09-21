@@ -22,12 +22,12 @@ export default function Cohorts() {
   const max = Math.max(1, ...rows.flatMap((r) => COLS.map((c) => r[c.k] ?? 0)));
   const fw = d?.first_week_share;
   return (
-    <div className="space-y-4">
+    <div className="space-y-3">
       <PageHeader title="Cohorts & velocity" subtitle="How fast does each cohort convert, and how much of it lands in the first week?" right={<Segmented value={grain} onChange={setGrain} options={[{ value: 'month', label: 'Monthly' }, { value: 'week', label: 'Weekly' }]} />} />
 
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+      <div className="grid grid-cols-4 gap-2">
         {[['Converted (mature cohorts)', fmtInt(fw?.converted)], ['…within 7 days', `${fmtInt(fw?.within_7)} (${fmtPct(fw?.share_7)})`], ['…within 30 days', `${fmtInt(fw?.within_30)} (${fmtPct(fw?.share_30)})`], ['Cohorts shown', fmtInt(rows.length)]].map(([k, v]) => (
-          <div key={k} className="card"><div className="text-[11px] uppercase tracking-wide text-ink-3">{k}</div><div className="text-xl font-semibold tabular-nums">{v}</div></div>
+          <div key={k} className="card"><div className="truncate text-[10px] uppercase tracking-wide text-ink-3">{k}</div><div className="text-base font-semibold leading-tight tabular-nums">{v}</div></div>
         ))}
       </div>
 
@@ -57,12 +57,12 @@ export default function Cohorts() {
         </div>
       </ChartCard>
 
-      <div className="grid gap-4 xl:grid-cols-2">
-        <ChartCard title="Days-to-convert distribution" subtitle="converted leads in the window" loading={q.isLoading} error={q.error} rows={d?.days_to_convert ?? []} height={300}
+      <div className="grid gap-3 xl:grid-cols-2">
+        <ChartCard title="Days-to-convert distribution" subtitle="converted leads in the window" loading={q.isLoading} error={q.error} rows={d?.days_to_convert ?? []} height={240}
           help="first valid payment_date − lead created_date (IST). 'Before lead' = pre-existing customers whose payment predates the lead record.">
           <VBars data={(d?.days_to_convert ?? []).map((r) => ({ bucket: r.bucket, leads: r.leads }))} xKey="bucket" bars={[{ key: 'leads', label: 'Converted leads' }]} />
         </ChartCard>
-        <ChartCard title="Share of eventual conversion captured in week 1" subtitle="per cohort · c7 / c_all" loading={q.isLoading} error={q.error} rows={rows} height={300}
+        <ChartCard title="Share of eventual conversion captured in week 1" subtitle="per cohort · c7 / c_all" loading={q.isLoading} error={q.error} rows={rows} height={240}
           help="For each cohort: conversions within 7 days divided by all conversions to date. A falling share on recent cohorts is expected (they are still maturing); a falling share on old cohorts means the sales cycle is lengthening.">
           <VBars data={rows.map((r) => ({ cohort: r.cohort.slice(0, grain === 'month' ? 7 : 10), share: r.first_week_share ?? 0 }))} xKey="cohort" bars={[{ key: 'share', label: 'Week-1 share %' }]} format={(v) => fmtPct(v)} />
         </ChartCard>

@@ -27,22 +27,22 @@ export default function Attribution() {
   const u = d?.unattributed;
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-3">
       <PageHeader title="Attribution" subtitle="First-touch, last-touch, linear and position-based (40/20/40) credit side by side" right={<Segmented value={dim} onChange={setDim} options={DIMS} />} />
 
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
+      <div className="grid grid-cols-5 gap-2">
         {[['Converted (attributable)', d?.totals.last_touch], ['Unattributed conversions', u?.unattributed], ['· never touched', u?.never_touched], ['· touched only after paying', u?.touched_after_only], ['· pre-existing customers', u?.pre_existing]].map(([k, v]) => (
-          <div key={String(k)} className="card"><div className="text-[11px] uppercase tracking-wide text-ink-3">{k}</div><div className="text-xl font-semibold tabular-nums">{fmtInt(v as number)}</div></div>
+          <div key={String(k)} className="card"><div className="truncate text-[10px] uppercase tracking-wide text-ink-3">{k}</div><div className="text-base font-semibold leading-tight tabular-nums">{fmtInt(v as number)}</div></div>
         ))}
       </div>
 
-      <ChartCard title={`Credit by ${DIMS.find((x) => x.value === dim)?.label} under four models`} subtitle="top 12 by last-touch · click a bar to filter" loading={q.isLoading} error={q.error} onRetry={q.refetch} rows={rows} height={360}
+      <ChartCard title={`Credit by ${DIMS.find((x) => x.value === dim)?.label} under four models`} subtitle="top 12 by last-touch · click a bar to filter" loading={q.isLoading} error={q.error} onRetry={q.refetch} rows={rows} height={290}
         help={<><p>Only touches on/before the payment date of a converted lead carry credit. First / last: 1.0 to that touch. Linear: 1/n each. Position: 40% first, 40% last, 20% split across the middle (1 touch = 100%, 2 touches = 50/50). Revenue credit = credit × the lead's valid payment total.</p><p className="mt-1">{d?.note}</p></>}
         actions={<Segmented size="xs" value={measure} onChange={setMeasure} options={[{ value: 'conv', label: 'Conversions' }, { value: 'rev', label: 'Revenue' }]} />}>
         <VBars data={chartData} xKey="key" bars={[{ key: 'first', label: 'First touch' }, { key: 'last', label: 'Last touch' }, { key: 'linear', label: 'Linear' }, { key: 'position', label: 'Position 40/20/40' }]} format={fmt} onClick={(k) => toggleValue(dim, k)} />
       </ChartCard>
 
-      <ChartCard title="Over- / under-credited by last touch" subtitle="diff = last-touch credit − linear credit (positive = last-touch flatters this channel)" loading={q.isLoading} error={q.error} rows={rows} height={460}
+      <ChartCard title="Over- / under-credited by last touch" subtitle="diff = last-touch credit − linear credit (positive = last-touch flatters this channel)" loading={q.isLoading} error={q.error} rows={rows} height={310}
         help="Channels with a large positive diff appear only at the end of journeys (closers); large negative diff = channels that start journeys but rarely close them (openers). Share columns are each model's share of all attributable conversions.">
         <DataTable rows={rows} compact initialSort={{ id: 'last_touch', desc: true }} onRowClick={(r) => toggleValue(dim, r.key)} columns={[
           { key: 'key', header: DIMS.find((x) => x.value === dim)?.label ?? dim },

@@ -68,16 +68,16 @@ export function HBars({ data, format = fmtInt, secondaryLabel, secondaryFormat =
   const { series, ink } = useTheme();
   const c = color ?? series[0];
   const anySel = data.some((d) => d.selected);
-  const h = Math.max(120, data.length * 24);
+  const h = Math.max(110, data.length * 19);
   return (
     <div className="h-full overflow-y-auto">
       <ResponsiveContainer width="100%" height={h}>
         <BarChart data={data} layout="vertical" margin={{ top: 2, right: 56, left: 8, bottom: 2 }} barCategoryGap={3}>
           <CartesianGrid horizontal={false} stroke={ink.grid} />
           <XAxis type="number" {...axis} tickFormatter={fmtCompact} hide />
-          <YAxis type="category" dataKey="key" {...axis} width={150} tick={{ fontSize: 11 }} tickFormatter={(v: string) => (v.length > maxLabel ? `${v.slice(0, maxLabel - 1)}…` : v)} />
+          <YAxis type="category" dataKey="key" {...axis} width={128} tick={{ fontSize: 10 }} tickFormatter={(v: string) => (v.length > maxLabel ? `${v.slice(0, maxLabel - 1)}…` : v)} />
           <Tooltip cursor={{ fill: ink.grid, opacity: 0.4 }} content={<Tip rows={(d) => [[valueLabel, format(d.value as number)], ...(secondaryLabel && d.secondary != null ? ([[secondaryLabel, secondaryFormat(d.secondary as number)]] as [string, string][]) : []), ...Object.entries((d.extra as Record<string, unknown>) ?? {}).map(([k, v]) => [k, String(v)] as [string, string])]} />} />
-          <Bar dataKey="value" radius={[0, 3, 3, 0]} maxBarSize={18} isAnimationActive={false} onClick={(d) => onClick?.((d as unknown as BarDatum).key)} cursor={onClick ? 'pointer' : undefined}>
+          <Bar dataKey="value" radius={[0, 3, 3, 0]} maxBarSize={14} isAnimationActive={false} onClick={(d) => onClick?.((d as unknown as BarDatum).key)} cursor={onClick ? 'pointer' : undefined}>
             {data.map((d) => <Cell key={d.key} fill={c} fillOpacity={anySel && !d.selected ? 0.35 : 1} />)}
             <LabelList dataKey="value" position="right" formatter={(v: number) => format(v)} style={{ fontSize: 10, fill: ink.secondary }} />
           </Bar>
@@ -150,7 +150,7 @@ function RowCells({ r, cols, get, max, dark, format, onClick, cellTitle }: { r: 
         const t = v == null || !max ? NaN : v / max;
         return (
           <div key={c} title={cellTitle ? cellTitle(r, c, v) : `${r} × ${c}: ${v == null ? '–' : format(v)}`} onClick={() => onClick?.(r, c)}
-            className={`flex h-6 items-center justify-center rounded-sm tabular-nums ${onClick ? 'cursor-pointer' : ''}`}
+            className={`flex h-5 items-center justify-center rounded-sm tabular-nums ${onClick ? 'cursor-pointer' : ''}`}
             style={{ background: seqColor(t, dark), color: Number.isNaN(t) ? (dark ? '#898781' : '#898781') : seqInk(t) }}>
             {v == null ? '' : format(v)}
           </div>
