@@ -97,7 +97,7 @@ export function ChartCard<Row extends object>(p: ChartCardProps<Row>) {
           </Popover>
         </div>
       </header>
-      <div ref={ref} className="relative min-h-0 flex-1" style={{ height: h }}>{body()}</div>
+      <div ref={ref} className="relative min-h-0 overflow-hidden" style={{ height: h, flex: `1 1 ${h}px` }}>{body()}</div>
     </section>
   );
 }
