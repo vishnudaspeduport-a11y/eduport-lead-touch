@@ -16,7 +16,7 @@ export function LeadDrawer({ leadId, onClose }: { leadId: string; onClose: () =>
     ['Owner', s('owner_name')], ['District / City', `${s('district')} / ${s('city')}`], ['Priority', s('priority')], ['Lead type', s('lead_type')],
     ['Mobile', s('mobile')], ['Email', s('email')], ['App tier', s('app_engagement_tier')], ['Campaign', s('campaign_name')],
     ['Ad campaign / set / ad', `${s('ad_campaign')} / ${s('ad_set')} / ${s('ad_name')}`], ['Ad class match', `${s('ad_class_match')} (ad: ${s('ad_class')})`],
-    ['Converted', l.converted ? `yes · ${s('converted_at')} · ${s('days_to_convert')} days${l.pre_existing_customer ? ' · pre-existing customer' : ''}` : 'no'],
+    ['Converted', l.converted ? `yes · ${String(l.converted_at ?? '').slice(0, 10)} · ${s('days_to_convert')} days${l.pre_existing_customer ? ' · pre-existing customer' : ''}` : 'no'],
     ['Revenue', fmtINRfull(l.revenue as number)], ['Touches', `${s('total_touches')} total · ${s('valid_touches')} before payment`],
     ['SF flags', `Is_Converted__c=${s('sf_is_converted')} · Touch_Count__c=${s('sf_touch_count')} · duplicate=${s('is_duplicate')}`],
     ['LM reason', s('lm_reason')], ['IC', `${s('ic_count')} ICs · best status ${s('best_ic_status')} · ${s('ic_course')}`],
@@ -27,7 +27,7 @@ export function LeadDrawer({ leadId, onClose }: { leadId: string; onClose: () =>
         <div className="flex items-center justify-between border-b border-line px-4 py-3">
           <div>
             <div className="text-sm font-semibold">{s('lead_name')} <span className="ml-2 text-xs font-normal text-ink-3">{leadId}</span></div>
-            <div className="text-xs text-ink-3">{d?.masked ? 'PII masked (viewer role)' : 'Full detail (admin)'}</div>
+            <div className="text-xs text-ink-3">{!d ? 'loading…' : d.masked ? 'phone and email are masked on this public site' : 'full detail'}</div>
           </div>
           <button className="btn" onClick={onClose}><Icon.Close /> Close</button>
         </div>

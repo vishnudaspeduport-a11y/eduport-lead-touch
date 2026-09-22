@@ -13,6 +13,31 @@
       "port": 5173
     },
     {
+      "name": "web-local-api",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": [
+        "run",
+        "dev:local",
+        "--prefix",
+        "web"
+      ],
+      "port": 5173
+    },
+    {
+      "name": "api",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": [
+        "wrangler",
+        "dev",
+        "--remote",
+        "-c",
+        "api/wrangler.toml",
+        "--port",
+        "8787"
+      ],
+      "port": 8787
+    },
+    {
       "name": "web-mock",
       "runtimeExecutable": "node",
       "runtimeArgs": [

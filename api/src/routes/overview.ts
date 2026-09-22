@@ -17,14 +17,14 @@ import { LIST_KEYS, type Filters, type Frag, type Period } from '../filters';
 export const overview = new Hono<AppEnv>();
 
 /** filter key -> column on mv_touch_flat */
-const FLAT_COLS: Partial<Record<(typeof LIST_KEYS)[number], string>> = {
+export const FLAT_COLS: Partial<Record<(typeof LIST_KEYS)[number], string>> = {
   lead_source: 'lead_source', lead_stage: 'lead_stage', class_group: 'class_group', class_raw: 'class_raw', district: 'district', city: 'city',
   priority: 'priority', lead_type: 'lead_type', owner: 'owner_name', ic_status: 'best_ic_status', app_tier: 'app_engagement_tier',
   campaign_quality: 'campaign_quality', lm_reason: 'lm_reason', source: 'source', medium: 'medium', touch_point: 'touch_point',
   campaign: 'campaign', ad_set: 'adset_name', ad_name: 'ad_name', staff: 'staff', gap_bucket: 'gap_bucket',
 };
 
-function flatWhere(sql: Sql, f: Filters, p: Period | null): Frag {
+export function flatWhere(sql: Sql, f: Filters, p: Period | null): Frag {
   const c: Frag[] = [];
   if (p) c.push(sql`t.touch_date BETWEEN ${p.from} AND ${p.to}`);
   if (f.dups !== '1') c.push(sql`t.is_duplicate = false`);
