@@ -55,7 +55,7 @@ function Kpi({ title, value, sub, def, tone, icon, small, onClick }: { title: st
 
 /** Mirrors the Tableau "Lead Touch - Overview" dashboard: touch-date window, touch grain. */
 export default function Overview() {
-  const { f, params, toggleValue } = useFilters();
+  const { f, params, toggleValue, set } = useFilters();
   const q = useApi<OverviewResponse>('/overview', params);
   const d = q.data?.data;
   const k = d?.kpis;
@@ -67,16 +67,15 @@ export default function Overview() {
     const data = (rows ?? []).slice(0, opts.limit ?? 12);
     const selected = f.lists[dim] ?? [];
     const [m1, m2] = measures;
-    const drillTo = (key: string) => open(m1 === 'converted' ? 'converted' : 'leads', title, dim, key);
     const cols = ALL_COLS.filter((c) => c.key === 'key' || measures.includes(c.key as Measure) || c.key === 'conv_rate');
     return (
-      <ChartCard title={title} tone={tone} subtitle={opts.subtitle ?? (rows ? `${fmtInt(rows.reduce((s, r) => s + r[m1], 0))} ${MEASURE_LABEL[m1].toLowerCase()} · click a row to see the leads` : undefined)}
+      <ChartCard title={title} tone={tone} subtitle={opts.subtitle ?? (rows ? `${fmtInt(rows.reduce((s, r) => s + r[m1], 0))} ${MEASURE_LABEL[m1].toLowerCase()} · click a row to filter every card` : undefined)}
         loading={q.isLoading} error={q.error} onRetry={q.refetch} rows={rows ?? []} columns={ALL_COLS} height={opts.height ?? 250}
         help={opts.help ?? `${title}: touches in the window grouped by this value. ${def.dim_converted ?? ''}`}>
         {opts.asTable
-          ? <DataTable rows={rows ?? []} compact maxHeight="100%" initialSort={{ id: m1, desc: true }} onRowClick={(r) => drillTo(r.key)} columns={cols} />
+          ? <DataTable rows={rows ?? []} compact maxHeight="100%" initialSort={{ id: m1, desc: true }} onRowClick={(r) => toggleValue(dim, r.key)} columns={cols} />
           : <HBars colorful={opts.colorful} data={data.map((r) => ({ key: r.key, value: r[m1], secondary: m2 ? r[m2] : null, selected: selected.includes(r.key), extra: { 'Total leads': fmtInt(r.leads), 'Conv %': fmtPct(r.conv_rate) } }))}
-              valueLabel={MEASURE_LABEL[m1]} secondaryLabel={m2 ? MEASURE_LABEL[m2] : undefined} secondaryFormat={fmtInt} onClick={drillTo} />}
+              valueLabel={MEASURE_LABEL[m1]} secondaryLabel={m2 ? MEASURE_LABEL[m2] : undefined} secondaryFormat={fmtInt} onClick={(key) => toggleValue(dim, key)} />}
       </ChartCard>
     );
   };
@@ -105,13 +104,13 @@ export default function Overview() {
       )}
 
       <div className="grid gap-3 xl:grid-cols-2">
-        <ChartCard title="Lead funnel · LM stage" tone="tone-blue" subtitle="Total leads by current Lead Stage · click a slice to see the leads" loading={q.isLoading} error={q.error} rows={d?.stages ?? []} height={300}
+        <ChartCard title="Lead funnel · LM stage" tone="tone-blue" subtitle="Total leads by current Lead Stage · click a slice to filter" loading={q.isLoading} error={q.error} rows={d?.stages ?? []} height={300}
           help="Current Lead_Stage__c of the distinct leads that have a touch in the window (Tableau sheet 'LM-Stage').">
-          <Donut data={(d?.stages ?? []).map((s) => ({ key: s.key, value: s.leads, secondary: s.converted, selected: (f.lists.lead_stage ?? []).includes(s.key) }))} valueLabel="Total leads" secondaryLabel="Converted" centerLabel="leads" onClick={(key) => open('leads', 'Lead funnel · LM stage', 'lead_stage', key)} />
+          <Donut data={(d?.stages ?? []).map((s) => ({ key: s.key, value: s.leads, secondary: s.converted, selected: (f.lists.lead_stage ?? []).includes(s.key) }))} valueLabel="Total leads" secondaryLabel="Converted" centerLabel="leads" onClick={(key) => toggleValue('lead_stage', key)} />
         </ChartCard>
-        <ChartCard title="Lead funnel · IC status" tone="tone-pink" subtitle="Total leads by Interested Course status · click a bar to see the leads" loading={q.isLoading} error={q.error} rows={d?.ic_status ?? []} height={300}
+        <ChartCard title="Lead funnel · IC status" tone="tone-pink" subtitle="Total leads by Interested Course status · click a bar to filter (IC status)" loading={q.isLoading} error={q.error} rows={d?.ic_status ?? []} height={300}
           help="Interested_Course__c.Status__c for the leads touched in the window, blank status excluded (Tableau sheet 'IC Status'). A lead with several ICs appears under each status.">
-          <HBars colorful data={(d?.ic_status ?? []).map((s) => ({ key: s.key, value: s.leads, secondary: s.ics }))} valueLabel="Total leads" secondaryLabel="Interested courses" secondaryFormat={fmtInt} onClick={(key) => open('leads', 'Lead funnel · IC status', 'ic_status', key)} />
+          <HBars colorful data={(d?.ic_status ?? []).map((s) => ({ key: s.key, value: s.leads, secondary: s.ics }))} valueLabel="Total leads" secondaryLabel="Interested courses" secondaryFormat={fmtInt} onClick={(key) => toggleValue('ic_status', key)} />
         </ChartCard>
       </div>
 
@@ -126,13 +125,13 @@ export default function Overview() {
 
       <div className="grid gap-3 xl:grid-cols-2">
         {dimCard('Staff-wise', d?.staff, 'staff', ['leads', 'touches'], 'tone-pink', { asTable: true, height: 340 })}
-        <ChartCard title="Touches per day" tone="tone-teal" subtitle="touches and distinct leads by touch date" loading={q.isLoading} error={q.error} rows={d?.daily ?? []} height={340}>
-          <VBars data={(d?.daily ?? []).map((r) => ({ d: r.d.slice(5), full: r.d, touches: r.touches, leads: r.leads }))} xKey="d" bars={[{ key: 'touches', label: 'Touches' }, { key: 'leads', label: 'Leads' }]} onClick={(key) => { const row = (d?.daily ?? []).find((r) => r.d.slice(5) === key); if (row) open('leads', `Touches on ${row.d}`, 'touch_date', row.d); }} />
+        <ChartCard title="Touches per day" tone="tone-teal" subtitle="touches and distinct leads by touch date · click a day to zoom the date range to it" loading={q.isLoading} error={q.error} rows={d?.daily ?? []} height={340}>
+          <VBars data={(d?.daily ?? []).map((r) => ({ d: r.d.slice(5), full: r.d, touches: r.touches, leads: r.leads }))} xKey="d" bars={[{ key: 'touches', label: 'Touches' }, { key: 'leads', label: 'Leads' }]} onClick={(key) => { const row = (d?.daily ?? []).find((r) => r.d.slice(5) === key); if (row) set({ preset: 'custom', from: row.d, to: row.d }); }} />
         </ChartCard>
       </div>
 
       {drill && <DrillDrawer drill={drill} onClose={() => setDrill(null)} />}
-      <Note>The date range is the <b>touch date</b>, as in the workbook. Filters on top apply to every card; the Class Group and Medium filters correspond to the two Tableau filters. Click any KPI, bar, slice or table row to list the leads behind it (with CSV download); every card also has a chart/table toggle. Hover the help icon on a card or KPI for the exact definition and any deviation from Tableau.</Note>
+      <Note>The date range is the <b>touch date</b>, as in the workbook. Filters on top apply to every card; the Class Group and Medium filters correspond to the two Tableau filters. Click a KPI tile to list the leads behind it (with CSV download). Clicking a bar, slice or table row filters every card by that value; remove the chip on top to undo. Every card also has a chart/table toggle. Hover the help icon on a card or KPI for the exact definition and any deviation from Tableau.</Note>
     </div>
   );
 }
