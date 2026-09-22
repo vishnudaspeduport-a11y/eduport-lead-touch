@@ -2,9 +2,22 @@
   "version": "0.0.1",
   "configurations": [
     {
+      "name": "web",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": [
+        "run",
+        "dev",
+        "--prefix",
+        "web"
+      ],
+      "port": 5173
+    },
+    {
       "name": "web-mock",
       "runtimeExecutable": "node",
-      "runtimeArgs": ["web/mock/dev.mjs"],
+      "runtimeArgs": [
+        "web/mock/dev.mjs"
+      ],
       "port": 5173
     }
   ]
