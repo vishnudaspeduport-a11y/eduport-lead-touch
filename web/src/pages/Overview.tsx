@@ -27,7 +27,7 @@ function Kpi({ title, value, sub, def }: { title: string; value: string; sub?: s
   return (
     <div className="card flex min-h-[64px] flex-col justify-between gap-0.5">
       <div className="flex items-start justify-between gap-1">
-        <div className="truncate text-[10px] font-medium uppercase tracking-wide text-ink-3" title={title}>{title}</div>
+        <div className="line-clamp-2 text-[10px] font-medium uppercase leading-tight tracking-wide text-ink-3" title={title}>{title}</div>
         {def && <Popover align="right" width="w-80" trigger={<button className="rounded p-0.5 text-ink-3 hover:text-ink"><Icon.Help /></button>}><div className="text-xs leading-relaxed text-ink-2">{def}</div></Popover>}
       </div>
       <div className="text-lg font-semibold leading-tight tabular-nums">{value}</div>
@@ -66,7 +66,7 @@ export default function Overview() {
         right={<Segmented size="xs" value={convMode} onChange={setConvMode} options={[{ value: 'converted', label: 'Converted = any payment' }, { value: 'converted_attr', label: 'Converted = after a touch' }]} />} />
       {q.error && <Note>⚠ {q.error.message}</Note>}
 
-      <div className="grid grid-cols-3 gap-2 md:grid-cols-4 lg:grid-cols-8">
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 xl:grid-cols-8">
         {q.isLoading && Array.from({ length: 8 }).map((_, i) => <Skeleton key={i} className="h-16" />)}
         {k && <>
           <Kpi title="Total leads" value={fmtInt(k.leads)} sub="distinct leads touched" def={def.leads} />
