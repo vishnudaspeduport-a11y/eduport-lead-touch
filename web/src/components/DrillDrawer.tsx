@@ -21,6 +21,7 @@ interface Resp { page: number; limit: number; total: number; rows: Row[]; masked
 const yesNo = (v: unknown) => (v ? 'Yes' : 'No');
 const COLS: Col<Row>[] = [
   { key: 'lead_name', header: 'Lead ID' },
+  { key: 'eps_id', header: 'EPS ID', render: (v) => (v == null ? '–' : String(v)) },
   { key: 'first_name', header: 'Name', render: (v, r) => `${v ?? ''} ${r.last_name ?? ''}`.trim() || '–' },
   { key: 'mobile', header: 'Phone' },
   { key: 'lead_stage', header: 'Stage' },

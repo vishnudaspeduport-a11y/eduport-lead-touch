@@ -28,7 +28,7 @@ const SORTABLE: Record<string, string> = {
 };
 
 const COLS = [
-  'lead_id', 'lead_name', 'first_name', 'last_name', 'mobile', 'email', 'lead_created_date', 'lead_source', 'lead_stage', 'lead_type', 'priority',
+  'lead_id', 'lead_name', 'eps_id', 'first_name', 'last_name', 'mobile', 'email', 'lead_created_date', 'lead_source', 'lead_stage', 'lead_type', 'priority',
   'class_raw', 'class_group', 'district', 'city', 'owner_name', 'campaign_quality', 'app_engagement_tier', 'best_ic_status', 'lm_reason', 'is_duplicate',
   'touches_in_window', 'n_touches_all', 'first_touch_in_window', 'last_touch_in_window', 'touch_points', 'sources', 'staff',
   'tab_converted', 'converted_first', 'converted', 'converted_at', 'last_payment_date', 'revenue', 'sf_is_converted', 'sf_touch_count',
@@ -97,7 +97,7 @@ function leadQuery(sql: Sql, f: Filters, periods: { current: Period }, q: Record
       ORDER BY ${sql(sortCol)} ${dir}, lead_id
       ${page ? sql`LIMIT ${page.limit} OFFSET ${page.offset}` : sql``}
     )
-    SELECT pg.lead_id, pg.lead_name, l.first_name__c AS first_name, l.last_name__c AS last_name, l.mobile_number__c AS mobile, l.email__c AS email,
+    SELECT pg.lead_id, pg.lead_name, x.eps_id, l.first_name__c AS first_name, l.last_name__c AS last_name, l.mobile_number__c AS mobile, l.email__c AS email,
            pg.lead_created_date::text AS lead_created_date, pg.lead_source, pg.lead_stage, x.lead_type, x.priority, pg.class_raw, x.class_group,
            pg.district, x.city, pg.owner_name, x.campaign_quality, x.app_engagement_tier, x.best_ic_status, x.lm_reason, x.is_duplicate,
            pg.touches_in_window, pg.n_touches_all, pg.first_touch_in_window::text AS first_touch_in_window, pg.last_touch_in_window::text AS last_touch_in_window,
@@ -113,7 +113,8 @@ function leadQuery(sql: Sql, f: Filters, periods: { current: Period }, q: Record
              string_agg(DISTINCT t.touch_point, ', ') AS touch_points, string_agg(DISTINCT t.source, ', ') AS sources,
              string_agg(DISTINCT t.staff, ', ') FILTER (WHERE t.staff IS NOT NULL) AS staff,
              bool_or(t.tab_converted) AS tab_converted, bool_or(t.converted AND t.is_pre_conversion) AS converted_first, bool_or(t.converted) AS converted,
-             bool_or(t.lead_sf_is_converted) AS sf_is_converted, max(t.sf_touch_count)::int AS sf_touch_count
+             bool_or(t.lead_sf_is_converted) AS sf_is_converted, max(t.sf_touch_count)::int AS sf_touch_count,
+             max(t.app_user_id)::int AS eps_id
       FROM analytics.mv_touch_flat t WHERE t.lead_id = pg.lead_id AND ${sel}
     ) x ON true
     ORDER BY pg.${sql(sortCol)} ${dir}, pg.lead_id`;
