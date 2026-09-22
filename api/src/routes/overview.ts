@@ -35,6 +35,12 @@ export function flatWhere(sql: Sql, f: Filters, p: Period | null): Frag {
   for (const k of LIST_KEYS) {
     const col = FLAT_COLS[k]; const vals = f[k];
     if (!col || !vals?.length) continue;
+    if (k === 'ic_status') {
+      // same source as the IC-status funnel: any interested course of the lead in one of these statuses
+      const real = vals.filter((v) => v !== '(null)');
+      if (real.length) c.push(sql`t.lead_id IN (SELECT ic.lead_master__c FROM salesforce.interested_course__c ic WHERE NOT ic.isdeleted AND btrim(ic.status__c) IN ${sql(real)})`);
+      continue;
+    }
     const hasNull = vals.includes('(null)'); const real = vals.filter((v) => v !== '(null)');
     const ref = sql`t.${sql(col)}`;
     if (hasNull && real.length) c.push(sql`(${ref} IN ${sql(real)} OR ${ref} IS NULL)`);
