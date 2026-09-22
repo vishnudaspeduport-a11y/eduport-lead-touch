@@ -68,16 +68,16 @@ export function HBars({ data, format = fmtInt, secondaryLabel, secondaryFormat =
   const { series, ink } = useTheme();
   const c = color ?? series[0];
   const anySel = data.some((d) => d.selected);
-  const h = Math.max(110, data.length * 19);
+  const h = Math.max(120, data.length * 26);
   return (
     <div className="h-full overflow-y-auto">
       <ResponsiveContainer width="100%" height={h}>
         <BarChart data={data} layout="vertical" margin={{ top: 2, right: 56, left: 8, bottom: 2 }} barCategoryGap={3}>
           <CartesianGrid horizontal={false} stroke={ink.grid} />
           <XAxis type="number" {...axis} tickFormatter={fmtCompact} hide />
-          <YAxis type="category" dataKey="key" {...axis} width={128} tick={{ fontSize: 10 }} tickFormatter={(v: string) => (v.length > maxLabel ? `${v.slice(0, maxLabel - 1)}…` : v)} />
+          <YAxis type="category" dataKey="key" {...axis} width={128} interval={0} tick={{ fontSize: 10 }} tickFormatter={(v: string) => (v.length > maxLabel ? `${v.slice(0, maxLabel - 1)}…` : v)} />
           <Tooltip cursor={{ fill: ink.grid, opacity: 0.4 }} content={<Tip rows={(d) => [[valueLabel, format(d.value as number)], ...(secondaryLabel && d.secondary != null ? ([[secondaryLabel, secondaryFormat(d.secondary as number)]] as [string, string][]) : []), ...Object.entries((d.extra as Record<string, unknown>) ?? {}).map(([k, v]) => [k, String(v)] as [string, string])]} />} />
-          <Bar dataKey="value" radius={[6, 6, 6, 6]} maxBarSize={14} isAnimationActive={false} onClick={(d) => onClick?.((d as unknown as BarDatum).key)} cursor={onClick ? 'pointer' : undefined}>
+          <Bar dataKey="value" radius={[6, 6, 6, 6]} maxBarSize={16} isAnimationActive={false} onClick={(d) => onClick?.((d as unknown as BarDatum).key)} cursor={onClick ? 'pointer' : undefined}>
             {data.map((d, i) => <Cell key={d.key} fill={colorful ? series[i % series.length] : c} fillOpacity={anySel && !d.selected ? 0.35 : 1} />)}
             <LabelList dataKey="value" position="right" formatter={(v: number) => format(v)} style={{ fontSize: 10, fill: ink.secondary }} />
           </Bar>
