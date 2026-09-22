@@ -21,7 +21,7 @@ async function trendFor(sql: Sql, f: Filters, p: Period, grain: Grain): Promise<
       GROUP BY 1 ORDER BY 1`;
     return { rows, source: 'mv_touch_base' };
   }
-  if (canUseDailyMv(f)) {
+  if (false && canUseDailyMv(f)) {   // mv_daily_lead_stats dropped to save space (2026-09-22)
     const rows = await sql<TrendRow[]>`
       SELECT date_trunc(${grain}, l.created_date::timestamp)::date::text AS d,
              sum(l.leads)::int AS leads, sum(l.converted)::int AS converted,

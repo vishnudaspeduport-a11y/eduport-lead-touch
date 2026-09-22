@@ -81,7 +81,7 @@ leads.get('/leads/:id', (c) =>
                sf_was_customer_at_touch, ic_status, touch_ic_course, is_paid_touch
         FROM analytics.mv_touch_base t WHERE t.lead_id = ${id} ORDER BY touch_at, touch_id`,
       sql<Rec[]>`SELECT ic_id, course_name, status, is_enrolled, fees_offered::float8, assigned_date::text, target_customer, ad_campaign, occupation, ic_created_at::text
-                 FROM analytics.mv_ic_base WHERE lead_id = ${id} ORDER BY ic_created_at`,
+                 FROM analytics.v_ic_base WHERE lead_id = ${id} ORDER BY ic_created_at`,
       phoneKey
         ? sql<Rec[]>`SELECT payment_id, payment_date::text, payment_time::text, total::float8, tuition_fees::float8, discount::float8, refund_amount::float8,
                             course_id, course_new_id, batch_id, sales_person_id, enrollment_id, payment_type

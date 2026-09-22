@@ -22,12 +22,12 @@ funnel.get('/funnel', (c) =>
                count(*) FILTER (WHERE ic.is_enrolled)::int AS enrolled,
                COALESCE(sum(ic.fees_offered),0)::float8 AS fees_offered,
                count(DISTINCT ic.lead_id) FILTER (WHERE l.converted)::int AS converted_leads
-        FROM analytics.mv_ic_base ic JOIN analytics.mv_lead_base l ON l.lead_id = ic.lead_id
+        FROM analytics.v_ic_base ic JOIN analytics.mv_lead_base l ON l.lead_id = ic.lead_id
         WHERE ${lw} GROUP BY 1 ORDER BY ics DESC`,
       sql<{ leads: number; offered: number; realized: number; leads_with_offer: number }[]>`
         WITH x AS (
           SELECT l.lead_id, max(ic.fees_offered) AS offered, l.revenue
-          FROM analytics.mv_lead_base l JOIN analytics.mv_ic_base ic ON ic.lead_id = l.lead_id
+          FROM analytics.mv_lead_base l JOIN analytics.v_ic_base ic ON ic.lead_id = l.lead_id
           WHERE ${lw} AND l.converted GROUP BY l.lead_id, l.revenue)
         SELECT count(*)::int AS leads, COALESCE(sum(offered),0)::float8 AS offered, COALESCE(sum(revenue),0)::float8 AS realized,
                count(*) FILTER (WHERE offered > 0)::int AS leads_with_offer FROM x`,

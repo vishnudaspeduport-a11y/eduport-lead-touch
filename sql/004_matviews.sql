@@ -127,9 +127,7 @@ BEGIN
     FOREACH v IN ARRAY ARRAY[
       'analytics.mv_touch_base',
       'analytics.mv_lead_base',
-      'analytics.mv_lead_calls',
-      'analytics.mv_ic_base',
-      'analytics.mv_daily_lead_stats'] LOOP
+      'analytics.mv_lead_calls'] LOOP
       t0 := clock_timestamp();
       n  := analytics.refresh_one(v::regclass);
       view_name := v; row_count := n;
