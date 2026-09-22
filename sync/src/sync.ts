@@ -258,6 +258,23 @@ async function refreshViews(): Promise<void> {
   console.log(`[refresh] total ${((Date.now() - t0) / 1000).toFixed(1)}s`);
 }
 
+// ---------------------------------------------------------------- compaction (free tier: 500 MB hard limit)
+// REFRESH CONCURRENTLY and the daily upserts leave dead space that only VACUUM FULL returns. Run it whenever
+// the database passes COMPACT_ABOVE_MB (default 420) so usage never creeps up to the quota.
+async function compactIfNeeded(): Promise<void> {
+  const limit = Number(process.env.COMPACT_ABOVE_MB ?? 420);
+  const [{ mb }] = await sql<{ mb: number }[]>`SELECT round(pg_database_size(current_database())/1048576.0)::int AS mb`;
+  console.log(`[compact] database size ${mb} MB (threshold ${limit} MB)`);
+  if (mb < limit) return;
+  for (const t of ['analytics.mv_lead_base', 'analytics.mv_touch_base', 'salesforce.lead_master__c', 'salesforce.interested_course__c', 'salesforce.lead_touch__c', 'app.home_payment', 'app.home_customuser']) {
+    const t0 = Date.now();
+    await sql.unsafe(`VACUUM FULL ANALYZE ${t}`);
+    console.log(`[compact] ${t} in ${((Date.now() - t0) / 1000).toFixed(1)}s`);
+  }
+  const [{ mb: after }] = await sql<{ mb: number }[]>`SELECT round(pg_database_size(current_database())/1048576.0)::int AS mb`;
+  console.log(`[compact] done: ${mb} MB -> ${after} MB`);
+}
+
 // ---------------------------------------------------------------- main
 async function main(): Promise<void> {
   // role-level statement_timeout (set for the web app's protection) must not cut the bulk load or the refresh
@@ -273,6 +290,7 @@ async function main(): Promise<void> {
     await cleanup();
   }
   if (REFRESH_ONLY || REFRESH_AFTER) await refreshViews();
+  await compactIfNeeded();
 }
 
 main()
