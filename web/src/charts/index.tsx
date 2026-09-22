@@ -5,7 +5,7 @@
 import type { ReactNode } from 'react';
 import {
   Bar, BarChart, CartesianGrid, Cell, ComposedChart, Legend, Line, LineChart, ReferenceLine, ResponsiveContainer,
-  Scatter, ScatterChart, Tooltip, XAxis, YAxis, ZAxis, LabelList,
+  Scatter, ScatterChart, Tooltip, XAxis, YAxis, ZAxis, LabelList, Pie, PieChart,
 } from 'recharts';
 import { seqColor, seqInk, useTheme } from '../lib/palette';
 import { fmtCompact, fmtInt, fmtPct, DOW } from '../lib/format';
@@ -184,6 +184,44 @@ export function QuadrantScatter({ data, xLabel, yLabel, xMid, yMid, onClick, xFo
         </Scatter>
       </ScatterChart>
     </ResponsiveContainer>
+  );
+}
+
+// ---------------------------------------------------------------- donut (share of a total; click = cross-filter)
+export function Donut({ data, valueLabel = 'Value', secondaryLabel, format = fmtInt, secondaryFormat = fmtInt, onClick, centerLabel }: {
+  data: BarDatum[]; valueLabel?: string; secondaryLabel?: string; format?: (v: number) => string; secondaryFormat?: (v: number) => string; onClick?: (key: string) => void; centerLabel?: string;
+}) {
+  const { series, ink } = useTheme();
+  const total = data.reduce((s, d) => s + d.value, 0);
+  const anySel = data.some((d) => d.selected);
+  return (
+    <div className="flex h-full items-center gap-3">
+      <div className="relative h-full min-w-0 flex-1">
+        <ResponsiveContainer width="100%" height="100%">
+          <PieChart margin={{ top: 4, right: 4, bottom: 4, left: 4 }}>
+            <Tooltip content={<Tip rows={(d) => [[valueLabel, format(d.value as number)], ['Share', fmtPct(total ? ((d.value as number) / total) * 100 : null)], ...(secondaryLabel && d.secondary != null ? ([[secondaryLabel, secondaryFormat(d.secondary as number)]] as [string, string][]) : [])]} />} />
+            <Pie data={data} dataKey="value" nameKey="key" innerRadius="58%" outerRadius="92%" paddingAngle={2} cornerRadius={6} stroke="none" isAnimationActive={false}
+              onClick={(d) => onClick?.((d as unknown as BarDatum).key)} cursor={onClick ? 'pointer' : undefined}>
+              {data.map((d, i) => <Cell key={d.key} fill={series[i % series.length]} fillOpacity={anySel && !d.selected ? 0.3 : 1} />)}
+            </Pie>
+          </PieChart>
+        </ResponsiveContainer>
+        <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
+          <div className="text-lg font-extrabold leading-none tabular-nums" style={{ color: ink.primary }}>{format(total)}</div>
+          {centerLabel && <div className="mt-0.5 text-[10px]" style={{ color: ink.muted }}>{centerLabel}</div>}
+        </div>
+      </div>
+      <ul className="max-h-full w-[46%] shrink-0 space-y-1 overflow-auto pr-1 text-[11px]">
+        {data.map((d, i) => (
+          <li key={d.key} className={`flex cursor-pointer items-center gap-1.5 rounded-lg px-1.5 py-0.5 hover:bg-surface-2 ${anySel && !d.selected ? 'opacity-50' : ''}`} onClick={() => onClick?.(d.key)} title={d.key}>
+            <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: series[i % series.length] }} />
+            <span className="min-w-0 flex-1 truncate text-ink-2">{d.key}</span>
+            <span className="tabular-nums font-semibold text-ink">{format(d.value)}</span>
+            <span className="w-10 text-right tabular-nums text-ink-3">{fmtPct(total ? (d.value / total) * 100 : null)}</span>
+          </li>
+        ))}
+      </ul>
+    </div>
   );
 }
 

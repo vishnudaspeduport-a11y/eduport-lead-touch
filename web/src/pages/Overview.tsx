@@ -4,7 +4,7 @@ import { useFilters, type ListDim } from '../lib/filters';
 import { fmt2, fmtINR, fmtInt, fmtPct } from '../lib/format';
 import { ChartCard } from '../components/ChartCard';
 import { DataTable, type Col } from '../components/DataTable';
-import { HBars, VBars } from '../charts';
+import { Donut, HBars, VBars } from '../charts';
 import { Icon, Note, PageHeader, Popover, Skeleton } from '../components/ui';
 
 interface DimRow { key: string; touches: number; leads: number; converted: number; converted_first: number; revenue: number; conv_rate?: number | null }
@@ -103,7 +103,7 @@ export default function Overview() {
       <div className="grid gap-3 xl:grid-cols-2">
         <ChartCard title="Lead funnel · LM stage" tone="tone-blue" subtitle="Total leads by current Lead Stage · click to filter" loading={q.isLoading} error={q.error} rows={d?.stages ?? []} height={230}
           help="Current Lead_Stage__c of the distinct leads that have a touch in the window (Tableau sheet 'LM-Stage').">
-          <HBars colorful data={(d?.stages ?? []).map((s) => ({ key: s.key, value: s.leads, secondary: s.converted, selected: (f.lists.lead_stage ?? []).includes(s.key) }))} valueLabel="Total leads" secondaryLabel="Converted" secondaryFormat={fmtInt} onClick={(key) => toggleValue('lead_stage', key)} />
+          <Donut data={(d?.stages ?? []).map((s) => ({ key: s.key, value: s.leads, secondary: s.converted, selected: (f.lists.lead_stage ?? []).includes(s.key) }))} valueLabel="Total leads" secondaryLabel="Converted" centerLabel="leads" onClick={(key) => toggleValue('lead_stage', key)} />
         </ChartCard>
         <ChartCard title="Lead funnel · IC status" tone="tone-pink" subtitle="Total leads by Interested Course status" loading={q.isLoading} error={q.error} rows={d?.ic_status ?? []} height={230}
           help="Interested_Course__c.Status__c for the leads touched in the window, blank status excluded (Tableau sheet 'IC Status'). A lead with several ICs appears under each status.">
