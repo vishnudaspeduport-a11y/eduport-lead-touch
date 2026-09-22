@@ -47,7 +47,7 @@ export function DataTable<R extends object>({ rows, columns, compact, onRowClick
       if (c.bar && isNum(v) && maxes[c.key]) {
         return (
           <div className="relative">
-            <div className="absolute inset-y-0 right-0 rounded-sm bg-accent/15" style={{ width: `${(v / maxes[c.key]) * 100}%` }} />
+            <div className="absolute inset-y-0 right-0 rounded-md bg-accent/15" style={{ width: `${(v / maxes[c.key]) * 100}%` }} />
             <span className="relative">{out}</span>
           </div>
         );
@@ -61,7 +61,7 @@ export function DataTable<R extends object>({ rows, columns, compact, onRowClick
 
   const key = (r: Row<R>) => (rowKey ? rowKey(r.original) : r.id);
   return (
-    <div className="overflow-auto rounded-md border border-line" style={{ maxHeight }}>
+    <div className="overflow-auto rounded-xl border border-line" style={{ maxHeight }}>
       <table className="w-full border-collapse">
         <thead>
           {table.getHeaderGroups().map((hg) => (

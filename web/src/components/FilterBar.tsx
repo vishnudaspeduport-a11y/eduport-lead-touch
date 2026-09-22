@@ -13,7 +13,7 @@ export function FilterBar() {
   if (f.paid) chips.push({ label: `${f.paid === 'paid' ? 'Paid' : 'Organic'} leads`, onRemove: () => set({ paid: undefined }) });
 
   return (
-    <div className="sticky top-0 z-30 -mx-3 mb-3 border-b border-line bg-surface-2/95 px-3 py-1.5 backdrop-blur">
+    <div className="sticky top-2 z-30 mb-3 rounded-2xl bg-surface/80 px-3 py-2 shadow-card ring-1 ring-ink/[0.04] backdrop-blur">
       <div className="flex flex-wrap items-center gap-1.5">
         {/* date preset */}
         <select className="input !py-1 text-xs" value={f.preset} onChange={(e) => { const p = PRESETS.find((x) => x.key === e.target.value)!; const [from, to] = p.range(); set({ preset: p.key, from, to }); }}>
@@ -63,7 +63,7 @@ export function FilterBar() {
 
       {openDim && (
         <div className="fixed inset-0 z-40 flex items-start justify-center bg-black/30 p-4 pt-24" onClick={() => setOpenDim(null)}>
-          <div className="w-[420px] max-w-full rounded-lg border border-line bg-surface p-3 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+          <div className="w-[420px] max-w-full rounded-2xl border border-line bg-surface p-3 shadow-pop" onClick={(e) => e.stopPropagation()}>
             <div className="mb-2 flex items-center justify-between"><div className="text-sm font-semibold">{DIM_LABEL[openDim]}</div><button className="text-ink-3 hover:text-ink" onClick={() => setOpenDim(null)}><Icon.Close /></button></div>
             <MultiSelect dim={openDim} onDone={() => setOpenDim(null)} />
           </div>

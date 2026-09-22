@@ -15,7 +15,7 @@ export function Tip({ active, payload, label, rows }: { active?: boolean; payloa
   if (!active || !payload?.length) return null;
   const d = payload[0].payload;
   return (
-    <div className="rounded-md border border-line bg-surface px-2.5 py-2 text-xs shadow-lg">
+    <div className="rounded-xl border border-line bg-surface px-3 py-2 text-xs shadow-pop">
       {label !== undefined && <div className="mb-1 font-semibold text-ink">{String(label)}</div>}
       {rows(d).map(([k, v]) => <div key={k} className="flex justify-between gap-4"><span className="text-ink-3">{k}</span><span className="tabular-nums text-ink">{v}</span></div>)}
     </div>
@@ -41,7 +41,7 @@ export function TrendChart({ data, compare }: { data: TrendDatum[]; compare?: bo
           <XAxis dataKey="d" {...axis} tickFormatter={(v) => String(v).slice(5)} minTickGap={24} hide />
           <YAxis {...axis} tickFormatter={fmtCompact} width={48} />
           <Tooltip content={<Tip rows={tipRows} />} cursor={{ fill: ink.grid, opacity: 0.4 }} />
-          <Bar dataKey="leads" name="Leads" fill={series[0]} radius={[3, 3, 0, 0]} maxBarSize={28} isAnimationActive={false} />
+          <Bar dataKey="leads" name="Leads" fill={series[0]} radius={[6, 6, 0, 0]} maxBarSize={28} isAnimationActive={false} />
           {compare && <Line dataKey="prev_leads" name="Previous leads" stroke={ink.muted} strokeDasharray="4 3" strokeWidth={1.5} dot={false} isAnimationActive={false} />}
         </ComposedChart>
       </ResponsiveContainer>
@@ -62,8 +62,8 @@ export function TrendChart({ data, compare }: { data: TrendDatum[]; compare?: bo
 
 // ---------------------------------------------------------------- horizontal bars (click = cross-filter)
 export interface BarDatum { key: string; value: number; secondary?: number | null; label?: string; selected?: boolean; extra?: Record<string, unknown> }
-export function HBars({ data, format = fmtInt, secondaryLabel, secondaryFormat = fmtPct, onClick, color, maxLabel = 22, valueLabel = 'Value' }: {
-  data: BarDatum[]; format?: (v: number) => string; secondaryLabel?: string; secondaryFormat?: (v: number) => string; onClick?: (key: string) => void; color?: string; maxLabel?: number; valueLabel?: string;
+export function HBars({ data, format = fmtInt, secondaryLabel, secondaryFormat = fmtPct, onClick, color, maxLabel = 22, valueLabel = 'Value', colorful }: {
+  data: BarDatum[]; format?: (v: number) => string; secondaryLabel?: string; secondaryFormat?: (v: number) => string; onClick?: (key: string) => void; color?: string; maxLabel?: number; valueLabel?: string; colorful?: boolean;
 }) {
   const { series, ink } = useTheme();
   const c = color ?? series[0];
@@ -77,8 +77,8 @@ export function HBars({ data, format = fmtInt, secondaryLabel, secondaryFormat =
           <XAxis type="number" {...axis} tickFormatter={fmtCompact} hide />
           <YAxis type="category" dataKey="key" {...axis} width={128} tick={{ fontSize: 10 }} tickFormatter={(v: string) => (v.length > maxLabel ? `${v.slice(0, maxLabel - 1)}…` : v)} />
           <Tooltip cursor={{ fill: ink.grid, opacity: 0.4 }} content={<Tip rows={(d) => [[valueLabel, format(d.value as number)], ...(secondaryLabel && d.secondary != null ? ([[secondaryLabel, secondaryFormat(d.secondary as number)]] as [string, string][]) : []), ...Object.entries((d.extra as Record<string, unknown>) ?? {}).map(([k, v]) => [k, String(v)] as [string, string])]} />} />
-          <Bar dataKey="value" radius={[0, 3, 3, 0]} maxBarSize={14} isAnimationActive={false} onClick={(d) => onClick?.((d as unknown as BarDatum).key)} cursor={onClick ? 'pointer' : undefined}>
-            {data.map((d) => <Cell key={d.key} fill={c} fillOpacity={anySel && !d.selected ? 0.35 : 1} />)}
+          <Bar dataKey="value" radius={[6, 6, 6, 6]} maxBarSize={14} isAnimationActive={false} onClick={(d) => onClick?.((d as unknown as BarDatum).key)} cursor={onClick ? 'pointer' : undefined}>
+            {data.map((d, i) => <Cell key={d.key} fill={colorful ? series[i % series.length] : c} fillOpacity={anySel && !d.selected ? 0.35 : 1} />)}
             <LabelList dataKey="value" position="right" formatter={(v: number) => format(v)} style={{ fontSize: 10, fill: ink.secondary }} />
           </Bar>
         </BarChart>
@@ -98,7 +98,7 @@ export function VBars({ data, xKey, bars, format = fmtInt, onClick, stacked }: {
         <YAxis {...axis} tickFormatter={fmtCompact} width={48} />
         <Tooltip cursor={{ fill: ink.grid, opacity: 0.4 }} content={<Tip rows={(d) => bars.map((b) => [b.label, format(d[b.key] as number)])} />} />
         {bars.length > 1 && <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 11 }} />}
-        {bars.map((b, i) => <Bar key={b.key} dataKey={b.key} name={b.label} fill={series[i]} stackId={stacked ? 's' : undefined} radius={stacked && i < bars.length - 1 ? 0 : [3, 3, 0, 0]} maxBarSize={40} isAnimationActive={false} onClick={(d) => onClick?.(String((d as Record<string, unknown>)[xKey]))} cursor={onClick ? 'pointer' : undefined} />)}
+        {bars.map((b, i) => <Bar key={b.key} dataKey={b.key} name={b.label} fill={series[i]} stackId={stacked ? 's' : undefined} radius={stacked && i < bars.length - 1 ? 0 : [6, 6, 0, 0]} maxBarSize={40} isAnimationActive={false} onClick={(d) => onClick?.(String((d as Record<string, unknown>)[xKey]))} cursor={onClick ? 'pointer' : undefined} />)}
       </BarChart>
     </ResponsiveContainer>
   );

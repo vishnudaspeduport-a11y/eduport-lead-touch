@@ -5,12 +5,12 @@
  */
 import { useSyncExternalStore } from 'react';
 
-export const SERIES_LIGHT = ['#2a78d6', '#eb6834', '#1baf7a', '#eda100', '#e87ba4', '#008300', '#4a3aa7', '#e34948'];
-export const SERIES_DARK  = ['#3987e5', '#d95926', '#199e70', '#c98500', '#d55181', '#008300', '#9085e9', '#e66767'];
-export const SEQ = ['#cde2fb', '#b7d3f6', '#9ec5f4', '#86b6ef', '#6da7ec', '#5598e7', '#3987e5', '#2a78d6', '#256abf', '#1c5cab', '#184f95', '#104281', '#0d366b'];
-export const DIVERGING = { neg: '#e34948', mid_light: '#f0efec', mid_dark: '#383835', pos: '#2a78d6' };
+export const SERIES_LIGHT = ['#5b6cff', '#ff7a59', '#22c55e', '#f5b301', '#ec4899', '#14b8a6', '#8b5cf6', '#ef4444'];
+export const SERIES_DARK  = ['#818eff', '#ff8f73', '#4ade80', '#fbbf24', '#f472b6', '#2dd4bf', '#a78bfa', '#f87171'];
+export const SEQ = ['#e4e7ff', '#d3d8ff', '#c1c8ff', '#adb7ff', '#98a5ff', '#8393ff', '#6e80ff', '#5b6cff', '#4f5fe6', '#4352cc', '#3846b3', '#2e3a99', '#242e80'];
+export const DIVERGING = { neg: '#ef4444', mid_light: '#eef0f8', mid_dark: '#3a3d5c', pos: '#5b6cff' };
 export const STATUS = { good: '#0ca30c', warning: '#fab219', serious: '#ec835a', critical: '#d03b3b' };
-export const INK = { light: { primary: '#0b0b0b', secondary: '#52514e', muted: '#898781', grid: '#e1e0d9', axis: '#c3c2b7' }, dark: { primary: '#ffffff', secondary: '#c3c2b7', muted: '#898781', grid: '#2c2c2a', axis: '#383835' } };
+export const INK = { light: { primary: '#16182e', secondary: '#565a7a', muted: '#8f93b0', grid: '#e8eaf4', axis: '#c9cde0' }, dark: { primary: '#f6f6fc', secondary: '#bec1d8', muted: '#8488a5', grid: '#32344c', axis: '#454866' } };
 
 const listeners = new Set<() => void>();
 function subscribe(cb: () => void) {
