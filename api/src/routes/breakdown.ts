@@ -35,8 +35,8 @@ export async function breakdownFor(sql: Sql, f: Filters, p: Period, dim: Dim, di
       COALESCE(sum(l.revenue),0)::float8 AS revenue, COALESCE(sum(l.total_touches),0)::int AS touches,
       avg(l.valid_touches)::float8 AS avg_touches, count(*) FILTER (WHERE l.contacted)::int AS contacted`;
     const [rows, [total]] = await Promise.all([
-      sql<BreakdownRow[]>`SELECT ${e1} AS key, ${e2} AS key2, ${sel} FROM analytics.mv_lead_base l WHERE ${lw} GROUP BY 1,2 ORDER BY leads DESC, 1 LIMIT ${limit}`,
-      sql<BreakdownRow[]>`SELECT 'Total'::text AS key, NULL::text AS key2, ${sel} FROM analytics.mv_lead_base l WHERE ${lw}`,
+      sql<BreakdownRow[]>`SELECT ${e1} AS key, ${e2} AS key2, ${sel} FROM analytics.v_lead_base l WHERE ${lw} GROUP BY 1,2 ORDER BY leads DESC, 1 LIMIT ${limit}`,
+      sql<BreakdownRow[]>`SELECT 'Total'::text AS key, NULL::text AS key2, ${sel} FROM analytics.v_lead_base l WHERE ${lw}`,
     ]);
     return { rows: rows.map(fin), total: fin(total), mode: 'lead' };
   }
@@ -57,8 +57,8 @@ export async function breakdownFor(sql: Sql, f: Filters, p: Period, dim: Dim, di
     COALESCE(sum(t.credit_last),0)::float8 AS conv_last,
     COALESCE(sum(t.credit_linear),0)::float8 AS conv_linear`;
   const [rows, [total]] = await Promise.all([
-    sql<BreakdownRow[]>`SELECT ${e1} AS key, ${e2} AS key2, ${sel} FROM analytics.mv_touch_base t WHERE ${tw} GROUP BY 1,2 ORDER BY leads DESC, 1 LIMIT ${limit}`,
-    sql<BreakdownRow[]>`SELECT 'Total'::text AS key, NULL::text AS key2, ${sel} FROM analytics.mv_touch_base t WHERE ${tw}`,
+    sql<BreakdownRow[]>`SELECT ${e1} AS key, ${e2} AS key2, ${sel} FROM analytics.v_touch_base t WHERE ${tw} GROUP BY 1,2 ORDER BY leads DESC, 1 LIMIT ${limit}`,
+    sql<BreakdownRow[]>`SELECT 'Total'::text AS key, NULL::text AS key2, ${sel} FROM analytics.v_touch_base t WHERE ${tw}`,
   ]);
   return { rows: rows.map(fin), total: fin(total), mode: 'touch' };
 }

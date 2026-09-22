@@ -57,9 +57,9 @@ leads.get('/leads', (c) =>
     const where = sql`${leadWhere(sql, f, periods.current)} AND ${searchCond(sql, q.q ?? '')}`;
     const [rows, [tot]] = await Promise.all([
       sql<Rec[]>`
-        SELECT ${sql(LIST_COLS)} FROM analytics.mv_lead_base l WHERE ${where}
+        SELECT ${sql(LIST_COLS)} FROM analytics.v_lead_base l WHERE ${where}
         ORDER BY ${sql(sortCol)} ${dir}, l.lead_id LIMIT ${limit} OFFSET ${(page - 1) * limit}`,
-      sql<{ n: number }[]>`SELECT count(*)::int AS n FROM analytics.mv_lead_base l WHERE ${where}`,
+      sql<{ n: number }[]>`SELECT count(*)::int AS n FROM analytics.v_lead_base l WHERE ${where}`,
     ]);
     return { page, limit, total: tot.n, rows: rows.map((r) => maskRow(r, role)), masked: role !== 'admin' };
   }, 0),
@@ -70,7 +70,7 @@ leads.get('/leads/:id', (c) =>
   handle(c, async ({ sql, role }) => {
     const id = c.req.param('id');
     if (!/^[a-zA-Z0-9]{15,18}$/.test(id)) throw Object.assign(new Error('bad lead id'), { status: 400 });
-    const [lead] = await sql<Rec[]>`SELECT * FROM analytics.mv_lead_base l WHERE l.lead_id = ${id}`;
+    const [lead] = await sql<Rec[]>`SELECT * FROM analytics.v_lead_base l WHERE l.lead_id = ${id}`;
     if (!lead) throw Object.assign(new Error('lead not found'), { status: 404 });
     const phoneKey = lead.phone_key as string | null;
     const [touches, ics, payments, calls, siblings] = await Promise.all([
@@ -79,7 +79,7 @@ leads.get('/leads/:id', (c) =>
                is_pre_conversion, touch_seq, touch_seq_all, is_first_touch, is_last_touch, gap_hours_from_prev, gap_bucket,
                credit_first, credit_last, credit_linear, credit_position, sf_is_first_touch, sf_is_last_touch, sf_is_converted,
                sf_was_customer_at_touch, ic_status, touch_ic_course, is_paid_touch
-        FROM analytics.mv_touch_base t WHERE t.lead_id = ${id} ORDER BY touch_at, touch_id`,
+        FROM analytics.v_touch_base t WHERE t.lead_id = ${id} ORDER BY touch_at, touch_id`,
       sql<Rec[]>`SELECT ic_id, course_name, status, is_enrolled, fees_offered::float8, assigned_date::text, target_customer, ad_campaign, occupation, ic_created_at::text
                  FROM analytics.v_ic_base WHERE lead_id = ${id} ORDER BY ic_created_at`,
       phoneKey
@@ -92,7 +92,7 @@ leads.get('/leads/:id', (c) =>
                      FROM analytics.v_task_valid WHERE phone_key = ${phoneKey} ORDER BY task_created_at DESC LIMIT 200`
         : Promise.resolve([] as Rec[]),
       phoneKey
-        ? sql<Rec[]>`SELECT lead_id, lead_name, created_date::text, lead_source, lead_stage, is_duplicate, converted FROM analytics.mv_lead_base
+        ? sql<Rec[]>`SELECT lead_id, lead_name, created_date::text, lead_source, lead_stage, is_duplicate, converted FROM analytics.v_lead_base
                      WHERE phone_key = ${phoneKey} AND lead_id <> ${id} ORDER BY created_at LIMIT 20`
         : Promise.resolve([] as Rec[]),
     ]);
@@ -125,7 +125,7 @@ leads.get('/leads/export.csv', async (c) => {
       try {
         controller.enqueue(enc.encode(cols.join(',') + '\n'));
         let n = 0;
-        const cursor = sql<Rec[]>`SELECT ${sql(cols)} FROM analytics.mv_lead_base l WHERE ${where} ORDER BY ${sql(sortCol)} ${dir}, l.lead_id LIMIT ${cap}`.cursor(500);
+        const cursor = sql<Rec[]>`SELECT ${sql(cols)} FROM analytics.v_lead_base l WHERE ${where} ORDER BY ${sql(sortCol)} ${dir}, l.lead_id LIMIT ${cap}`.cursor(500);
         for await (const batch of cursor) {
           let chunk = '';
           for (const r of batch) { const m = maskRow(r, role); chunk += cols.map((k) => esc(m[k])).join(',') + '\n'; n++; }

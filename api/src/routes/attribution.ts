@@ -39,7 +39,7 @@ attribution.get('/attribution', (c) =>
                COALESCE(sum(t.credit_last * t.revenue),0)::float8     AS rev_last,
                COALESCE(sum(t.credit_linear * t.revenue),0)::float8   AS rev_linear,
                COALESCE(sum(t.credit_position * t.revenue),0)::float8 AS rev_position
-        FROM analytics.mv_touch_base t WHERE ${touchWhere(sql, f, p)}
+        FROM analytics.v_touch_base t WHERE ${touchWhere(sql, f, p)}
         GROUP BY 1 ORDER BY last_touch DESC, touches DESC LIMIT ${limit}`,
       sql<{ converted: number; unattributed: number; unattributed_revenue: number; pre_existing: number; never_touched: number; touched_after_only: number }[]>`
         SELECT count(*) FILTER (WHERE converted)::int AS converted,
@@ -48,7 +48,7 @@ attribution.get('/attribution', (c) =>
                count(*) FILTER (WHERE unattributed_conversion AND pre_existing_customer)::int AS pre_existing,
                count(*) FILTER (WHERE unattributed_conversion AND total_touches = 0)::int AS never_touched,
                count(*) FILTER (WHERE unattributed_conversion AND total_touches > 0)::int AS touched_after_only
-        FROM analytics.mv_lead_base l WHERE ${leadWhere(sql, f, p)}`,
+        FROM analytics.v_lead_base l WHERE ${leadWhere(sql, f, p)}`,
     ]);
     const totLast = rows.reduce((s, r) => s + r.last_touch, 0);
     const totLin = rows.reduce((s, r) => s + r.linear, 0);

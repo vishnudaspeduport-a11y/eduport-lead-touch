@@ -32,7 +32,7 @@ team.get('/team', (c) =>
                count(c.lead_id)::int AS leads_with_calls,
                count(*) FILTER (WHERE l.is_open)::int AS open_leads,
                count(*) FILTER (WHERE l.is_open AND (l.last_touch_any_at IS NULL OR l.last_touch_any_at < now() - interval '7 days'))::int AS stale_7d
-        FROM analytics.mv_lead_base l LEFT JOIN analytics.mv_lead_calls c ON c.lead_id = l.lead_id
+        FROM analytics.v_lead_base l LEFT JOIN analytics.v_lead_calls c ON c.lead_id = l.lead_id
         WHERE ${leadWhere(sql, f, p)}
         GROUP BY 1 ORDER BY leads DESC LIMIT ${limit}`,
       sql<{ staff: string; touches: number; leads: number; conv_last: number; conv_linear: number; revenue_linear: number; converted_leads: number }[]>`
@@ -40,7 +40,7 @@ team.get('/team', (c) =>
                COALESCE(sum(t.credit_last),0)::float8 AS conv_last, COALESCE(sum(t.credit_linear),0)::float8 AS conv_linear,
                COALESCE(sum(t.credit_linear * t.revenue),0)::float8 AS revenue_linear,
                count(DISTINCT t.lead_id) FILTER (WHERE t.converted AND t.is_pre_conversion)::int AS converted_leads
-        FROM analytics.mv_touch_base t WHERE ${touchWhere(sql, f, p)} AND t.staff IS NOT NULL
+        FROM analytics.v_touch_base t WHERE ${touchWhere(sql, f, p)} AND t.staff IS NOT NULL
         GROUP BY 1 ORDER BY touches DESC LIMIT ${limit}`,
     ]);
     return {

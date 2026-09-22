@@ -39,15 +39,15 @@ export async function kpisFor(sql: Sql, f: Filters, p: Period): Promise<KpiSet> 
              (percentile_cont(0.5) WITHIN GROUP (ORDER BY days_to_convert) FILTER (WHERE converted AND days_to_convert >= 0))::float8 AS median_days_to_convert,
              count(*) FILTER (WHERE contacted)::int AS contacted,
              (percentile_cont(0.5) WITHIN GROUP (ORDER BY response_hours) FILTER (WHERE response_hours >= 0))::float8 AS median_response_hours
-      FROM analytics.mv_lead_base l WHERE ${lw}`,
+      FROM analytics.v_lead_base l WHERE ${lw}`,
     sql<{ touches: number; valid_touches: number; touched_leads: number }[]>`
       SELECT count(*)::int AS touches,
              count(*) FILTER (WHERE t.is_pre_conversion)::int AS valid_touches,
              count(DISTINCT t.lead_id)::int AS touched_leads
-      FROM analytics.mv_touch_base t WHERE ${tw}`,
+      FROM analytics.v_touch_base t WHERE ${tw}`,
     sql<{ bucket: string; leads: number; converted: number }[]>`
       SELECT touch_bucket AS bucket, count(*)::int AS leads, count(*) FILTER (WHERE converted)::int AS converted
-      FROM analytics.mv_lead_base l WHERE ${lw}
+      FROM analytics.v_lead_base l WHERE ${lw}
       GROUP BY 1 ORDER BY CASE touch_bucket WHEN '6+' THEN 6 ELSE touch_bucket::int END`,
   ]);
   return {

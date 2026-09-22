@@ -27,7 +27,7 @@ cohorts.get('/cohorts', (c) =>
                count(*) FILTER (WHERE l.converted AND l.days_to_convert >= 0)::int AS c_all,
                COALESCE(sum(l.revenue),0)::float8 AS revenue,
                (current_date - max(l.created_date))::int AS age_days
-        FROM analytics.mv_lead_base l WHERE ${lw}
+        FROM analytics.v_lead_base l WHERE ${lw}
         GROUP BY 1 ORDER BY 1`,
       sql<{ bucket: string; ord: number; leads: number; revenue: number }[]>`
         SELECT CASE WHEN l.days_to_convert < 0 THEN 'Before lead (pre-existing)'
@@ -43,13 +43,13 @@ cohorts.get('/cohorts', (c) =>
                     WHEN l.days_to_convert <= 7 THEN 2 WHEN l.days_to_convert <= 14 THEN 3 WHEN l.days_to_convert <= 30 THEN 4
                     WHEN l.days_to_convert <= 60 THEN 5 WHEN l.days_to_convert <= 90 THEN 6 ELSE 7 END AS ord,
                count(*)::int AS leads, COALESCE(sum(l.revenue),0)::float8 AS revenue
-        FROM analytics.mv_lead_base l WHERE ${lw} AND l.converted
+        FROM analytics.v_lead_base l WHERE ${lw} AND l.converted
         GROUP BY 1,2 ORDER BY 2`,
       sql<{ converted: number; within_7: number; within_30: number }[]>`
         SELECT count(*) FILTER (WHERE l.converted AND l.days_to_convert >= 0)::int AS converted,
                count(*) FILTER (WHERE l.converted AND l.days_to_convert BETWEEN 0 AND 7)::int AS within_7,
                count(*) FILTER (WHERE l.converted AND l.days_to_convert BETWEEN 0 AND 30)::int AS within_30
-        FROM analytics.mv_lead_base l WHERE ${lw} AND l.created_date <= current_date - 90`,
+        FROM analytics.v_lead_base l WHERE ${lw} AND l.created_date <= current_date - 90`,
     ]);
     const out = rows.map((r) => ({
       ...r,

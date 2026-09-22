@@ -246,7 +246,7 @@ async function refreshViews(): Promise<void> {
   // Supabase applies a per-role statement timeout; the refresh can legitimately take minutes.
   // Web sessions that died mid-transaction keep locks on the views; they are never legitimately older than a few minutes.
   const stale = await sql<{ pid: number }[]>`SELECT pid FROM pg_stat_activity WHERE datname = current_database() AND pid <> pg_backend_pid()
-    AND application_name = 'postgres.js' AND xact_start < now() - interval '5 minutes'`;
+    AND application_name = 'postgres.js' AND xact_start < now() - interval '5 minutes'`;   // still useful: stuck web transactions
   for (const { pid } of stale) await sql`SELECT pg_terminate_backend(${pid})`;
   if (stale.length) console.log(`[refresh] terminated ${stale.length} stale web session(s) holding old transactions`);
   const rows = await sql.begin(async (tx) => {
@@ -266,7 +266,7 @@ async function compactIfNeeded(): Promise<void> {
   const [{ mb }] = await sql<{ mb: number }[]>`SELECT round(pg_database_size(current_database())/1048576.0)::int AS mb`;
   console.log(`[compact] database size ${mb} MB (threshold ${limit} MB)`);
   if (mb < limit) return;
-  for (const t of ['analytics.mv_lead_base', 'analytics.mv_touch_base', 'salesforce.lead_master__c', 'salesforce.interested_course__c', 'salesforce.lead_touch__c', 'app.home_payment', 'app.home_customuser']) {
+  for (const t of ['salesforce.lead_master__c', 'salesforce.interested_course__c', 'salesforce.lead_touch__c', 'app.home_payment', 'app.home_customuser']) {
     const t0 = Date.now();
     await sql.unsafe(`VACUUM FULL ANALYZE ${t}`);
     console.log(`[compact] ${t} in ${((Date.now() - t0) / 1000).toFixed(1)}s`);

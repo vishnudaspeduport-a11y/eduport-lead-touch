@@ -24,6 +24,8 @@ const CHECKS: Record<string, { view: string; order: string; pii?: string[] }> = 
 /** GET /api/data-quality : counts for every check (global - not filtered, this is about the whole dataset) */
 dq.get('/data-quality', (c) =>
   handle(c, async ({ sql }) => {
+    const exists = await sql<{ n: number }[]>`SELECT count(*)::int AS n FROM pg_views WHERE schemaname = 'analytics' AND viewname = 'v_dq_summary'`;
+    if (!exists[0].n) return { checks: [], note: 'Data-quality checks are switched off while the analytics views are being redesigned.' };
     const rows = await sql<{ check_key: string; label: string; bad_rows: number; total_rows: number }[]>`
       SELECT check_key, label, bad_rows::int, total_rows::int FROM analytics.v_dq_summary`;
     return {

@@ -15,10 +15,10 @@ async function moverDim(sql: Sql, f: Filters, dim: LeadDim, cur: Period, prev: P
   const e = dimExpr(sql, dim, 'l');
   const rows = await sql<(R & { period: 'cur' | 'prev' })[]>`
     SELECT 'cur'::text AS period, ${e} AS key, count(*)::int AS leads, count(*) FILTER (WHERE l.converted)::int AS converted
-    FROM analytics.mv_lead_base l WHERE ${leadWhere(sql, f, cur)} GROUP BY 2
+    FROM analytics.v_lead_base l WHERE ${leadWhere(sql, f, cur)} GROUP BY 2
     UNION ALL
     SELECT 'prev'::text, ${e}, count(*)::int, count(*) FILTER (WHERE l.converted)::int
-    FROM analytics.mv_lead_base l WHERE ${leadWhere(sql, f, prev)} GROUP BY 2`;
+    FROM analytics.v_lead_base l WHERE ${leadWhere(sql, f, prev)} GROUP BY 2`;
   return { dim, cur: rows.filter((r) => r.period === 'cur'), prev: rows.filter((r) => r.period === 'prev') };
 }
 

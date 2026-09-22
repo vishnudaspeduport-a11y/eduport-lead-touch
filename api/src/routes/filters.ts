@@ -25,7 +25,7 @@ filters.get('/filters', (c) =>
       const expr = dimExpr(sql, d, 'l');
       const rows = await sql<{ value: string; leads: number; converted: number }[]>`
         SELECT ${expr} AS value, count(*)::int AS leads, count(*) FILTER (WHERE l.converted)::int AS converted
-        FROM analytics.mv_lead_base l
+        FROM analytics.v_lead_base l
         WHERE ${leadWhere(sql, f, p, { skip: d })}
           ${search ? sql`AND lower(${expr}) LIKE ${'%' + search + '%'}` : sql`AND true`}
         GROUP BY 1 ORDER BY 2 DESC, 1 LIMIT ${limit}`;
@@ -35,7 +35,7 @@ filters.get('/filters', (c) =>
     const rows = await sql<{ value: string; leads: number; converted: number }[]>`
       SELECT ${expr} AS value, count(DISTINCT t.lead_id)::int AS leads,
              count(DISTINCT t.lead_id) FILTER (WHERE t.converted AND t.is_pre_conversion)::int AS converted
-      FROM analytics.mv_touch_base t
+      FROM analytics.v_touch_base t
       WHERE ${touchWhere(sql, f, p, { skip: d })}
         ${search ? sql`AND lower(${expr}) LIKE ${'%' + search + '%'}` : sql`AND true`}
       GROUP BY 1 ORDER BY 2 DESC, 1 LIMIT ${limit}`;

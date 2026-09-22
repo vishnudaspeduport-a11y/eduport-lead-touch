@@ -6,7 +6,7 @@
  *    column names never come from user input
  *  - all values are bound parameters (postgres.js tagged templates)
  *
- * Lead-level filters apply to analytics.mv_lead_base (alias `l`).
+ * Lead-level filters apply to analytics.v_lead_base (alias `l`).
  * Touch-level filters (source / medium / touch point / campaign / ad set / ad / staff)
  * mean "lead has at least one such touch" at lead grain, and restrict the touch
  * rows directly at touch grain (alias `t`).
@@ -179,7 +179,7 @@ function andAll(sql: Sql, conds: Frag[]): Frag {
 
 export interface BuildOpts { skip?: string; }
 
-/** WHERE for analytics.mv_lead_base AS l */
+/** WHERE for analytics.v_lead_base AS l */
 export function leadWhere(sql: Sql, f: Filters, p: Period, opts: BuildOpts = {}): Frag {
   const c: Frag[] = [];
   if (f.dups !== '1') c.push(sql`l.is_duplicate = false`);
@@ -187,7 +187,7 @@ export function leadWhere(sql: Sql, f: Filters, p: Period, opts: BuildOpts = {})
   switch (f.basis) {
     case 'created': c.push(sql`l.created_date BETWEEN ${p.from} AND ${p.to}`); break;
     case 'payment': c.push(sql`l.converted AND l.converted_at BETWEEN ${p.from} AND ${p.to}`); break;
-    case 'touch':   c.push(sql`EXISTS (SELECT 1 FROM analytics.mv_touch_base tx WHERE tx.lead_id = l.lead_id AND tx.touch_date BETWEEN ${p.from} AND ${p.to})`); break;
+    case 'touch':   c.push(sql`EXISTS (SELECT 1 FROM analytics.v_touch_base tx WHERE tx.lead_id = l.lead_id AND tx.touch_date BETWEEN ${p.from} AND ${p.to})`); break;
   }
 
   if (f.converted === '1') c.push(sql`l.converted = true`);
@@ -209,15 +209,15 @@ export function leadWhere(sql: Sql, f: Filters, p: Period, opts: BuildOpts = {})
   if (f.paid_touch && opts.skip !== 'paid_touch') touchConds.push(boolCond(sql, 't', 'is_paid_touch', f.paid_touch === 'paid'));
   if (touchConds.length) {
     if (f.basis === 'touch') touchConds.push(sql`t.touch_date BETWEEN ${p.from} AND ${p.to}`);
-    c.push(sql`EXISTS (SELECT 1 FROM analytics.mv_touch_base t WHERE t.lead_id = l.lead_id AND ${andAll(sql, touchConds)})`);
+    c.push(sql`EXISTS (SELECT 1 FROM analytics.v_touch_base t WHERE t.lead_id = l.lead_id AND ${andAll(sql, touchConds)})`);
   }
   return andAll(sql, c);
 }
 
-/** WHERE for analytics.mv_touch_base AS t (touches of the filtered lead set, plus direct touch filters) */
+/** WHERE for analytics.v_touch_base AS t (touches of the filtered lead set, plus direct touch filters) */
 export function touchWhere(sql: Sql, f: Filters, p: Period, opts: BuildOpts = {}): Frag {
   const c: Frag[] = [
-    sql`t.lead_id IN (SELECT l.lead_id FROM analytics.mv_lead_base l WHERE ${leadWhere(sql, f, p, opts)})`,
+    sql`t.lead_id IN (SELECT l.lead_id FROM analytics.v_lead_base l WHERE ${leadWhere(sql, f, p, opts)})`,
   ];
   if (f.basis === 'touch') c.push(sql`t.touch_date BETWEEN ${p.from} AND ${p.to}`);
   if (f.paid_touch && opts.skip !== 'paid_touch') c.push(boolCond(sql, 't', 'is_paid_touch', f.paid_touch === 'paid'));

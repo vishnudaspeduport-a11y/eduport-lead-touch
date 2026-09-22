@@ -24,7 +24,7 @@ touch.get('/touch-curve', (c) =>
     const rows = await sql<CurveRow[]>`
       SELECT ${grpExpr} AS grp, l.touch_bucket AS bucket, count(*)::int AS leads,
              count(*) FILTER (WHERE l.converted)::int AS converted, COALESCE(sum(l.revenue),0)::float8 AS revenue
-      FROM analytics.mv_lead_base l WHERE ${leadWhere(sql, f, periods.current)}
+      FROM analytics.v_lead_base l WHERE ${leadWhere(sql, f, periods.current)}
       GROUP BY 1,2`;
     const groups = new Map<string, CurveRow[]>();
     for (const r of rows) (groups.get(r.grp) ?? groups.set(r.grp, []).get(r.grp)!).push(r);
@@ -60,7 +60,7 @@ touch.get('/touch-gaps', (c) =>
         SELECT t.gap_bucket AS bucket, count(*)::int AS touches, count(DISTINCT t.lead_id)::int AS leads,
                count(DISTINCT t.lead_id) FILTER (WHERE t.converted)::int AS converted_leads,
                (percentile_cont(0.5) WITHIN GROUP (ORDER BY t.gap_hours_from_prev))::float8 AS median_hours
-        FROM analytics.mv_touch_base t
+        FROM analytics.v_touch_base t
         WHERE ${tw} AND t.gap_hours_from_prev IS NOT NULL AND t.is_pre_conversion
         GROUP BY 1
         ORDER BY min(t.gap_hours_from_prev)`,
@@ -69,7 +69,7 @@ touch.get('/touch-gaps', (c) =>
                avg(t.gap_hours_from_prev)::float8 AS avg_hours,
                (percentile_cont(0.9) WITHIN GROUP (ORDER BY t.gap_hours_from_prev))::float8 AS p90_hours,
                count(*)::int AS gaps
-        FROM analytics.mv_touch_base t
+        FROM analytics.v_touch_base t
         WHERE ${tw} AND t.gap_hours_from_prev IS NOT NULL AND t.is_pre_conversion`,
     ]);
     return { buckets: buckets.map((b) => ({ ...b, conv_rate: pct(b.converted_leads, b.leads) })), overall };
@@ -83,7 +83,7 @@ touch.get('/touch-heatmap', (c) =>
       SELECT t.touch_dow AS dow, t.touch_hour AS hour, count(*)::int AS touches,
              count(*) FILTER (WHERE t.converted AND t.is_pre_conversion)::int AS converted_touches,
              count(DISTINCT t.lead_id)::int AS leads
-      FROM analytics.mv_touch_base t WHERE ${touchWhere(sql, f, periods.current)}
+      FROM analytics.v_touch_base t WHERE ${touchWhere(sql, f, periods.current)}
       GROUP BY 1,2 ORDER BY 1,2`;
     return { rows, tz: 'Asia/Kolkata' };
   }),
@@ -98,7 +98,7 @@ touch.get('/touch-transitions', (c) =>
              COALESCE(l.last_touch_point, l.last_touch_any_point, '(none)') AS dst,
              count(*)::int AS leads, count(*) FILTER (WHERE l.converted)::int AS converted,
              COALESCE(sum(l.revenue),0)::float8 AS revenue
-      FROM analytics.mv_lead_base l WHERE ${leadWhere(sql, f, periods.current)} AND l.total_touches >= 1
+      FROM analytics.v_lead_base l WHERE ${leadWhere(sql, f, periods.current)} AND l.total_touches >= 1
       GROUP BY 1,2 ORDER BY 3 DESC LIMIT ${limit}`;
     return { rows: rows.map((r) => ({ ...r, conv_rate: pct(r.converted, r.leads), same: r.src === r.dst })) };
   }),
@@ -118,10 +118,10 @@ touch.get('/stale-leads', (c) =>
                l.total_touches, l.last_touch_any_at::text AS last_touch_at, l.last_touch_any_point AS last_touch_point,
                (current_date - analytics.ist_date(l.last_touch_any_at))::int AS days_since_touch,
                l.next_followup_due::text, l.priority, l.app_engagement_tier
-        FROM analytics.mv_lead_base l WHERE ${cond}
+        FROM analytics.v_lead_base l WHERE ${cond}
         ORDER BY l.last_touch_any_at NULLS FIRST, l.created_at LIMIT ${limit} OFFSET ${(page - 1) * limit}`,
-      sql<{ n: number; never: number }[]>`SELECT count(*)::int AS n, count(*) FILTER (WHERE l.last_touch_any_at IS NULL)::int AS never FROM analytics.mv_lead_base l WHERE ${cond}`,
-      sql<{ owner_name: string; n: number }[]>`SELECT l.owner_name, count(*)::int AS n FROM analytics.mv_lead_base l WHERE ${cond} GROUP BY 1 ORDER BY 2 DESC LIMIT 15`,
+      sql<{ n: number; never: number }[]>`SELECT count(*)::int AS n, count(*) FILTER (WHERE l.last_touch_any_at IS NULL)::int AS never FROM analytics.v_lead_base l WHERE ${cond}`,
+      sql<{ owner_name: string; n: number }[]>`SELECT l.owner_name, count(*)::int AS n FROM analytics.v_lead_base l WHERE ${cond} GROUP BY 1 ORDER BY 2 DESC LIMIT 15`,
     ]);
     return { days, page, limit, total: tot.n, never_touched: tot.never, rows, by_owner: byOwner };
   }),

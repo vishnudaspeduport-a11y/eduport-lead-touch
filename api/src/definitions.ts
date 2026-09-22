@@ -4,8 +4,8 @@
  */
 export interface Definition { key: string; title: string; plain: string; sql: string; deviation?: string; }
 
-const L = 'FROM analytics.mv_lead_base l WHERE ${where}';
-const T = 'FROM analytics.mv_touch_base t WHERE ${touch_where}';
+const L = 'FROM analytics.v_lead_base l WHERE ${where}';
+const T = 'FROM analytics.v_touch_base t WHERE ${touch_where}';
 
 export const DEFINITIONS: Definition[] = [
   { key: 'leads', title: 'Total Leads',
