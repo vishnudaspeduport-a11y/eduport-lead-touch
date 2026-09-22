@@ -9,15 +9,8 @@ import { SyncButton } from './SyncButton';
 
 export const NAV = [
   { to: '/', label: 'Overview' },
-  { to: '/touches', label: 'Touch analysis' },
-  { to: '/attribution', label: 'Attribution' },
-  { to: '/sources', label: 'Source & campaign' },
-  { to: '/funnel', label: 'Funnel & stage' },
-  { to: '/cohorts', label: 'Cohorts & velocity' },
-  { to: '/segments', label: 'Segments' },
-  { to: '/team', label: 'Sales team' },
   { to: '/leads', label: 'Lead explorer' },
-  { to: '/quality', label: 'Data quality' },
+  // parked (slow: they compute on the fly until rebuilt on request): /touches /attribution /sources /funnel /cohorts /segments /team /quality
 ];
 
 export function AppShell() {

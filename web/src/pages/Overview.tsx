@@ -1,113 +1,113 @@
-import { useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useState } from 'react';
 import { useApi } from '../lib/api';
-import { useFilters, DIM_LABEL, type ListDim } from '../lib/filters';
-import type { FunnelResponse, KpisResponse, MoversResponse, TrendResponse } from '../lib/types';
-import { delta, fmt1, fmt2, fmtHours, fmtINR, fmtInt, fmtPP, fmtPct } from '../lib/format';
-import { KpiCard } from '../components/KpiCard';
+import { useFilters, type ListDim } from '../lib/filters';
+import { fmt2, fmtINR, fmtInt, fmtPct } from '../lib/format';
 import { ChartCard } from '../components/ChartCard';
-import { HBars, TrendChart, VBars } from '../charts';
-import { Note, PageHeader, Segmented, Skeleton } from '../components/ui';
-import { BreakdownCard } from '../components/BreakdownCard';
+import { DataTable, type Col } from '../components/DataTable';
+import { HBars, VBars } from '../charts';
+import { Icon, Note, PageHeader, Popover, Segmented, Skeleton } from '../components/ui';
 
+interface DimRow { key: string; touches: number; leads: number; converted: number; converted_attr: number; revenue: number; conv_rate?: number | null }
+interface OverviewResponse {
+  period: { from: string; to: string };
+  kpis: { touches: number; leads: number; converted: number; converted_in_window: number; converted_attr: number; sf_converted: number; touches_of_converted: number; revenue: number; conv_rate: number | null; touches_per_lead: number | null; touches_per_converted_lead: number | null; avg_pre_touches_converted: number | null; avg_all_touches_converted: number | null };
+  stages: { key: string; leads: number; converted: number }[];
+  ic_status: { key: string; leads: number; ics: number }[];
+  touch_point: DimRow[]; source: DimRow[]; class_raw: DimRow[]; reason: DimRow[]; medium: DimRow[]; campaign: DimRow[]; staff: DimRow[];
+  daily: { d: string; touches: number; leads: number; converted: number }[];
+  definitions: Record<string, string>;
+}
+
+const DIM_COLS: Col<DimRow>[] = [
+  { key: 'key', header: '' }, { key: 'touches', header: 'Total lead touches', bar: true }, { key: 'leads', header: 'Total leads' },
+  { key: 'converted', header: 'Converted' }, { key: 'conv_rate', header: 'Conv %', render: (v) => fmtPct(v as number) }, { key: 'revenue', header: 'Revenue (linear)', render: (v) => fmtINR(v as number) },
+];
+
+function Kpi({ title, value, sub, def }: { title: string; value: string; sub?: string; def?: string }) {
+  return (
+    <div className="card flex min-h-[64px] flex-col justify-between gap-0.5">
+      <div className="flex items-start justify-between gap-1">
+        <div className="truncate text-[10px] font-medium uppercase tracking-wide text-ink-3" title={title}>{title}</div>
+        {def && <Popover align="right" width="w-80" trigger={<button className="rounded p-0.5 text-ink-3 hover:text-ink"><Icon.Help /></button>}><div className="text-xs leading-relaxed text-ink-2">{def}</div></Popover>}
+      </div>
+      <div className="text-lg font-semibold leading-tight tabular-nums">{value}</div>
+      {sub && <div className="truncate text-[10px] text-ink-3">{sub}</div>}
+    </div>
+  );
+}
+
+/** Tableau-style Overview: touch-date grain. */
 export default function Overview() {
   const { f, params, toggleValue } = useFilters();
-  const nav = useNavigate();
-  const [grain, setGrain] = useState<'day' | 'week' | 'month'>('day');
-  const k = useApi<KpisResponse>('/kpis', params);
-  const t = useApi<TrendResponse>('/trend', { ...params, grain });
-  const fun = useApi<FunnelResponse>('/funnel', params);
-  const mv = useApi<MoversResponse>('/movers', { ...params, min: 30, limit: 8 });
+  const q = useApi<OverviewResponse>('/overview', params);
+  const d = q.data?.data;
+  const k = d?.kpis;
+  const def = d?.definitions ?? {};
+  const [convMode, setConvMode] = useState<'converted' | 'converted_attr'>('converted');
 
-  const cur = k.data?.data.current;
-  const prev = k.data?.data.previous ?? null;
-  const cmp = f.compare && prev;
-
-  const trendRows = useMemo(() => {
-    const rows = t.data?.data.rows ?? [];
-    const prevRows = t.data?.data.previous ?? [];
-    return rows.map((r, i) => ({
-      d: r.d, leads: r.leads, converted: r.converted, touches: r.touches, revenue: r.revenue,
-      conv_rate: r.leads ? Math.round((r.converted / r.leads) * 10000) / 100 : null,
-      prev_leads: prevRows[i]?.leads ?? null,
-      prev_conv_rate: prevRows[i]?.leads ? Math.round((prevRows[i].converted / prevRows[i].leads) * 10000) / 100 : null,
-    }));
-  }, [t.data]);
-
-  const loading = k.isLoading;
-  const cards = cur ? [
-    { key: 'leads', title: 'Total leads', value: fmtInt(cur.leads), d: cmp ? delta(cur.leads, prev.leads) : undefined, sub: `${fmtInt(cur.contacted)} contacted (${fmtPct(cur.contact_rate)})` },
-    { key: 'touches', title: 'Total touches', value: fmtInt(cur.touches), d: cmp ? delta(cur.touches, prev.touches) : undefined, sub: `${fmtInt(cur.valid_touches)} before payment` },
-    { key: 'touches_per_lead', title: 'Touches per lead', value: fmt2(cur.touches_per_lead), d: cmp ? delta(cur.touches_per_lead, prev.touches_per_lead) : undefined, sub: `${fmtInt(cur.touched_leads)} leads touched` },
-    { key: 'converted', title: 'Converted leads', value: fmtInt(cur.converted), d: cmp ? delta(cur.converted, prev.converted) : undefined, sub: `${fmtInt(cur.pre_existing)} pre-existing customers` },
-    { key: 'conv_rate', title: 'Conversion %', value: fmtPct(cur.conv_rate, 2), d: cmp ? delta(cur.conv_rate, prev.conv_rate, 'pp') : undefined, sub: cmp ? `prev ${fmtPct(prev.conv_rate, 2)}` : undefined },
-    { key: 'avg_touches_to_convert', title: 'Avg touches to convert', value: fmt2(cur.avg_touches_to_convert), d: cmp ? delta(cur.avg_touches_to_convert, prev.avg_touches_to_convert, 'num') : undefined, sub: `median ${fmt1(cur.median_touches_to_convert)} · p90 ${fmt1(cur.p90_touches_to_convert)}` },
-    { key: 'avg_days_to_convert', title: 'Avg days to convert', value: fmt1(cur.avg_days_to_convert), d: cmp ? delta(cur.avg_days_to_convert, prev.avg_days_to_convert, 'num') : undefined, invert: true, sub: `median ${fmt1(cur.median_days_to_convert)} d` },
-    { key: 'revenue', title: 'Revenue', value: fmtINR(cur.revenue), d: cmp ? delta(cur.revenue, prev.revenue) : undefined, sub: cur.refunds ? `refunds ${fmtINR(cur.refunds)}` : undefined },
-    { key: 'revenue_per_lead', title: 'Revenue per lead', value: fmtINR(cur.revenue_per_lead), d: cmp ? delta(cur.revenue_per_lead, prev.revenue_per_lead) : undefined },
-    { key: 'first_touch_conversions', title: 'First-touch conversions', value: fmtInt(cur.first_touch_conversions), d: cmp ? delta(cur.first_touch_conversions, prev.first_touch_conversions) : undefined, sub: `${fmtInt(cur.unattributed)} unattributed` },
-    { key: 'last_touch_conversions', title: 'Last-touch conversions', value: fmtInt(cur.last_touch_conversions), d: cmp ? delta(cur.last_touch_conversions, prev.last_touch_conversions) : undefined },
-    { key: 'response_hours', title: 'Median response time', value: fmtHours(cur.median_response_hours), d: cmp ? delta(cur.median_response_hours, prev.median_response_hours, 'num') : undefined, invert: true, sub: 'lead created → first touch' },
-  ] : [];
-
-  const stages = fun.data?.data.stages ?? [];
-  const movers = mv.data?.data;
+  const dimCard = (title: string, rows: DimRow[] | undefined, dim: ListDim, opts: { asTable?: boolean; height?: number; limit?: number; help?: string } = {}) => {
+    const data = (rows ?? []).slice(0, opts.limit ?? 12);
+    const selected = f.lists[dim] ?? [];
+    return (
+      <ChartCard title={title} subtitle={rows ? `${fmtInt(rows.reduce((s, r) => s + r.touches, 0))} touches · click to filter` : undefined}
+        loading={q.isLoading} error={q.error} onRetry={q.refetch} rows={rows ?? []} columns={DIM_COLS} height={opts.height ?? 250}
+        help={opts.help ?? `${title}: touches in the window grouped by this value. Total leads = distinct leads touched, Converted = ${def.dim_converted ?? ''}`}>
+        {opts.asTable
+          ? <DataTable rows={data} compact initialSort={{ id: 'touches', desc: true }} onRowClick={(r) => toggleValue(dim, r.key === '(null)' ? '(null)' : r.key)} columns={DIM_COLS} />
+          : <HBars data={data.map((r) => ({ key: r.key, value: r.touches, secondary: r[convMode], selected: selected.includes(r.key), extra: { 'Total leads': fmtInt(r.leads), 'Conv %': fmtPct(r.conv_rate) } }))}
+              valueLabel="Total lead touches" secondaryLabel={convMode === 'converted' ? 'Converted' : 'Converted (attributable)'} secondaryFormat={fmtInt} onClick={(key) => toggleValue(dim, key)} />}
+      </ChartCard>
+    );
+  };
 
   return (
     <div className="space-y-3">
-      <PageHeader title="Overview" subtitle={`${f.from} → ${f.to} · basis: ${f.basis}${f.compare ? ' · vs previous period' : ''}`} />
-      {k.error && <Note>⚠ {k.error.message}</Note>}
-      <div className="grid grid-cols-3 gap-2 md:grid-cols-4 lg:grid-cols-6 2xl:grid-cols-12">
-        {loading && Array.from({ length: 12 }).map((_, i) => <Skeleton key={i} className="h-24" />)}
-        {cards.map((c) => <KpiCard key={c.key} defKey={c.key} title={c.title} value={c.value} delta={c.d ?? undefined} sub={c.sub} invert={c.invert} />)}
+      <PageHeader title="Overview" subtitle={`touch date ${f.from} → ${f.to} · touch grain, like the Tableau workbook`}
+        right={<Segmented size="xs" value={convMode} onChange={setConvMode} options={[{ value: 'converted', label: 'Converted = any payment' }, { value: 'converted_attr', label: 'Converted = after a touch' }]} />} />
+      {q.error && <Note>⚠ {q.error.message}</Note>}
+
+      <div className="grid grid-cols-3 gap-2 md:grid-cols-4 lg:grid-cols-8">
+        {q.isLoading && Array.from({ length: 8 }).map((_, i) => <Skeleton key={i} className="h-16" />)}
+        {k && <>
+          <Kpi title="Total leads" value={fmtInt(k.leads)} sub="distinct leads touched" def={def.leads} />
+          <Kpi title="Total lead touches" value={fmtInt(k.touches)} sub={`${fmt2(k.touches_per_lead)} per lead`} def={def.touches} />
+          <Kpi title="Total converted" value={fmtInt(k.converted)} sub={`${fmtPct(k.conv_rate)} of touched leads`} def={def.converted} />
+          <Kpi title="Converted after a touch" value={fmtInt(k.converted_attr)} sub={`${fmtInt(k.converted - k.converted_attr)} paid before any touch`} def={def.converted_attr} />
+          <Kpi title="Converted in window" value={fmtInt(k.converted_in_window)} sub="first payment inside window" def={def.converted_in_window} />
+          <Kpi title="Avg touches before conversion" value={fmt2(k.avg_pre_touches_converted)} sub="per converted lead, all time" def={def.avg_pre_touches_converted} />
+          <Kpi title="Avg touches (converted, window)" value={fmt2(k.touches_per_converted_lead)} sub={`${fmtInt(k.touches_of_converted)} touches`} def={def.touches_per_converted_lead} />
+          <Kpi title="SF Is_Converted flag" value={fmtInt(k.sf_converted)} sub="reference only" def={def.sf_converted} />
+        </>}
       </div>
 
-      <div className="grid gap-3 xl:grid-cols-3">
-        <ChartCard className="xl:col-span-2" title="Leads and conversion over time" subtitle={t.data ? `source: ${t.data.data.source}` : undefined}
-          loading={t.isLoading} error={t.error} onRetry={t.refetch} rows={trendRows} height={270}
-          help="Bars: leads per period on the selected date basis. Line: converted / leads for that period. The two panels share the x-axis; each has its own single y-axis. Dashed = previous period aligned by position."
-          actions={<Segmented size="xs" value={grain} onChange={setGrain} options={[{ value: 'day', label: 'Day' }, { value: 'week', label: 'Week' }, { value: 'month', label: 'Month' }]} />}>
-          <TrendChart data={trendRows} compare={!!cmp} />
+      <div className="grid gap-3 xl:grid-cols-2">
+        <ChartCard title="Lead funnel · LM stage" subtitle="distinct touched leads by current stage · click to filter" loading={q.isLoading} error={q.error} rows={d?.stages ?? []} height={230}
+          help="Current Lead_Stage__c of the distinct leads that have a touch in the window.">
+          <HBars data={(d?.stages ?? []).map((s) => ({ key: s.key, value: s.leads, secondary: s.converted, selected: (f.lists.lead_stage ?? []).includes(s.key) }))} valueLabel="Total leads" secondaryLabel="Converted" secondaryFormat={fmtInt} onClick={(key) => toggleValue('lead_stage', key)} />
         </ChartCard>
-
-        <ChartCard title="Lead stage funnel" subtitle="click a stage to filter" loading={fun.isLoading} error={fun.error} onRetry={fun.refetch} height={270}
-          rows={stages} columns={[{ key: 'stage', header: 'Stage' }, { key: 'leads', header: 'Leads', bar: true }, { key: 'converted', header: 'Converted' }, { key: 'conv_rate', header: 'Conv %', render: (v) => fmtPct(v as number) }]}
-          help="Current Lead_Stage__c distribution for the leads in the window, with the payment-based conversion rate of each stage. Stage history is not replicated, so this is a snapshot, not a flow.">
-          <HBars data={stages.map((s) => ({ key: s.stage, value: s.leads, secondary: s.conv_rate, selected: (f.lists.lead_stage ?? []).includes(s.stage) }))} valueLabel="Leads" secondaryLabel="Conv %" onClick={(k) => toggleValue('lead_stage', k)} />
-        </ChartCard>
-      </div>
-
-      <div className="grid gap-3 xl:grid-cols-3">
-        <ChartCard title="Touches-to-convert distribution" subtitle="converted leads by number of pre-payment touches" loading={k.isLoading} error={k.error} height={210}
-          rows={cur?.touch_buckets ?? []} help="Each converted lead is bucketed by the count of touches whose IST date is on or before its first valid payment date. '0' = converted without any prior touch (unattributed).">
-          <VBars data={(cur?.touch_buckets ?? []).map((b) => ({ bucket: b.bucket, converted: b.converted, leads: b.leads }))} xKey="bucket" bars={[{ key: 'converted', label: 'Converted leads' }]} onClick={(b) => toggleValue('touch_bucket', b)} />
-        </ChartCard>
-
-        <ChartCard className="xl:col-span-2" title="Biggest movers vs previous period" subtitle={movers ? `segments with ≥ ${movers.min_leads} leads in both periods · previous = ${movers.previous.from} → ${movers.previous.to}` : undefined}
-          loading={mv.isLoading} error={mv.error} onRetry={mv.refetch} height={210} rows={[...(movers?.up ?? []), ...(movers?.down ?? [])]}
-          help="For each dimension (lead source, class group, district, owner, lead type, first/last touch point, app tier, campaign quality) the conversion rate of every segment is compared with the immediately preceding period of the same length. Ranked by impact = change in percentage points × current leads.">
-          <div className="grid h-full grid-cols-2 gap-3 overflow-auto text-xs">
-            {(['up', 'down'] as const).map((dir) => (
-              <div key={dir}>
-                <div className={`mb-1 font-semibold ${dir === 'up' ? 'text-[#006300] dark:text-[#0ca30c]' : 'text-[#d03b3b]'}`}>{dir === 'up' ? '▲ Improving' : '▼ Declining'}</div>
-                {(movers?.[dir] ?? []).length === 0 && <div className="text-ink-3">Nothing significant</div>}
-                {(movers?.[dir] ?? []).map((r) => (
-                  <button key={`${r.dim}:${r.key}`} className="mb-1 flex w-full items-center justify-between gap-2 rounded border border-line px-2 py-1 text-left hover:border-accent" onClick={() => toggleValue(r.dim as ListDim, r.key)} title="Click to filter">
-                    <span className="min-w-0 truncate"><span className="text-ink-3">{DIM_LABEL[r.dim] ?? r.dim}:</span> {r.key}</span>
-                    <span className="shrink-0 tabular-nums"><span className="text-ink-3">{fmtPct(r.prev_rate)} →</span> {fmtPct(r.rate)} <span className={dir === 'up' ? 'text-[#006300] dark:text-[#0ca30c]' : 'text-[#d03b3b]'}>({fmtPP(r.delta_pp)})</span> <span className="text-ink-3">n={fmtInt(r.leads)}</span></span>
-                  </button>
-                ))}
-              </div>
-            ))}
-          </div>
+        <ChartCard title="Lead funnel · IC status" subtitle="interested courses of the touched leads" loading={q.isLoading} error={q.error} rows={d?.ic_status ?? []} height={230}
+          help="Interested_Course__c.Status__c for the leads touched in the window. Total leads = distinct leads with an IC in that status; a lead with several ICs appears under each status.">
+          <HBars data={(d?.ic_status ?? []).map((s) => ({ key: s.key, value: s.leads, secondary: s.ics, extra: {} }))} valueLabel="Total leads" secondaryLabel="ICs" secondaryFormat={fmtInt} />
         </ChartCard>
       </div>
 
       <div className="grid gap-3 xl:grid-cols-2">
-        <BreakdownCard dim="lead_source" title="By lead source" />
-        <BreakdownCard dim="class_group" title="By class group" />
+        {dimCard('Touch point analysis', d?.touch_point, 'touch_point')}
+        {dimCard('Lead source distribution (touch source)', d?.source, 'source')}
+        {dimCard('Class (raw Class__c)', d?.class_raw, 'class_raw', { limit: 14, height: 280 })}
+        {dimCard('Reason (LM_Reason__c)', d?.reason, 'lm_reason', { limit: 14, height: 280 })}
+        {dimCard('Medium', d?.medium, 'medium', { asTable: true, height: 300, limit: 30 })}
+        {dimCard('Campaign name', d?.campaign, 'campaign', { asTable: true, height: 300, limit: 30 })}
       </div>
-      <div className="text-right"><button className="btn" onClick={() => nav({ pathname: '/leads', search: window.location.search })}>Open these leads in the explorer →</button></div>
+
+      <div className="grid gap-3 xl:grid-cols-2">
+        {dimCard('Staff-wise', d?.staff, 'staff', { asTable: true, height: 320, limit: 40 })}
+        <ChartCard title="Touches per day" subtitle="touches, distinct leads and converted leads by touch date" loading={q.isLoading} error={q.error} rows={d?.daily ?? []} height={320}>
+          <VBars data={(d?.daily ?? []).map((r) => ({ d: r.d.slice(5), touches: r.touches, leads: r.leads }))} xKey="d" bars={[{ key: 'touches', label: 'Touches' }, { key: 'leads', label: 'Leads' }]} />
+        </ChartCard>
+      </div>
+
+      <Note>Every table has a chart/table toggle and CSV download (icons top-right of each card). Filters at the top apply to all cards; the date range is the <b>touch date</b> on this page. "Converted" follows the payment definition from the brief; use the switch at the top right to see only conversions that happened after a touch. The Salesforce flag count is shown for reference so the three figures can be compared with the workbook.</Note>
     </div>
   );
 }

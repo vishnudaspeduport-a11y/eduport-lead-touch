@@ -129,13 +129,14 @@ function toRow(spec: ObjectSpec, rec: Record<string, unknown>): Record<string, u
 }
 
 async function syncSalesforceObject(s: SfSession, spec: ObjectSpec): Promise<void> {
-  const since = await getState(spec.object);
+  const key = spec.key ?? spec.object;
+  const since = await getState(key);
   const where: string[] = [];
   if (since) where.push(`SystemModstamp > ${since.toISOString()}`);
   if (spec.initialWhere) where.push(spec.initialWhere);   // window applies always, so old leads modified later never creep in
   const q = `SELECT ${spec.fields.join(', ')} FROM ${spec.object}` + (where.length ? ` WHERE ${where.join(' AND ')}` : '') + ' ORDER BY SystemModstamp ASC';
 
-  console.log(`[${spec.object}] ${since ? `incremental since ${since.toISOString()}` : `FULL load${spec.initialWhere ? ` (${spec.initialWhere})` : ''}`}`);
+  console.log(`[${key}] ${since ? `incremental since ${since.toISOString()}` : `FULL load${spec.initialWhere ? ` (${spec.initialWhere})` : ''}`}`);
   let n = 0;
   let maxStamp: string | null = since?.toISOString() ?? null;
   const t0 = Date.now();
@@ -149,13 +150,13 @@ async function syncSalesforceObject(s: SfSession, spec: ObjectSpec): Promise<voi
         if (st && (!maxStamp || st > maxStamp)) maxStamp = st;
         if (buf.length >= BATCH) { await upsert(`salesforce.${spec.table}`, buf); n += buf.length; buf = []; }
       }
-      if (n && n % 20000 < BATCH) console.log(`[${spec.object}] ${n} rows...`);
+      if (n && n % 20000 < BATCH) console.log(`[${key}] ${n} rows...`);
     }
     if (buf.length) { await upsert(`salesforce.${spec.table}`, buf); n += buf.length; }
-    await setState(spec.object, maxStamp, n, null);
-    console.log(`[${spec.object}] done: ${n} rows in ${((Date.now() - t0) / 1000).toFixed(1)}s (watermark ${maxStamp})`);
+    await setState(key, maxStamp, n, null);
+    console.log(`[${key}] done: ${n} rows in ${((Date.now() - t0) / 1000).toFixed(1)}s (watermark ${maxStamp})`);
   } catch (e) {
-    await setState(spec.object, null, n, e instanceof Error ? e.message : String(e));
+    await setState(key, null, n, e instanceof Error ? e.message : String(e));
     throw e;
   }
 }
@@ -231,7 +232,8 @@ async function cleanup(): Promise<void> {
   const leadSince = process.env.LEAD_SINCE?.slice(0, 10) ?? '2025-04-01';
   await sql.begin(async (sql) => {
   await sql`SET LOCAL statement_timeout = 0`;
-  const r1 = await sql`DELETE FROM salesforce.lead_master__c WHERE isdeleted OR is_deleted__c OR createddate < ${leadSince}::date`;
+  const r1 = await sql`DELETE FROM salesforce.lead_master__c l WHERE l.isdeleted OR l.is_deleted__c
+    OR (l.createddate < ${leadSince}::date AND NOT EXISTS (SELECT 1 FROM salesforce.lead_touch__c t WHERE t.lead_master__c = l.id AND NOT t.isdeleted))`;
   const r2 = await sql`DELETE FROM salesforce.interested_course__c ic WHERE ic.isdeleted OR NOT EXISTS (SELECT 1 FROM salesforce.lead_master__c l WHERE l.id = ic.lead_master__c)`;
   const r3 = await sql`DELETE FROM salesforce.lead_touch__c WHERE isdeleted`;
   const r4 = await sql`DELETE FROM salesforce.task WHERE isdeleted`;
@@ -281,7 +283,7 @@ async function main(): Promise<void> {
   await sql`SET statement_timeout = 0`;
   await sql`SET default_transaction_read_only = off`;
   if (!REFRESH_ONLY) {
-    const specs = OBJECTS.filter((o) => wanted(o.object));
+    const specs = OBJECTS.filter((o) => wanted(o.key ?? o.object) || (o.key && wanted(o.object)));
     if (specs.length) {
       const s = await login();
       for (const spec of specs) await syncSalesforceObject(s, spec);

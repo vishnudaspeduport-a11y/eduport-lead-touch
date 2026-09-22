@@ -4,6 +4,8 @@
 
 export interface ObjectSpec {
   object: string;              // Salesforce API name
+  /** watermark / restrict key when the same object is synced twice (default = object) */
+  key?: string;
   table: string;               // Postgres table (schema salesforce)
   fields: string[];            // SOQL fields (Id first)
   /** Extra WHERE for the initial full load (e.g. limit Task history). */
@@ -58,8 +60,13 @@ export const OBJECTS: ObjectSpec[] = [
   { object: 'Lead_Master__c', table: 'lead_master__c', fields: LEAD_MASTER_FIELDS, queryAll: true,
     initialWhere: `CreatedDate >= ${process.env.LEAD_SINCE ?? '2025-04-01T00:00:00Z'}` },
   { object: 'Lead_Touch__c', table: 'lead_touch__c', fields: LEAD_TOUCH_FIELDS, queryAll: true },
+  // Older leads (before the window) that HAVE touches: Tableau counts them, and they are few (~24k)
+  { object: 'Lead_Master__c', key: 'Lead_Master__c_touched', table: 'lead_master__c', fields: LEAD_MASTER_FIELDS, queryAll: true,
+    initialWhere: `CreatedDate < ${process.env.LEAD_SINCE ?? '2025-04-01T00:00:00Z'} AND Id IN (SELECT Lead_Master__c FROM Lead_Touch__c WHERE IsDeleted = false)` },
   { object: 'Interested_Course__c', table: 'interested_course__c', fields: IC_FIELDS, queryAll: true,
     initialWhere: `CreatedDate >= ${process.env.LEAD_SINCE ?? '2025-04-01T00:00:00Z'}` },
+  { object: 'Interested_Course__c', key: 'Interested_Course__c_touched', table: 'interested_course__c', fields: IC_FIELDS, queryAll: true,
+    initialWhere: `CreatedDate < ${process.env.LEAD_SINCE ?? '2025-04-01T00:00:00Z'} AND Lead_Master__c IN (SELECT Lead_Master__c FROM Lead_Touch__c WHERE IsDeleted = false)` },
   { object: 'Task', table: 'task', fields: TASK_FIELDS, queryAll: true,
     initialWhere: `CreatedDate >= ${process.env.TASK_SINCE ?? '2026-01-01T00:00:00Z'}` },
 ];

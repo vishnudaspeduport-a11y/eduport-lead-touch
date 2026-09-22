@@ -21,7 +21,7 @@ meta.get('/meta', (c) =>
       SELECT DISTINCT ON (view_name) view_name, finished_at::text, ok, row_count::int, error
       FROM analytics.refresh_log ORDER BY view_name, started_at DESC`;
     // refresh_one logs regclass::text, which drops the schema when analytics is on the search_path
-    if (!asOf.refreshed_at) asOf.refreshed_at = lastRefresh.find((r) => r.view_name.endsWith('mv_lead_base') && r.ok)?.finished_at ?? null;
+    if (!asOf.refreshed_at) asOf.refreshed_at = lastRefresh.find((r) => r.ok && r.view_name.includes('mv_'))?.finished_at ?? asOf.last_sync_run_at;
     const user = c.get('user');
     return {
       user,
