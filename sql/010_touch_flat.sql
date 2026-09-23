@@ -66,11 +66,16 @@ seq AS (
     CASE WHEN is_pre_conversion THEN
       row_number() OVER (PARTITION BY lead_id, is_pre_conversion ORDER BY touch_at, touch_id) END AS touch_seq,
     CASE WHEN is_pre_conversion THEN
-      count(*) OVER (PARTITION BY lead_id, is_pre_conversion) END AS n_pre_touches
+      count(*) OVER (PARTITION BY lead_id, is_pre_conversion) END AS n_pre_touches,
+    min(touch_at) FILTER (WHERE touch_date >= DATE '2026-03-01') OVER (PARTITION BY lead_id) AS tab_first_since_mar_at,
+    max(touch_at) OVER (PARTITION BY lead_id)                                              AS tab_last_any_at,
+    max(touch_at) FILTER (WHERE last_payment_date IS NOT NULL AND touch_date <= last_payment_date) OVER (PARTITION BY lead_id) AS tab_last_valid_at
   FROM tv
   WINDOW w_all AS (PARTITION BY lead_id ORDER BY touch_at, touch_id)
 )
 SELECT s.*,
+  (s.touch_at = COALESCE(s.tab_first_since_mar_at, s.tab_last_any_at))           AS tab_is_first_touch,   -- workbook "Is Selected First Touch"
+  (s.tab_last_valid_at IS NOT NULL AND s.touch_at = s.tab_last_valid_at)          AS tab_is_last_touch,    -- workbook "Is Last Touch"
   (s.touch_seq = 1)                                         AS is_first_touch,
   (s.touch_seq = s.n_pre_touches)                           AS is_last_touch,
   round((EXTRACT(epoch FROM s.touch_at - s.prev_touch_at) / 3600)::numeric, 2) AS gap_hours_from_prev,
@@ -151,7 +156,7 @@ SELECT touch_id, lead_id, lead_name, touch_at, touch_date, touch_point, source, 
        lead_created_date, lead_source, class_raw, class_group, lead_stage, lead_type, priority, district, city, owner_name,
        campaign_quality, app_engagement_tier, best_ic_status, lm_reason, is_duplicate, is_paid_lead, is_paid_touch,
        lead_sf_is_converted, sf_touch_count, converted, converted_at, last_payment_date, tab_converted, courses, app_user_id, revenue, pre_existing_customer, is_pre_conversion,
-       touch_seq, n_pre_touches, touch_seq_all, n_touches_all, is_first_touch, is_last_touch,
+       touch_seq, n_pre_touches, touch_seq_all, n_touches_all, is_first_touch, is_last_touch, tab_is_first_touch, tab_is_last_touch,
        credit_first, credit_last, credit_linear, credit_position, gap_hours_from_prev, gap_bucket, touch_dow, touch_hour
 FROM analytics.v_touch_base
 WITH NO DATA;

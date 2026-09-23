@@ -6,11 +6,11 @@ import { DataTable, type Col } from './DataTable';
 import { LeadDrawer } from './LeadDrawer';
 import { ErrorNote, Icon, Skeleton, useDebounce } from './ui';
 
-export type DrillMetric = 'leads' | 'touches' | 'converted' | 'converted_first' | 'converted_in_window' | 'sf_converted' | 'avg_alltime' | 'avg_window';
+export type DrillMetric = 'leads' | 'touches' | 'converted' | 'first_touch' | 'last_touch' | 'converted_first' | 'converted_in_window' | 'sf_converted' | 'avg_alltime' | 'avg_window';
 export interface Drill { metric: DrillMetric; title: string; subtitle?: string; dim?: string; value?: string }
 
 const METRIC_LABEL: Record<DrillMetric, string> = {
-  leads: 'leads touched in the window', touches: 'leads touched in the window (with their touch counts)', converted: 'converted leads (valid payment on/after a touch)',
+  leads: 'leads touched in the window', touches: 'leads touched in the window (with their touch counts)', converted: 'converted leads (valid payment on/after a touch)', first_touch: 'converted leads whose selected first touch is in the selection', last_touch: 'leads whose last valid touch (latest touch on/before their last payment) is in the selection',
   converted_first: 'leads whose first payment came after a touch', converted_in_window: 'leads whose first payment falls inside the window',
   sf_converted: 'leads flagged Is_Converted__c in Salesforce', avg_alltime: 'leads with a valid payment (all touches, no date filter)', avg_window: 'leads with a valid payment touched in the window',
 };
@@ -31,6 +31,8 @@ const COLS: Col<Row>[] = [
   { key: 'touches_in_window', header: 'Touches (window)', align: 'right' },
   { key: 'n_touches_all', header: 'Touches (all)', align: 'right' },
   { key: 'touch_points', header: 'Touch points' },
+  { key: 'first_touch_point', header: 'First touch (Tableau)' },
+  { key: 'last_touch_point', header: 'Last valid touch' },
   { key: 'last_touch_in_window', header: 'Last touch', render: (v) => fmtDateTime(v as string) },
   { key: 'tab_converted', header: 'Converted', render: yesNo },
   { key: 'converted_at', header: 'First payment' },
