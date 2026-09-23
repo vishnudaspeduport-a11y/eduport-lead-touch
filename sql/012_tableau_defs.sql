@@ -12,7 +12,12 @@ SELECT l.id AS lead_id,
        min(vp.user_id)      AS app_user_id,
        max(vp.payment_date) AS last_payment_date,
        max(vp.payment_date) FILTER (WHERE vp.amount > 0) AS last_paid_payment_date,   -- kept for compatibility (view columns cannot be dropped in place); unused
-       string_agg(DISTINCT COALESCE(b.title, 'batch ' || vp.batch_id::text), ' | ') AS courses
+       string_agg(DISTINCT COALESCE(b.title, 'batch ' || vp.batch_id::text), ' | ') AS courses,
+       -- moment of the last valid payment: payment_time if recorded, else the record's creation time when it is on the payment day,
+       -- else the end of the payment day (IST) so that any touch on that day counts as "before the payment"
+       max(CASE WHEN vp.payment_time IS NOT NULL THEN vp.payment_time
+                WHEN (vp.payment_created AT TIME ZONE 'Asia/Kolkata')::date = vp.payment_date THEN vp.payment_created
+                ELSE ((vp.payment_date + 1)::timestamp AT TIME ZONE 'Asia/Kolkata') END) AS last_payment_at
 FROM salesforce.lead_master__c l
 JOIN analytics.v_valid_payment vp ON vp.phone_key = analytics.phone_key(l.mobile_number__c)
 LEFT JOIN app.core_batch b ON b.id = vp.batch_id
@@ -49,7 +54,8 @@ SELECT l.id AS lead_id, l.name AS lead_name, l.createddate AS created_at, analyt
     (p.converted_at < analytics.ist_date(l.createddate)) AS pre_existing_customer,
     p.last_payment_date,
     p.last_paid_payment_date,
-    p.courses
+    p.courses,
+    p.last_payment_at
 FROM salesforce.lead_master__c l
 LEFT JOIN salesforce."user" u ON u.id::text = l.ownerid::text
 LEFT JOIN analytics.v_lead_payment p ON p.lead_id::text = l.id::text

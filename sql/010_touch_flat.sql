@@ -52,6 +52,7 @@ WITH tv AS (
     -- Tableau workbook 'Converted': ANY valid payment dated on/after the touch day
     COALESCE(c.last_payment_date >= analytics.ist_date(t.touch_date__c), false) AS tab_converted,
     c.courses,
+    c.last_payment_at,
     c.class_raw, c.lm_reason, c.sf_is_converted AS lead_sf_is_converted, c.sf_touch_count, c.lead_name
   FROM salesforce.lead_touch__c t
   JOIN analytics.v_lead_conv c ON c.lead_id = t.lead_master__c
@@ -69,8 +70,9 @@ seq AS (
       count(*) OVER (PARTITION BY lead_id, is_pre_conversion) END AS n_pre_touches,
     min(touch_at) FILTER (WHERE touch_date >= DATE '2026-03-01') OVER (PARTITION BY lead_id) AS tab_first_since_mar_at,
     max(touch_at) OVER (PARTITION BY lead_id)                                              AS tab_last_any_at,
-    -- workbook: touch datetime <= payment_date, where Tableau reads the DATE as midnight -> touches ON the payment day are excluded
-    max(touch_at) FILTER (WHERE last_payment_date IS NOT NULL AND touch_date < last_payment_date) OVER (PARTITION BY lead_id) AS tab_last_valid_at
+    -- last valid touch = latest touch made BEFORE the moment of the lead's last valid payment (same-day touches count when they precede the payment).
+    -- Deviation from the workbook, which excludes every payment-day touch (it reads the payment date as midnight).
+    max(touch_at) FILTER (WHERE last_payment_at IS NOT NULL AND touch_at <= last_payment_at) OVER (PARTITION BY lead_id) AS tab_last_valid_at
   FROM tv
   WINDOW w_all AS (PARTITION BY lead_id ORDER BY touch_at, touch_id)
 )
