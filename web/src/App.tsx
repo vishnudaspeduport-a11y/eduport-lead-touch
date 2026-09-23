@@ -5,6 +5,7 @@ import { Skeleton } from './components/ui';
 
 const Overview = lazy(() => import('./pages/Overview'));
 const TouchAttribution = lazy(() => import('./pages/TouchAttribution'));
+const StaffFollowUp = lazy(() => import('./pages/StaffFollowUp'));
 const TouchAnalysis = lazy(() => import('./pages/TouchAnalysis'));
 const Attribution = lazy(() => import('./pages/Attribution'));
 const SourceCampaign = lazy(() => import('./pages/SourceCampaign'));
@@ -24,6 +25,7 @@ export default function App() {
         <Route index element={<Suspense fallback={<Fallback />}><Overview /></Suspense>} />
         <Route path="first-touch" element={<Suspense fallback={<Fallback />}><TouchAttribution mode="first" /></Suspense>} />
         <Route path="last-touch" element={<Suspense fallback={<Fallback />}><TouchAttribution mode="last" /></Suspense>} />
+        <Route path="staff" element={<Suspense fallback={<Fallback />}><StaffFollowUp /></Suspense>} />
         <Route path="touches" element={<Suspense fallback={<Fallback />}><TouchAnalysis /></Suspense>} />
         <Route path="attribution" element={<Suspense fallback={<Fallback />}><Attribution /></Suspense>} />
         <Route path="sources" element={<Suspense fallback={<Fallback />}><SourceCampaign /></Suspense>} />

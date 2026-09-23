@@ -6,11 +6,11 @@ import { DataTable, type Col } from './DataTable';
 import { LeadDrawer } from './LeadDrawer';
 import { ErrorNote, Icon, Skeleton, useDebounce } from './ui';
 
-export type DrillMetric = 'leads' | 'touches' | 'converted' | 'first_touch' | 'last_touch' | 'converted_first' | 'converted_in_window' | 'sf_converted' | 'avg_alltime' | 'avg_window';
-export interface Drill { metric: DrillMetric; title: string; subtitle?: string; dim?: string; value?: string }
+export type DrillMetric = 'leads' | 'touches' | 'converted' | 'first_touch' | 'last_touch' | 'cold' | 'converted_first' | 'converted_in_window' | 'sf_converted' | 'avg_alltime' | 'avg_window';
+export interface Drill { metric: DrillMetric; title: string; subtitle?: string; dim?: string; value?: string; extra?: Record<string, string | number> }
 
 const METRIC_LABEL: Record<DrillMetric, string> = {
-  leads: 'leads touched in the window', touches: 'leads touched in the window (with their touch counts)', converted: 'converted leads (valid payment on/after a touch)', first_touch: 'converted leads whose selected first touch is in the selection', last_touch: 'leads whose last valid touch (latest touch on/before their last payment) is in the selection',
+  leads: 'leads touched in the window', touches: 'leads touched in the window (with their touch counts)', converted: 'converted leads (valid payment on/after a touch)', first_touch: 'converted leads whose selected first touch is in the selection', cold: 'open leads going cold', last_touch: 'leads whose last valid touch (latest touch on/before their last payment) is in the selection',
   converted_first: 'leads whose first payment came after a touch', converted_in_window: 'leads whose first payment falls inside the window',
   sf_converted: 'leads flagged Is_Converted__c in Salesforce', avg_alltime: 'leads with a valid payment (all touches, no date filter)', avg_window: 'leads with a valid payment touched in the window',
 };
@@ -33,7 +33,9 @@ const COLS: Col<Row>[] = [
   { key: 'touch_points', header: 'Touch points' },
   { key: 'first_touch_point', header: 'First touch (Tableau)' },
   { key: 'last_touch_point', header: 'Last valid touch' },
-  { key: 'last_touch_in_window', header: 'Last touch', render: (v) => fmtDateTime(v as string) },
+  { key: 'last_touch_in_window', header: 'Last touch (window)', render: (v) => fmtDateTime(v as string) },
+  { key: 'last_touch_any', header: 'Last touch (any)', render: (v) => fmtDateTime(v as string) },
+  { key: 'days_since_last_touch', header: 'Days since last touch', align: 'right' },
   { key: 'tab_converted', header: 'Converted', render: yesNo },
   { key: 'converted_at', header: 'First payment' },
   { key: 'last_payment_date', header: 'Last payment' },
@@ -59,10 +61,10 @@ export function DrillDrawer({ drill, onClose }: { drill: Drill; onClose: () => v
   const [leadId, setLeadId] = useState<string | null>(null);
   const [dl, setDl] = useState(false);
   const q = useDebounce(search, 300);
-  useEffect(() => { setPage(1); }, [q, drill.metric, drill.dim, drill.value]);
+  useEffect(() => { setPage(1); }, [q, drill.metric, drill.dim, drill.value, drill.extra?.days]);
   useEffect(() => { const k = (e: KeyboardEvent) => { if (e.key === 'Escape' && !leadId) onClose(); }; document.addEventListener('keydown', k); return () => document.removeEventListener('keydown', k); }, [onClose, leadId]);
 
-  const p: Params = { ...params, metric: drill.metric, dim: drill.dim, value: drill.value, q, page, limit, sort: sort.id, dir: sort.desc ? 'desc' : 'asc' };
+  const p: Params = { ...params, ...(drill.extra ?? {}), metric: drill.metric, dim: drill.dim, value: drill.value, q, page, limit, sort: sort.id, dir: sort.desc ? 'desc' : 'asc' };
   const r = useApi<Resp>('/overview/leads', p, { placeholderData: (prev) => prev });
   const d = r.data?.data;
   const pages = d ? Math.max(1, Math.ceil(d.total / d.limit)) : 1;

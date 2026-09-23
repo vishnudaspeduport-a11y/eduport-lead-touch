@@ -11,6 +11,7 @@ export const NAV = [
   { to: '/', label: 'Overview', icon: <Icon.Home /> },
   { to: '/first-touch', label: 'First touch', icon: <Icon.Touch /> },
   { to: '/last-touch', label: 'Last touch', icon: <Icon.Check /> },
+  { to: '/staff', label: 'Staff & follow-up', icon: <Icon.Calendar /> },
   { to: '/leads', label: 'Lead explorer', icon: <Icon.Users /> },
   // parked (slow: they compute on the fly until rebuilt on request): /touches /attribution /sources /funnel /cohorts /segments /team /quality
 ];
@@ -44,7 +45,7 @@ export function AppShell() {
           </nav>
           <div className="mt-4 px-3 text-[10px] font-semibold uppercase tracking-wide text-ink-3">Coming next</div>
           <div className="mt-1 space-y-0.5 px-3 text-[11px] text-ink-3">
-            {['Touch analysis', 'Source & campaign', 'Sales team'].map((l) => <div key={l} className="flex items-center gap-2"><span className="h-1.5 w-1.5 rounded-full bg-line" />{l}</div>)}
+            {['Touch analysis', 'Source & campaign'].map((l) => <div key={l} className="flex items-center gap-2"><span className="h-1.5 w-1.5 rounded-full bg-line" />{l}</div>)}
           </div>
 
           <div className="mt-auto rounded-2xl bg-gradient-to-br from-[#6d5dfc] via-[#8b5cf6] to-[#ff6fae] p-3 text-white shadow-lg">
