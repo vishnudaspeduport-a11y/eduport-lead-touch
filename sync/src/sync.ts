@@ -193,6 +193,16 @@ const APP_TABLES: AppTableSpec[] = [
             FROM public.home_customuser u
             WHERE u.id IN (SELECT p.user_id FROM public.home_payment p WHERE ${VALID}) ORDER BY u.id`).cursor(5000)),
   },
+  {
+    // batch / course lookup (~3.6k rows) so the dashboard can show names instead of ids
+    name: 'core_batch', stampCol: 'updated_at',
+    select: (src, since) => (since
+      ? src`SELECT b.id, b.title, b.course_id, s.title AS course_title, b.course_fee, b.is_premium, b.is_deleted, b.expiry_date, b.updated_at
+            FROM public.core_batch b LEFT JOIN public.core_syllabusstructure s ON s.id = b.course_id
+            WHERE b.updated_at > ${since}::timestamptz OR s.updated_at > ${since}::timestamptz ORDER BY b.id`.cursor(2000)
+      : src`SELECT b.id, b.title, b.course_id, s.title AS course_title, b.course_fee, b.is_premium, b.is_deleted, b.expiry_date, b.updated_at
+            FROM public.core_batch b LEFT JOIN public.core_syllabusstructure s ON s.id = b.course_id ORDER BY b.id`.cursor(2000)),
+  },
 ];
 
 async function syncAppTables(): Promise<void> {

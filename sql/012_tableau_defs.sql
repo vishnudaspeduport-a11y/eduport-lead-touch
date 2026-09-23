@@ -10,9 +10,12 @@ SELECT l.id AS lead_id,
        sum(vp.total)        AS revenue,
        sum(COALESCE(vp.refund_amount, 0)) AS refunds,
        min(vp.user_id)      AS app_user_id,
-       max(vp.payment_date) AS last_payment_date
+       max(vp.payment_date) AS last_payment_date,
+       max(vp.payment_date) FILTER (WHERE vp.total > 0) AS last_paid_payment_date,   -- for "Paid conversions" (amount > 0)
+       string_agg(DISTINCT COALESCE(b.title, 'batch ' || vp.batch_id::text), ' | ') AS courses
 FROM salesforce.lead_master__c l
 JOIN analytics.v_valid_payment vp ON vp.phone_key = analytics.phone_key(l.mobile_number__c)
+LEFT JOIN app.core_batch b ON b.id = vp.batch_id
 GROUP BY l.id;
 
 CREATE OR REPLACE VIEW analytics.v_lead_conv AS
@@ -44,7 +47,9 @@ SELECT l.id AS lead_id, l.name AS lead_name, l.createddate AS created_at, analyt
     COALESCE(p.payment_count, 0) AS payment_count, COALESCE(p.revenue, 0) AS revenue, COALESCE(p.refunds, 0) AS refunds, p.app_user_id,
     (p.converted_at - analytics.ist_date(l.createddate)) AS days_to_convert,
     (p.converted_at < analytics.ist_date(l.createddate)) AS pre_existing_customer,
-    p.last_payment_date
+    p.last_payment_date,
+    p.last_paid_payment_date,
+    p.courses
 FROM salesforce.lead_master__c l
 LEFT JOIN salesforce."user" u ON u.id::text = l.ownerid::text
 LEFT JOIN analytics.v_lead_payment p ON p.lead_id::text = l.id::text

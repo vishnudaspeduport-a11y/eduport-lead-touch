@@ -6,11 +6,11 @@ import { DataTable, type Col } from './DataTable';
 import { LeadDrawer } from './LeadDrawer';
 import { ErrorNote, Icon, Skeleton, useDebounce } from './ui';
 
-export type DrillMetric = 'leads' | 'touches' | 'converted' | 'converted_first' | 'converted_in_window' | 'sf_converted' | 'avg_alltime' | 'avg_window';
+export type DrillMetric = 'leads' | 'touches' | 'converted' | 'converted_paid' | 'converted_first' | 'converted_in_window' | 'sf_converted' | 'avg_alltime' | 'avg_window';
 export interface Drill { metric: DrillMetric; title: string; subtitle?: string; dim?: string; value?: string }
 
 const METRIC_LABEL: Record<DrillMetric, string> = {
-  leads: 'leads touched in the window', touches: 'leads touched in the window (with their touch counts)', converted: 'converted leads (valid payment on/after a touch)',
+  leads: 'leads touched in the window', touches: 'leads touched in the window (with their touch counts)', converted: 'converted leads (valid payment on/after a touch)', converted_paid: 'converted leads with a payment above ₹0 on/after a touch',
   converted_first: 'leads whose first payment came after a touch', converted_in_window: 'leads whose first payment falls inside the window',
   sf_converted: 'leads flagged Is_Converted__c in Salesforce', avg_alltime: 'leads with a valid payment (all touches, no date filter)', avg_window: 'leads with a valid payment touched in the window',
 };
@@ -33,9 +33,11 @@ const COLS: Col<Row>[] = [
   { key: 'touch_points', header: 'Touch points' },
   { key: 'last_touch_in_window', header: 'Last touch', render: (v) => fmtDateTime(v as string) },
   { key: 'tab_converted', header: 'Converted', render: yesNo },
+  { key: 'converted_paid', header: 'Paid (>₹0)', render: yesNo },
   { key: 'converted_at', header: 'First payment' },
   { key: 'last_payment_date', header: 'Last payment' },
   { key: 'revenue', header: 'Revenue', render: (v) => fmtINR(v as number) },
+  { key: 'courses', header: 'Course / batch' },
   { key: 'owner_name', header: 'Owner' },
   { key: 'district', header: 'District' },
   { key: 'lm_reason', header: 'LM reason' },
