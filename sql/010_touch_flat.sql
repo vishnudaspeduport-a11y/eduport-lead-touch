@@ -153,7 +153,7 @@ LEFT JOIN ta ON ta.lead_id = c.lead_id;
 -- The one precomputed table
 CREATE MATERIALIZED VIEW analytics.mv_touch_flat AS
 SELECT touch_id, lead_id, lead_name, touch_at, touch_date, touch_point, source, medium, campaign, adset_name, ad_name, staff,
-       lead_created_at, lead_created_date, lead_source, class_raw, class_group, lead_stage, lead_type, priority, district, city, owner_name,
+       lead_created_date, lead_source, class_raw, class_group, lead_stage, lead_type, priority, district, city, owner_name,
        campaign_quality, app_engagement_tier, best_ic_status, lm_reason, is_duplicate, is_paid_lead, is_paid_touch,
        lead_sf_is_converted, sf_touch_count, converted, converted_at, last_payment_date, tab_converted, courses, app_user_id, revenue, pre_existing_customer, is_pre_conversion,
        touch_seq, n_pre_touches, touch_seq_all, n_touches_all, is_first_touch, is_last_touch, tab_is_first_touch, tab_is_last_touch,
