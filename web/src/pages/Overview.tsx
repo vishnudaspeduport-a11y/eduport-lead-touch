@@ -16,6 +16,7 @@ interface OverviewResponse {
     conv_rate: number | null; touches_per_lead: number | null;
     avg_touches_alltime: number | null; avg_touches_alltime_per_lead: number | null; avg_touches_alltime_n: number;
     avg_touches_window: number | null; avg_touches_window_per_lead: number | null; avg_touches_window_n: number;
+    stale_new: number; stale_new_untouched: number; new_total: number; stale_days: number;
   };
   stages: { key: string; leads: number; converted: number }[];
   ic_status: { key: string; leads: number; ics: number }[];
@@ -125,6 +126,12 @@ export default function Overview() {
           <Kpi tone="tone-slate" icon={<Icon.Spark />} title="Salesforce Is_Converted flag" value={fmtInt(k.sf_converted)} sub="reference only" def={def.sf_converted} onClick={() => open('sf_converted', 'Salesforce Is_Converted flag')} />
         </>}
       </div>
+      {k && (
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-6">
+          <Kpi tone="tone-red" icon={<Icon.Calendar />} title={`Still New after ${k.stale_days} days`} value={fmtInt(k.stale_new)} sub={`of ${fmtInt(k.new_total)} leads in stage New · ${fmtInt(k.stale_new_untouched)} never touched after creation`} def={def.stale_new}
+            onClick={() => open('stale_new', `Still New after ${k.stale_days} days`, undefined, undefined, 'leads still in stage New, created more than 5 days ago and not touched in the last 5 days · sorted by last touch')} />
+        </div>
+      )}
 
       <div className="grid gap-3 xl:grid-cols-2">
         <ChartCard title="Lead funnel · LM stage" tone="tone-blue" subtitle="Total leads by current Lead Stage · click a slice to filter" loading={q.isLoading} error={q.error} rows={d?.stages ?? []} height={300}

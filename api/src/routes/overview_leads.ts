@@ -18,7 +18,7 @@ import { flatWhere, FLAT_COLS, convCond, convFirstCond, convNewCond } from './ov
 export const overviewLeads = new Hono<AppEnv>();
 
 type Rec = Record<string, unknown>;
-const METRICS = ['leads', 'touches', 'converted', 'first_touch', 'last_touch', 'converted_first', 'converted_in_window', 'sf_converted', 'avg_alltime', 'avg_window'] as const;
+const METRICS = ['leads', 'touches', 'converted', 'first_touch', 'last_touch', 'stale_new', 'converted_first', 'converted_in_window', 'sf_converted', 'avg_alltime', 'avg_window'] as const;
 type Metric = (typeof METRICS)[number];
 
 const SORTABLE: Record<string, string> = {
@@ -30,7 +30,7 @@ const SORTABLE: Record<string, string> = {
 const COLS = [
   'lead_id', 'lead_name', 'eps_id', 'first_name', 'last_name', 'mobile', 'email', 'lead_created_date', 'lead_source', 'lead_stage', 'lead_type', 'priority',
   'class_raw', 'class_group', 'district', 'city', 'owner_name', 'best_ic_status', 'lm_reason', 'is_duplicate',
-  'touches_in_window', 'n_touches_all', 'first_touch_in_window', 'last_touch_in_window', 'touch_points', 'sources', 'staff',
+  'touches_in_window', 'n_touches_all', 'first_touch_in_window', 'last_touch_in_window', 'last_touch_any', 'days_since_last_touch', 'touch_points', 'sources', 'staff',
   'tab_converted', 'first_touch_point', 'last_touch_point', 'converted_first', 'converted', 'converted_at', 'last_payment_date', 'revenue', 'courses', 'sf_is_converted', 'sf_touch_count',
 ];
 
@@ -46,9 +46,14 @@ function dimCond(sql: Sql, q: Record<string, string>): Frag {
   return value === '(null)' ? sql`${ref} IS NULL` : sql`${ref}::text = ${value}`;
 }
 
-function metricHaving(sql: Sql, metric: Metric, p: Period, f?: Filters): Frag {
+function metricHaving(sql: Sql, metric: Metric, p: Period, f?: Filters, q: Record<string, string> = {}): Frag {
   const conv = f ? convCond(sql, f) : sql`t.tab_converted`;
   switch (metric) {
+    case 'stale_new': {
+      const days = Math.max(1, Math.min(365, Number.parseInt(q.stale_days ?? '5', 10) || 5));
+      return sql`max(t.lead_stage) = 'New' AND max(t.lead_created_date) <= (now() AT TIME ZONE 'Asia/Kolkata')::date - ${days}
+        AND (SELECT max(t2.touch_at) FROM analytics.mv_touch_flat t2 WHERE t2.lead_id = t.lead_id) < now() - make_interval(days => ${days})`;
+    }
     case 'converted': return sql`bool_or(${conv})`;
     case 'first_touch': return sql`bool_or(t.tab_is_first_touch AND ${conv})`;
     case 'last_touch': return sql`bool_or(t.tab_is_last_touch AND ${conv})`;
@@ -81,7 +86,7 @@ function leadQuery(sql: Sql, f: Filters, periods: { current: Period }, q: Record
   const metric = (METRICS as readonly string[]).includes(q.metric ?? '') ? (q.metric as Metric) : 'leads';
   const w = flatWhere(sql, f, metric === 'avg_alltime' ? null : periods.current);
   const sel = sql`${w} AND ${dimCond(sql, q)} AND ${searchCond(sql, q.q ?? '')}`;
-  const sortCol = SORTABLE[q.sort ?? ''] ?? 'touches_in_window';
+  const sortCol = SORTABLE[q.sort ?? ''] ?? (metric === 'stale_new' ? 'last_touch_in_window' : 'touches_in_window');
   const dir = q.dir === 'asc' ? sql`ASC NULLS FIRST` : sql`DESC NULLS LAST`;
   return sql<Rec[]>`
     WITH sel AS (
@@ -93,7 +98,7 @@ function leadQuery(sql: Sql, f: Filters, periods: { current: Period }, q: Record
       FROM analytics.mv_touch_flat t
       WHERE ${sel}
       GROUP BY t.lead_id
-      HAVING ${metricHaving(sql, metric, periods.current, f)}
+      HAVING ${metricHaving(sql, metric, periods.current, f, q)}
     ),
     pg AS (
       SELECT sel.*, count(*) OVER ()::int AS total_rows FROM sel
@@ -104,11 +109,13 @@ function leadQuery(sql: Sql, f: Filters, periods: { current: Period }, q: Record
            pg.lead_created_date::text AS lead_created_date, pg.lead_source, pg.lead_stage, x.lead_type, x.priority, pg.class_raw, x.class_group,
            pg.district, x.city, pg.owner_name, x.best_ic_status, x.lm_reason, x.is_duplicate,
            pg.touches_in_window, pg.n_touches_all, pg.first_touch_in_window::text AS first_touch_in_window, pg.last_touch_in_window::text AS last_touch_in_window,
+           la.last_touch_any::text AS last_touch_any, floor(EXTRACT(epoch FROM now() - la.last_touch_any) / 86400)::int AS days_since_last_touch,
            x.touch_points, x.sources, x.staff, x.tab_converted, x.first_touch_point, x.last_touch_point, x.converted_first, x.converted,
            pg.converted_at::text AS converted_at, pg.last_payment_date::text AS last_payment_date, pg.revenue::float8 AS revenue, x.courses,
            x.sf_is_converted, x.sf_touch_count, pg.total_rows
     FROM pg
     JOIN salesforce.lead_master__c l ON l.id = pg.lead_id
+    JOIN LATERAL (SELECT max(t2.touch_at) AS last_touch_any FROM analytics.mv_touch_flat t2 WHERE t2.lead_id = pg.lead_id) la ON true
     JOIN LATERAL (
       SELECT max(t.lead_type) AS lead_type, max(t.priority) AS priority, max(t.class_group) AS class_group, max(t.city) AS city,
              max(t.best_ic_status) AS best_ic_status,

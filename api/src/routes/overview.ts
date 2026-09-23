@@ -82,12 +82,13 @@ async function byDim(sql: Sql, w: Frag, col: string, conv: Frag, convFirst: Frag
 }
 
 overview.get('/overview', (c) =>
-  handle(c, async ({ sql, f, periods }) => {
+  handle(c, async ({ sql, f, periods, q }) => {
     const w = flatWhere(sql, f, periods.current);
     const wAll = flatWhere(sql, f, null);
     const conv = convCond(sql, f); const convFirst = convFirstCond(sql, f); const convNew = convNewCond(sql, f, periods.current);
     const pp = paymentPeriod(f);
-    const [[k], [avgWin], [avgAll], stages, icStatus, touchPoint, source, classRaw, reason, medium, campaign, staff, daily] = await Promise.all([
+    const staleDays = Math.max(1, Math.min(365, Number.parseInt(q.stale_days ?? '5', 10) || 5));
+    const [[k], [stale], [avgWin], [avgAll], stages, icStatus, touchPoint, source, classRaw, reason, medium, campaign, staff, daily] = await Promise.all([
       sql<{ touches: number; leads: number; converted: number; converted_first: number; converted_in_window: number; sf_converted: number; touches_of_converted: number }[]>`
         SELECT count(*)::int AS touches,
                count(DISTINCT t.lead_id)::int AS leads,
@@ -97,6 +98,15 @@ overview.get('/overview', (c) =>
                count(DISTINCT t.lead_id) FILTER (WHERE t.lead_sf_is_converted)::int AS sf_converted,
                count(*) FILTER (WHERE ${conv})::int AS touches_of_converted
         FROM analytics.mv_touch_flat t WHERE ${w}`,
+      // leads in the selection still in stage New, created more than N days ago and not touched in the last N days
+      sql<{ stale_new: number; stale_new_untouched: number; new_total: number }[]>`
+        WITH n AS (
+          SELECT t.lead_id, max(t.lead_created_date) AS created, (SELECT max(t2.touch_at) FROM analytics.mv_touch_flat t2 WHERE t2.lead_id = t.lead_id) AS last_touch
+          FROM analytics.mv_touch_flat t WHERE ${w} AND t.lead_stage = 'New' GROUP BY t.lead_id)
+        SELECT count(*) FILTER (WHERE created <= (now() AT TIME ZONE 'Asia/Kolkata')::date - ${staleDays} AND last_touch < now() - make_interval(days => ${staleDays}))::int AS stale_new,
+               count(*) FILTER (WHERE created <= (now() AT TIME ZONE 'Asia/Kolkata')::date - ${staleDays} AND last_touch < now() - make_interval(days => ${staleDays}) AND last_touch < created::timestamp AT TIME ZONE 'Asia/Kolkata' + interval '1 day')::int AS stale_new_untouched,
+               count(*)::int AS new_total
+        FROM n`,
       // Tableau formula: AVG over touch rows (of leads with any valid payment) of the lead's all-time touch count
       sql<{ avg_rows: number | null; avg_leads: number | null; n_leads: number }[]>`
         SELECT avg(t.n_touches_all)::float8 AS avg_rows,
@@ -136,6 +146,7 @@ overview.get('/overview', (c) =>
         avg_touches_window: avgWin?.avg_rows ?? null,
         avg_touches_window_per_lead: avgWin?.avg_leads ?? null,
         avg_touches_window_n: avgWin?.n_leads ?? 0,
+        stale_new: stale?.stale_new ?? 0, stale_new_untouched: stale?.stale_new_untouched ?? 0, new_total: stale?.new_total ?? 0, stale_days: staleDays,
       },
       stages, ic_status: icStatus,
       touch_point: touchPoint, source, class_raw: classRaw, reason, medium, campaign, staff, daily,
@@ -153,6 +164,7 @@ overview.get('/overview', (c) =>
         avg_touches_window: 'Tableau "Avg Touches Before Conversion - Date wise": same as above restricted to touches in the window.',
         avg_per_lead: 'Per-lead variant (each converted lead counted once): the honest average number of touches a paying lead received.',
         reason: 'Tableau "Last Reason" reads Task.Reason__c (activities), which are not replicated (2.4 M rows). Shown instead: Lead_Master__c.LM_Reason__c of the touched leads.',
+        stale_new: `Leads in the selection whose Lead Stage is still "New" although they were created more than ${staleDays} days ago and have had no touch in the last ${staleDays} days (any touch, in any month). "Never touched after creation" = their only touches are from the creation day itself. Only leads with at least one touch exist on this page.`,
         dim_converted: 'Per row: distinct converted leads (Tableau definition) having a touch of that value in the window. A lead can appear under several rows.',
       },
     };
