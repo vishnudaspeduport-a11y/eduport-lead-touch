@@ -39,18 +39,18 @@ export function pct(num: number | null | undefined, den: number | null | undefin
 // ---------------------------------------------------------------- PII masking
 export function maskPhone(v: string | null | undefined, role: Role): string | null {
   if (v == null) return null;
-  if (role === 'admin') return v;
+  if (role !== 'viewer') return v;
   const d = v.replace(/\D/g, '');
   return d.length >= 4 ? `${'•'.repeat(Math.max(0, d.length - 4))}${d.slice(-4)}` : '••••';
 }
 export function maskEmail(v: string | null | undefined, role: Role): string | null {
   if (v == null) return null;
-  if (role === 'admin') return v;
+  if (role !== 'viewer') return v;
   const [u, dom] = v.split('@');
   return dom ? `${(u ?? '').slice(0, 1)}•••@${dom}` : '•••';
 }
 export function maskName(v: string | null | undefined, role: Role): string | null {
   if (v == null) return null;
-  if (role === 'admin') return v;
+  if (role !== 'viewer') return v;
   return v.split(/\s+/).map((p) => (p.length ? `${p[0]}${'•'.repeat(Math.min(6, Math.max(1, p.length - 1)))}` : p)).join(' ');
 }

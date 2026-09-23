@@ -47,8 +47,8 @@ export const authMiddleware = createMiddleware<AppEnv>(async (c, next) => {
   let userId: string | null = null;
 
   if (env.AUTH_MODE === 'none') {
-    // No login: everyone is the public user. PII stays masked unless PUBLIC_ROLE=admin.
-    c.set('user', { email: 'public', role: env.PUBLIC_ROLE === 'admin' ? 'admin' : 'viewer' });
+    // No login: everyone is the public user. PUBLIC_ROLE: viewer = PII masked, analyst = full lead details, admin = + admin actions
+    c.set('user', { email: 'public', role: env.PUBLIC_ROLE === 'admin' ? 'admin' : env.PUBLIC_ROLE === 'analyst' ? 'analyst' : 'viewer' });
     await next();
     return;
   }

@@ -5,7 +5,7 @@ export interface Env {
   ASSETS: Fetcher;
   /** none = no login (everyone gets PUBLIC_ROLE); supabase = Supabase Auth; dev = local */
   AUTH_MODE: 'none' | 'supabase' | 'dev';
-  PUBLIC_ROLE?: 'admin' | 'viewer';
+  PUBLIC_ROLE?: 'admin' | 'analyst' | 'viewer';
   SUPABASE_URL: string;
   /** Legacy HS256 projects only; new projects are verified via JWKS. */
   SUPABASE_JWT_SECRET?: string;
@@ -19,7 +19,7 @@ export interface Env {
   EXPORT_ROW_CAP?: string;
 }
 
-export type Role = 'admin' | 'viewer';
+export type Role = 'admin' | 'analyst' | 'viewer';
 export interface User { email: string; role: Role; }
 
 export type AppEnv = { Bindings: Env; Variables: { user: User } };

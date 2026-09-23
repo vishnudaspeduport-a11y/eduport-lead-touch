@@ -126,7 +126,7 @@ overviewLeads.get('/overview/leads', (c) =>
     const page = intParam(q, 'page', 1, 1, 100000);
     const rows = await leadQuery(sql, f, periods, q, { limit, offset: (page - 1) * limit });
     const total = rows.length ? (rows[0].total_rows as number) : 0;
-    return { page, limit, total, rows: rows.map((r) => { const { total_rows: _t, ...rest } = maskRow(r, role); return rest; }), masked: role !== 'admin', columns: COLS };
+    return { page, limit, total, rows: rows.map((r) => { const { total_rows: _t, ...rest } = maskRow(r, role); return rest; }), masked: role === 'viewer', columns: COLS };
   }, 0),
 );
 

@@ -61,7 +61,7 @@ leads.get('/leads', (c) =>
         ORDER BY ${sql(sortCol)} ${dir}, l.lead_id LIMIT ${limit} OFFSET ${(page - 1) * limit}`,
       sql<{ n: number }[]>`SELECT count(*)::int AS n FROM analytics.v_lead_base l WHERE ${where}`,
     ]);
-    return { page, limit, total: tot.n, rows: rows.map((r) => maskRow(r, role)), masked: role !== 'admin' };
+    return { page, limit, total: tot.n, rows: rows.map((r) => maskRow(r, role)), masked: role === 'viewer' };
   }, 0),
 );
 
@@ -98,7 +98,7 @@ leads.get('/leads/:id', (c) =>
     ]);
     const l = maskRow(lead, role);
     // stringify timestamps (postgres.js hands Date objects when types are known; with fetch_types=false they are strings already)
-    return { lead: l, touches, ics, payments, calls, siblings, masked: role !== 'admin' };
+    return { lead: l, touches, ics, payments, calls, siblings, masked: role === 'viewer' };
   }, 0),
 );
 

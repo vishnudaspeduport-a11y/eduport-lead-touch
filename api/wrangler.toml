@@ -34,7 +34,7 @@ crons = []
 # --- Non-secret config ---------------------------------------------------------
 [vars]
 AUTH_MODE = "none"                                            # "none" (no login) | "supabase" | "dev"
-PUBLIC_ROLE = "viewer"                                        # with AUTH_MODE=none: "viewer" masks phone/email, "admin" shows them
+PUBLIC_ROLE = "analyst"                                       # with AUTH_MODE=none: "viewer" masks name/phone/email, "analyst" shows them, "admin" also unlocks admin actions
 SUPABASE_URL = "https://duotauyrrxjmqpzdjtph.supabase.co"     # Project URL (Supabase -> Project Settings -> API)
 ADMIN_EMAILS = "bi_team@eduport.ai"                           # comma list; admins see unmasked phone/email
 ALLOWED_EMAIL_DOMAIN = "eduport.ai"                           # anyone with this domain can sign up as viewer

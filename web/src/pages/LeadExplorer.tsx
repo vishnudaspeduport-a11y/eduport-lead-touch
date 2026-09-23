@@ -23,7 +23,7 @@ export default function LeadExplorer() {
   const pages = d ? Math.max(1, Math.ceil(d.total / d.limit)) : 1;
   return (
     <div className="space-y-3">
-      <PageHeader title="Lead explorer" subtitle={d ? `${fmtInt(d.total)} leads match · ${d.masked ? 'phone/email masked (viewer)' : 'unmasked (admin)'}` : 'loading…'}
+      <PageHeader title="Lead explorer" subtitle={d ? `${fmtInt(d.total)} leads match · ${d.masked ? 'phone/email masked' : 'full details'}` : 'loading…'}
         right={<button className="btn" title="Server-streamed CSV of the current view (capped at 50,000 rows)" onClick={() => downloadWithAuth('/leads/export.csv', { ...params, q: dq, sort, dir }, `leads_${params.from}_${params.to}.csv`).catch((e) => alert(String(e)))}><Icon.Download /> Export CSV</button>} />
       <div className="flex flex-wrap items-center gap-2">
         <input className="input w-72" placeholder="Search name, LM-number, phone (≥5 digits), email…" value={q} onChange={(e) => { setQ(e.target.value); setPage(1); }} />
