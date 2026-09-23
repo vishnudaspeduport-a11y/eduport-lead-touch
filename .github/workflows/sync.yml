@@ -20,6 +20,11 @@ on:
         description: 'Ops only: run this SQL against the analytics DB instead of syncing'
         type: string
         default: ''
+      target:
+        description: 'Ops only: which DB the SQL runs on'
+        type: choice
+        options: [supabase, source]
+        default: supabase
 concurrency:
   group: lead-touch-sync
   cancel-in-progress: false
@@ -52,6 +57,7 @@ jobs:
         if: inputs.sql != ''
         env:
           ADHOC_SQL: ${{ inputs.sql }}
+          ADHOC_TARGET: ${{ inputs.target }}
         run: npx tsx src/query.ts
       - name: Sync
         if: inputs.sql == ''
