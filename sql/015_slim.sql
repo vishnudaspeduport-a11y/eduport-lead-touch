@@ -1,6 +1,6 @@
 -- =====================================================================
 -- 015_slim.sql (2026-09-23)  Storage trim: drop lead / interested-course columns no page reads.
--- Run as a bundle: 015_slim  @@  012 (v_lead_payment + v_lead_conv)  @@  015b (v_ic_base, v_lead_calls)  @@  010  @@  014  @@  VACUUM FULL
+-- Run as a bundle, in this order: 015_slim, 012 (v_lead_payment + v_lead_conv), 015b (v_ic_base, v_lead_calls), 010, 014, VACUUM FULL
 -- The sync's field lists (sync/src/objects.ts) are trimmed to match, so the columns do not come back.
 -- =====================================================================
 DROP MATERIALIZED VIEW IF EXISTS analytics.mv_payer;
