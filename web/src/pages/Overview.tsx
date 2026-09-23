@@ -51,11 +51,10 @@ function Kpi({ title, value, sub, def, tone, icon, small, onClick, split }: { ti
         <div className={`font-extrabold leading-none tabular-nums tracking-tight ${small ? 'text-lg' : 'text-xl'}`}>{value}</div>
         {sub && <div className="mt-1 truncate text-[10px] text-ink-3">{sub}</div>}
         {split && (
-          <div className="mt-1.5 grid grid-cols-2 gap-1 border-t border-line/70 pt-1.5">
+          <div className="mt-1 flex flex-wrap items-baseline gap-x-2 gap-y-0.5 text-[10px] leading-tight">
             {split.map((s) => (
-              <button key={s.label} title={s.title} className="rounded-lg px-1 py-0.5 text-left hover:bg-tone" onClick={(e) => { e.stopPropagation(); s.onClick?.(); }}>
-                <div className="text-[9px] uppercase leading-tight tracking-wide text-ink-3">{s.label}</div>
-                <div className="text-sm font-bold tabular-nums leading-tight">{s.value}</div>
+              <button key={s.label} title={s.title} className="rounded px-0.5 text-left text-ink-3 hover:bg-tone hover:text-ink" onClick={(e) => { e.stopPropagation(); s.onClick?.(); }}>
+                {s.label} <b className="tabular-nums text-ink">{s.value}</b>
               </button>
             ))}
           </div>
@@ -112,15 +111,15 @@ export default function Overview() {
       <PageHeader title="Overview" subtitle={`${f.basis === 'created' ? 'lead created' : 'touch date'} ${f.from} → ${f.to}${f.pay ? ` · payment date ${f.pfrom} → ${f.pto}` : ''} · same definitions as the Tableau "Lead Touch - Overview" dashboard`} />
       {q.error && <Note>⚠ {q.error.message}</Note>}
 
-      <div className="grid grid-cols-2 items-start gap-2 sm:grid-cols-4 xl:grid-cols-8">
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 xl:grid-cols-8">
         {q.isLoading && Array.from({ length: 8 }).map((_, i) => <Skeleton key={i} className="h-[92px]" />)}
         {k && <>
           <Kpi tone="tone-blue" icon={<Icon.Users />} title="Total leads" value={fmtInt(k.leads)} sub={f.basis === 'created' ? 'distinct leads created in the window' : 'distinct leads touched in the window'} def={`${def.leads_basis ?? ''} ${def.leads ?? ''}`} onClick={() => open('leads', 'Total leads')} />
           <Kpi tone="tone-teal" icon={<Icon.Touch />} title="Total lead touches" value={fmtInt(k.touches)} sub={`${fmt2(k.touches_per_lead)} touches per lead`} def={def.touches} onClick={() => open('touches', 'Total lead touches')} />
           <Kpi tone="tone-orange" icon={<Icon.Check />} title="Total converted" value={fmtInt(k.converted)} sub={f.pay ? `${fmtPct(k.conv_rate)} of leads · paid ${f.pfrom} → ${f.pto}` : `${fmtPct(k.conv_rate)} of leads · paid on/after a touch`} def={`${def.converted} — ${def.converted_first} — ${def.converted_in_window}`} onClick={() => open('converted', 'Total converted')}
             split={[
-              { label: 'First payment after a touch', value: fmtInt(k.converted_first), title: def.converted_first, onClick: () => open('converted_first', 'Converted · first payment after a touch') },
-              { label: f.pay ? 'New customers (payment window)' : 'New customers (in window)', value: fmtInt(k.converted_in_window), title: def.converted_in_window, onClick: () => open('converted_in_window', 'Converted · first payment inside window') },
+              { label: 'after touch', value: fmtInt(k.converted_first), title: def.converted_first, onClick: () => open('converted_first', 'Converted · first payment after a touch') },
+              { label: 'new customers', value: fmtInt(k.converted_in_window), title: def.converted_in_window, onClick: () => open('converted_in_window', 'Converted · first payment inside window') },
             ]} />
           <Kpi tone="tone-violet" icon={<Icon.Avg />} title="Avg touches before conversion" value={fmt2(k.avg_touches_alltime)} sub={`all time · ${fmt2(k.avg_touches_alltime_per_lead)} per lead (${fmtInt(k.avg_touches_alltime_n)} leads)`} def={`${def.avg_touches_alltime} ${def.avg_per_lead}`} onClick={() => open('avg_alltime', 'Avg touches before conversion', undefined, undefined, 'converted leads with their all-time touch counts (no date filter)')} />
           <Kpi tone="tone-green" icon={<Icon.Calendar />} title="Avg touches before conversion (date-wise)" value={fmt2(k.avg_touches_window)} sub={`in window · ${fmt2(k.avg_touches_window_per_lead)} per lead (${fmtInt(k.avg_touches_window_n)} leads)`} def={`${def.avg_touches_window} ${def.avg_per_lead}`} onClick={() => open('avg_window', 'Avg touches before conversion (date-wise)', undefined, undefined, 'converted leads touched in the window, with their all-time touch counts')} />
