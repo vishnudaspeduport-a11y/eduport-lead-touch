@@ -5,6 +5,7 @@ CREATE TABLE IF NOT EXISTS app.core_batch (
   title         text,
   course_id     bigint,
   course_title  text,
+  grade_title   text,
   course_fee    numeric,
   is_premium    boolean,
   is_deleted    boolean,

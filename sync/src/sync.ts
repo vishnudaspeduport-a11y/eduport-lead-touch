@@ -197,11 +197,11 @@ const APP_TABLES: AppTableSpec[] = [
     // batch / course lookup (~3.6k rows) so the dashboard can show names instead of ids
     name: 'core_batch', stampCol: 'updated_at',
     select: (src, since) => (since
-      ? src`SELECT b.id, b.title, b.course_id, s.title AS course_title, b.course_fee, b.is_premium, b.is_deleted, b.expiry_date, b.updated_at
-            FROM public.core_batch b LEFT JOIN public.core_syllabusstructure s ON s.id = b.course_id
+      ? src`SELECT b.id, b.title, b.course_id, s.title AS course_title, g.title AS grade_title, b.course_fee, b.is_premium, b.is_deleted, b.expiry_date, b.updated_at
+            FROM public.core_batch b LEFT JOIN public.core_syllabusstructure s ON s.id = b.course_id LEFT JOIN public.core_grade g ON g.id = s.grade_id
             WHERE b.updated_at > ${since}::timestamptz OR s.updated_at > ${since}::timestamptz ORDER BY b.id`.cursor(2000)
-      : src`SELECT b.id, b.title, b.course_id, s.title AS course_title, b.course_fee, b.is_premium, b.is_deleted, b.expiry_date, b.updated_at
-            FROM public.core_batch b LEFT JOIN public.core_syllabusstructure s ON s.id = b.course_id ORDER BY b.id`.cursor(2000)),
+      : src`SELECT b.id, b.title, b.course_id, s.title AS course_title, g.title AS grade_title, b.course_fee, b.is_premium, b.is_deleted, b.expiry_date, b.updated_at
+            FROM public.core_batch b LEFT JOIN public.core_syllabusstructure s ON s.id = b.course_id LEFT JOIN public.core_grade g ON g.id = s.grade_id ORDER BY b.id`.cursor(2000)),
   },
 ];
 

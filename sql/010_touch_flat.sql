@@ -8,6 +8,7 @@
 -- =====================================================================
 SET search_path = analytics, public;
 
+DROP MATERIALIZED VIEW IF EXISTS analytics.mv_payer;      -- depends on mv_touch_flat; re-run 014 afterwards
 DROP MATERIALIZED VIEW IF EXISTS analytics.mv_touch_flat;
 DROP VIEW IF EXISTS analytics.v_lead_base;
 DROP VIEW IF EXISTS analytics.v_touch_base;
