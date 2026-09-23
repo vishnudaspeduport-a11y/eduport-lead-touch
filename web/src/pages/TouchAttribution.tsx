@@ -19,7 +19,7 @@ interface Resp {
 
 function Kpi({ title, value, sub, def, tone, icon, onClick }: { title: string; value: string; sub?: string; def?: string; tone: string; icon: ReactNode; onClick?: () => void }) {
   return (
-    <div className={`card ${tone} relative flex min-h-[92px] flex-col justify-between gap-1 overflow-hidden ${onClick ? 'cursor-pointer transition hover:-translate-y-0.5 hover:shadow-pop' : ''}`} onClick={onClick} title={onClick ? 'Click to see the leads' : undefined}>
+    <div className={`card ${tone} relative flex min-h-[84px] flex-col justify-between gap-1 overflow-hidden !p-2.5 ${onClick ? 'cursor-pointer transition hover:-translate-y-0.5 hover:shadow-pop' : ''}`} onClick={onClick} title={onClick ? 'Click to see the leads' : undefined}>
       <div className="pointer-events-none absolute -right-6 -top-6 h-20 w-20 rounded-full bg-tone opacity-70" />
       <div className="flex items-start justify-between gap-2">
         <div className="flex items-center gap-2">
@@ -29,7 +29,7 @@ function Kpi({ title, value, sub, def, tone, icon, onClick }: { title: string; v
         {def && <span onClick={(e) => e.stopPropagation()}><Popover align="right" width="w-80" trigger={<button className="relative rounded p-0.5 text-ink-3 hover:text-ink"><Icon.Help /></button>}><div className="text-xs leading-relaxed text-ink-2">{def}</div></Popover></span>}
       </div>
       <div>
-        <div className="text-2xl font-extrabold leading-none tabular-nums tracking-tight">{value}</div>
+        <div className="text-xl font-extrabold leading-none tabular-nums tracking-tight">{value}</div>
         {sub && <div className="mt-1 truncate text-[10px] text-ink-3">{sub}</div>}
       </div>
     </div>
@@ -47,7 +47,7 @@ function AttrCard({ title, rows, dim, tone, opts, cols, label, mode, loading, er
   const data = filtered.slice(0, opts.limit ?? 14);
   return (
     <ChartCard title={title} tone={tone} subtitle={rows ? `${fmtInt(filtered.reduce((x, r) => x + r.attributed, 0))} ${label.toLowerCase()}${s ? ` in ${filtered.length} matching rows` : ''} · click a row to filter every card` : undefined}
-      loading={loading} error={error} onRetry={onRetry} rows={filtered} columns={cols} height={opts.height ?? 340} help={help}
+      loading={loading} error={error} onRetry={onRetry} rows={filtered} columns={cols} height={opts.height ?? 280} help={help}
       actions={<CardSearch value={search} onChange={setSearch} count={filtered.length} onApply={() => setList(dim, filtered.map((r) => r.key))} />}>
       {opts.asTable
         ? <DataTable rows={filtered} compact maxHeight="100%" initialSort={{ id: 'attributed', desc: true }} onRowClick={(r) => toggleValue(dim, r.key)} columns={cols} />
@@ -80,7 +80,7 @@ export default function TouchAttribution({ mode }: { mode: 'first' | 'last' }) {
   );
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-2">
       <PageHeader title={mode === 'first' ? 'First touch' : 'Last touch'}
         subtitle={`touch date ${f.from} → ${f.to} · same definitions as the Tableau "Lead Touch - ${mode === 'first' ? 'First' : 'Last'} Touch" dashboard`} />
       {q.error && <Note>⚠ {q.error.message}</Note>}
@@ -96,13 +96,13 @@ export default function TouchAttribution({ mode }: { mode: 'first' | 'last' }) {
         </>}
       </div>
 
-      <div className="grid gap-3 xl:grid-cols-2">
+      <div className="grid gap-2 xl:grid-cols-2">
         {card('Touch point analysis (converted leads)', d?.touch_point, 'touch_point', 'tone-teal')}
         {card('Class wise distribution', d?.class_raw, 'class_raw', 'tone-violet')}
         {card('Lead source distribution', d?.source, 'source', 'tone-orange', { asTable: true })}
         {card('Medium', d?.medium, 'medium', 'tone-green', { asTable: true })}
         {card('Campaign name', d?.campaign, 'campaign', 'tone-blue', { asTable: true })}
-        <ChartCard title={`${label} per day`} tone="tone-pink" subtitle={`distinct leads and ${label.toLowerCase()} by touch date`} loading={q.isLoading} error={q.error} rows={d?.daily ?? []} height={340}>
+        <ChartCard title={`${label} per day`} tone="tone-pink" subtitle={`distinct leads and ${label.toLowerCase()} by touch date`} loading={q.isLoading} error={q.error} rows={d?.daily ?? []} height={280}>
           <VBars data={(d?.daily ?? []).map((r) => ({ d: r.d.slice(5), leads: r.leads, attributed: r.attributed }))} xKey="d" bars={[{ key: 'leads', label: 'Leads' }, { key: 'attributed', label }]} />
         </ChartCard>
       </div>

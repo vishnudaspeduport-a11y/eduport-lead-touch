@@ -35,7 +35,7 @@ const USER_SORTS: [string, string][] = [['last_payment_date', 'Last payment'], [
 
 function Kpi({ title, value, sub, def, tone, icon, onClick }: { title: string; value: string; sub?: string; def?: string; tone: string; icon: ReactNode; onClick?: () => void }) {
   return (
-    <div className={`card ${tone} relative flex min-h-[92px] flex-col justify-between gap-1 overflow-hidden ${onClick ? 'cursor-pointer transition hover:-translate-y-0.5 hover:shadow-pop' : ''}`} onClick={onClick} title={onClick ? 'Click to see the users' : undefined}>
+    <div className={`card ${tone} relative flex min-h-[84px] flex-col justify-between gap-1 overflow-hidden !p-2.5 ${onClick ? 'cursor-pointer transition hover:-translate-y-0.5 hover:shadow-pop' : ''}`} onClick={onClick} title={onClick ? 'Click to see the users' : undefined}>
       <div className="pointer-events-none absolute -right-6 -top-6 h-20 w-20 rounded-full bg-tone opacity-70" />
       <div className="flex items-start justify-between gap-2">
         <div className="flex items-center gap-2">
@@ -45,7 +45,7 @@ function Kpi({ title, value, sub, def, tone, icon, onClick }: { title: string; v
         {def && <span onClick={(e) => e.stopPropagation()}><Popover align="right" width="w-80" trigger={<button className="relative rounded p-0.5 text-ink-3 hover:text-ink"><Icon.Help /></button>}><div className="text-xs leading-relaxed text-ink-2">{def}</div></Popover></span>}
       </div>
       <div>
-        <div className="text-2xl font-extrabold leading-none tabular-nums tracking-tight">{value}</div>
+        <div className="text-xl font-extrabold leading-none tabular-nums tracking-tight">{value}</div>
         {sub && <div className="mt-1 truncate text-[10px] text-ink-3">{sub}</div>}
       </div>
     </div>
@@ -65,7 +65,7 @@ function ConvCard({ title, rows, tone, opts, cols, loading, error, onRetry, help
   const data = filtered.slice(0, opts.limit ?? 14);
   return (
     <ChartCard title={title} tone={tone} subtitle={rows ? `${fmtInt(filtered.reduce((x, r) => x + r.users, 0))} users${s ? ` in ${filtered.length} matching rows` : ''} · ${opts.filterDim ? 'click a row to filter every card' : 'click a row for the users'}` : undefined}
-      loading={loading} error={error} onRetry={onRetry} rows={filtered} columns={cols} height={opts.height ?? 340} help={help}
+      loading={loading} error={error} onRetry={onRetry} rows={filtered} columns={cols} height={opts.height ?? 280} help={help}
       actions={<CardSearch value={search} onChange={setSearch} count={filtered.length} onApply={onApply ? () => onApply(filtered.map((r) => r.key)) : undefined} />}>
       {opts.asTable
         ? <DataTable rows={filtered} compact maxHeight="100%" initialSort={{ id: 'users', desc: true }} onRowClick={(r) => onRow(r.key)} columns={cols} />
@@ -103,7 +103,7 @@ export default function Converted() {
   );
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-2">
       <PageHeader title="Converted" subtitle={`payment date ${f.from} → ${f.to} · same definitions as the Tableau "Lead Touch - Converted" dashboard (paying users, credited to the last touch before payment)`}
         right={
           <label className="flex items-center gap-1.5 text-xs text-ink-2">Purchased grade
@@ -114,7 +114,7 @@ export default function Converted() {
           </label>} />
       {q.error && <Note>⚠ {q.error.message}</Note>}
 
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-6">
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-6">
         {q.isLoading && Array.from({ length: 6 }).map((_, i) => <Skeleton key={i} className="h-[92px]" />)}
         {k && <>
           <Kpi tone="tone-orange" icon={<Icon.Check />} title="Converted (users)" value={fmtInt(k.users)} sub={`${fmtInt(k.payments_all)} payments in the window`} def={def.users} onClick={() => open('Converted users')} />
@@ -126,18 +126,18 @@ export default function Converted() {
         </>}
       </div>
 
-      <div className="grid gap-3 xl:grid-cols-2">
-        <ChartCard title="Lead stage distribution" tone="tone-blue" subtitle="converted users by lead stage · click a slice to filter" loading={q.isLoading} error={q.error} rows={d?.by_stage ?? []} columns={dimCols} height={320} help={def.stage}>
+      <div className="grid gap-2 xl:grid-cols-2">
+        <ChartCard title="Lead stage distribution" tone="tone-blue" subtitle="converted users by lead stage · click a slice to filter" loading={q.isLoading} error={q.error} rows={d?.by_stage ?? []} columns={dimCols} height={260} help={def.stage}>
           <Donut data={(d?.by_stage ?? []).map((s) => ({ key: s.key === '(null)' ? 'No Salesforce lead' : s.key, value: s.users, selected: (f.lists.lead_stage ?? []).includes(s.key) }))} valueLabel="Converted (users)" centerLabel="users" onClick={(key) => toggleValue('lead_stage', key === 'No Salesforce lead' ? '(null)' : key)} />
         </ChartCard>
-        {card('Touch point analysis (converted leads)', d?.by_last_touch_point, 'last_touch_point', 'tone-teal', { filterDim: 'touch_point', height: 320 })}
+        {card('Touch point analysis (converted leads)', d?.by_last_touch_point, 'last_touch_point', 'tone-teal', { filterDim: 'touch_point', height: 260 })}
         {card('Class wise conversion (purchased course)', d?.by_course, 'course', 'tone-violet', { asTable: true, cols: payCols, help: def.course })}
-        {card('Purchased grade', d?.by_grade, 'grade', 'tone-amber', { cols: payCols, help: def.grade, height: 340 })}
+        {card('Purchased grade', d?.by_grade, 'grade', 'tone-amber', { cols: payCols, help: def.grade, height: 280 })}
         {card('Staff-wise (last touch)', d?.by_last_staff, 'last_touch_staff', 'tone-pink', { filterDim: 'staff', asTable: true })}
         {card('Lead source distribution (last touch)', d?.by_last_source, 'last_touch_source', 'tone-orange', { filterDim: 'source', asTable: true })}
         {card('Medium wise conversion (last touch)', d?.by_last_medium, 'last_touch_medium', 'tone-green', { filterDim: 'medium', asTable: true })}
         {card('Campaign wise conversion (last touch)', d?.by_last_campaign, 'last_touch_campaign', 'tone-blue', { filterDim: 'campaign', asTable: true })}
-        <ChartCard title="Payments per day" tone="tone-teal" subtitle="paying users and payments by payment date" loading={q.isLoading} error={q.error} rows={d?.daily ?? []} height={340} className="xl:col-span-2">
+        <ChartCard title="Payments per day" tone="tone-teal" subtitle="paying users and payments by payment date" loading={q.isLoading} error={q.error} rows={d?.daily ?? []} height={260} className="xl:col-span-2">
           <VBars data={(d?.daily ?? []).map((r) => ({ d: r.d.slice(5), users: r.users, payments: r.payments }))} xKey="d" bars={[{ key: 'users', label: 'Users' }, { key: 'payments', label: 'Payments' }]} />
         </ChartCard>
       </div>

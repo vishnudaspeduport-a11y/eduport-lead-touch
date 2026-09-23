@@ -37,17 +37,17 @@ const ALL_COLS: Col<DimRow>[] = [
 /** Colourful KPI tile: tinted card, solid icon disc, big number */
 function Kpi({ title, value, sub, def, tone, icon, small, onClick, split }: { title: string; value: string; sub?: string; def?: string; tone: string; icon: ReactNode; small?: boolean; onClick?: () => void; split?: { label: string; value: string; onClick?: () => void; title?: string }[] }) {
   return (
-    <div className={`card ${tone} relative flex flex-col justify-between gap-1 overflow-hidden ${small ? 'min-h-[64px] !p-2.5' : 'min-h-[92px]'} ${onClick ? 'cursor-pointer transition hover:-translate-y-0.5 hover:shadow-pop' : ''}`} onClick={onClick} title={onClick ? 'Click to see the leads' : undefined}>
+    <div className={`card ${tone} relative flex flex-col justify-between gap-1 overflow-hidden !p-2.5 ${small ? 'min-h-[64px]' : 'min-h-[84px]'} ${onClick ? 'cursor-pointer transition hover:-translate-y-0.5 hover:shadow-pop' : ''}`} onClick={onClick} title={onClick ? 'Click to see the leads' : undefined}>
       <div className="pointer-events-none absolute -right-6 -top-6 h-20 w-20 rounded-full bg-tone opacity-70" />
       <div className="flex items-start justify-between gap-2">
         <div className="flex items-center gap-2">
-          <span className={`grid shrink-0 place-items-center rounded-full bg-tone-solid text-white shadow ${small ? 'h-6 w-6' : 'h-8 w-8'}`}>{icon}</span>
+          <span className={`grid shrink-0 place-items-center rounded-full bg-tone-solid text-white shadow ${small ? 'h-6 w-6' : 'h-7 w-7'}`}>{icon}</span>
           <div className="line-clamp-2 text-[10px] font-semibold uppercase leading-tight tracking-wide text-ink-3" title={title}>{title}</div>
         </div>
         {def && <span onClick={(e) => e.stopPropagation()}><Popover align="right" width="w-80" trigger={<button className="relative rounded p-0.5 text-ink-3 hover:text-ink"><Icon.Help /></button>}><div className="text-xs leading-relaxed text-ink-2">{def}</div></Popover></span>}
       </div>
       <div>
-        <div className={`font-extrabold leading-none tabular-nums tracking-tight ${small ? 'text-lg' : 'text-2xl'}`}>{value}</div>
+        <div className={`font-extrabold leading-none tabular-nums tracking-tight ${small ? 'text-lg' : 'text-xl'}`}>{value}</div>
         {sub && <div className="mt-1 truncate text-[10px] text-ink-3">{sub}</div>}
         {split && (
           <div className="mt-1.5 grid grid-cols-2 gap-1 border-t border-line/70 pt-1.5">
@@ -107,12 +107,12 @@ export default function Overview() {
   );
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-2">
       <PageHeader title="Overview" subtitle={`${f.basis === 'created' ? 'lead created' : 'touch date'} ${f.from} → ${f.to}${f.pay ? ` · payment date ${f.pfrom} → ${f.pto}` : ''} · same definitions as the Tableau "Lead Touch - Overview" dashboard`} />
       {q.error && <Note>⚠ {q.error.message}</Note>}
 
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-6">
-        {q.isLoading && Array.from({ length: 6 }).map((_, i) => <Skeleton key={i} className="h-[92px]" />)}
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 xl:grid-cols-7">
+        {q.isLoading && Array.from({ length: 7 }).map((_, i) => <Skeleton key={i} className="h-[92px]" />)}
         {k && <>
           <Kpi tone="tone-blue" icon={<Icon.Users />} title="Total leads" value={fmtInt(k.leads)} sub={f.basis === 'created' ? 'distinct leads created in the window' : 'distinct leads touched in the window'} def={`${def.leads_basis ?? ''} ${def.leads ?? ''}`} onClick={() => open('leads', 'Total leads')} />
           <Kpi tone="tone-teal" icon={<Icon.Touch />} title="Total lead touches" value={fmtInt(k.touches)} sub={`${fmt2(k.touches_per_lead)} touches per lead`} def={def.touches} onClick={() => open('touches', 'Total lead touches')} />
@@ -124,38 +124,34 @@ export default function Overview() {
           <Kpi tone="tone-violet" icon={<Icon.Avg />} title="Avg touches before conversion" value={fmt2(k.avg_touches_alltime)} sub={`all time · ${fmt2(k.avg_touches_alltime_per_lead)} per lead (${fmtInt(k.avg_touches_alltime_n)} leads)`} def={`${def.avg_touches_alltime} ${def.avg_per_lead}`} onClick={() => open('avg_alltime', 'Avg touches before conversion', undefined, undefined, 'converted leads with their all-time touch counts (no date filter)')} />
           <Kpi tone="tone-green" icon={<Icon.Calendar />} title="Avg touches before conversion (date-wise)" value={fmt2(k.avg_touches_window)} sub={`in window · ${fmt2(k.avg_touches_window_per_lead)} per lead (${fmtInt(k.avg_touches_window_n)} leads)`} def={`${def.avg_touches_window} ${def.avg_per_lead}`} onClick={() => open('avg_window', 'Avg touches before conversion (date-wise)', undefined, undefined, 'converted leads touched in the window, with their all-time touch counts')} />
           <Kpi tone="tone-slate" icon={<Icon.Spark />} title="Salesforce Is_Converted flag" value={fmtInt(k.sf_converted)} sub="reference only" def={def.sf_converted} onClick={() => open('sf_converted', 'Salesforce Is_Converted flag')} />
-        </>}
-      </div>
-      {k && (
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-6">
           <Kpi tone="tone-red" icon={<Icon.Calendar />} title={`Still New after ${k.stale_days} days`} value={fmtInt(k.stale_new)} sub={`of ${fmtInt(k.new_total)} leads in stage New · ${fmtInt(k.stale_new_untouched)} never touched after creation`} def={def.stale_new}
             onClick={() => open('stale_new', `Still New after ${k.stale_days} days`, undefined, undefined, 'leads still in stage New, created more than 5 days ago and not touched in the last 5 days · sorted by last touch')} />
-        </div>
-      )}
+        </>}
+      </div>
 
-      <div className="grid gap-3 xl:grid-cols-2">
-        <ChartCard title="Lead funnel · LM stage" tone="tone-blue" subtitle="Total leads by current Lead Stage · click a slice to filter" loading={q.isLoading} error={q.error} rows={d?.stages ?? []} height={300}
+      <div className="grid gap-2 xl:grid-cols-2">
+        <ChartCard title="Lead funnel · LM stage" tone="tone-blue" subtitle="Total leads by current Lead Stage · click a slice to filter" loading={q.isLoading} error={q.error} rows={d?.stages ?? []} height={240}
           help="Current Lead_Stage__c of the distinct leads that have a touch in the window (Tableau sheet 'LM-Stage').">
           <Donut data={(d?.stages ?? []).map((s) => ({ key: s.key, value: s.leads, secondary: s.converted, selected: (f.lists.lead_stage ?? []).includes(s.key) }))} valueLabel="Total leads" secondaryLabel="Converted" centerLabel="leads" onClick={(key) => toggleValue('lead_stage', key)} />
         </ChartCard>
-        <ChartCard title="Lead funnel · IC status" tone="tone-pink" subtitle="Total leads by Interested Course status · click a bar to filter (IC status)" loading={q.isLoading} error={q.error} rows={d?.ic_status ?? []} height={300}
+        <ChartCard title="Lead funnel · IC status" tone="tone-pink" subtitle="Total leads by Interested Course status · click a bar to filter (IC status)" loading={q.isLoading} error={q.error} rows={d?.ic_status ?? []} height={240}
           help="Interested_Course__c.Status__c for the leads touched in the window, blank status excluded (Tableau sheet 'IC Status'). A lead with several ICs appears under each status.">
           <HBars colorful data={(d?.ic_status ?? []).map((s) => ({ key: s.key, value: s.leads, secondary: s.ics }))} valueLabel="Total leads" secondaryLabel="Interested courses" secondaryFormat={fmtInt} onClick={(key) => toggleValue('ic_status', key)} />
         </ChartCard>
       </div>
 
-      <div className="grid gap-3 xl:grid-cols-2">
-        {dimCard('Touch point analysis (converted leads)', d?.touch_point, 'touch_point', ['touches', 'converted'], 'tone-teal', { colorful: true, height: 340 })}
-        {dimCard('Lead source distribution', d?.source, 'source', ['touches', 'converted'], 'tone-orange', { asTable: true, height: 340, help: 'Touch Source__c: total lead touches, converted leads and total leads (Tableau sheet "Lead source distribution").' })}
-        {dimCard('Class (converted lead touches)', d?.class_raw, 'class_raw', ['touches', 'converted'], 'tone-violet', { limit: 14, height: 380, colorful: true })}
-        {dimCard('Reason', d?.reason, 'lm_reason', ['leads'], 'tone-amber', { limit: 14, height: 380, help: def.reason, subtitle: 'Total leads by LM reason · see the help icon for the deviation from Tableau' })}
-        {dimCard('Medium', d?.medium, 'medium', ['leads', 'converted'], 'tone-green', { asTable: true, height: 320 })}
-        {dimCard('Campaign name', d?.campaign, 'campaign', ['leads', 'touches'], 'tone-blue', { asTable: true, height: 320 })}
+      <div className="grid gap-2 xl:grid-cols-2">
+        {dimCard('Touch point analysis (converted leads)', d?.touch_point, 'touch_point', ['touches', 'converted'], 'tone-teal', { colorful: true, height: 270 })}
+        {dimCard('Lead source distribution', d?.source, 'source', ['touches', 'converted'], 'tone-orange', { asTable: true, height: 270, help: 'Touch Source__c: total lead touches, converted leads and total leads (Tableau sheet "Lead source distribution").' })}
+        {dimCard('Class (converted lead touches)', d?.class_raw, 'class_raw', ['touches', 'converted'], 'tone-violet', { limit: 14, height: 300, colorful: true })}
+        {dimCard('Reason', d?.reason, 'lm_reason', ['leads'], 'tone-amber', { limit: 14, height: 300, help: def.reason, subtitle: 'Total leads by LM reason · see the help icon for the deviation from Tableau' })}
+        {dimCard('Medium', d?.medium, 'medium', ['leads', 'converted'], 'tone-green', { asTable: true, height: 260 })}
+        {dimCard('Campaign name', d?.campaign, 'campaign', ['leads', 'touches'], 'tone-blue', { asTable: true, height: 260 })}
       </div>
 
-      <div className="grid gap-3 xl:grid-cols-2">
-        {dimCard('Staff-wise', d?.staff, 'staff', ['leads', 'touches'], 'tone-pink', { asTable: true, height: 340 })}
-        <ChartCard title="Touches per day" tone="tone-teal" subtitle="touches and distinct leads by touch date · click a day to zoom the date range to it" loading={q.isLoading} error={q.error} rows={d?.daily ?? []} height={340}>
+      <div className="grid gap-2 xl:grid-cols-2">
+        {dimCard('Staff-wise', d?.staff, 'staff', ['leads', 'touches'], 'tone-pink', { asTable: true, height: 260 })}
+        <ChartCard title="Touches per day" tone="tone-teal" subtitle="touches and distinct leads by touch date · click a day to zoom the date range to it" loading={q.isLoading} error={q.error} rows={d?.daily ?? []} height={260}>
           <VBars data={(d?.daily ?? []).map((r) => ({ d: r.d.slice(5), full: r.d, touches: r.touches, leads: r.leads }))} xKey="d" bars={[{ key: 'touches', label: 'Touches' }, { key: 'leads', label: 'Leads' }]} onClick={(key) => { const row = (d?.daily ?? []).find((r) => r.d.slice(5) === key); if (row) set({ preset: 'custom', from: row.d, to: row.d }); }} />
         </ChartCard>
       </div>

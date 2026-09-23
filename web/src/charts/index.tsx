@@ -68,7 +68,7 @@ export function HBars({ data, format = fmtInt, secondaryLabel, secondaryFormat =
   const { series, ink } = useTheme();
   const c = color ?? series[0];
   const anySel = data.some((d) => d.selected);
-  const h = Math.max(120, data.length * 26);
+  const h = Math.max(110, data.length * 22);
   return (
     <div className="h-full overflow-y-auto">
       <ResponsiveContainer width="100%" height={h}>
@@ -77,7 +77,7 @@ export function HBars({ data, format = fmtInt, secondaryLabel, secondaryFormat =
           <XAxis type="number" {...axis} tickFormatter={fmtCompact} hide />
           <YAxis type="category" dataKey="key" {...axis} width={128} interval={0} tick={{ fontSize: 10 }} tickFormatter={(v: string) => (v.length > maxLabel ? `${v.slice(0, maxLabel - 1)}…` : v)} />
           <Tooltip cursor={{ fill: ink.grid, opacity: 0.4 }} content={<Tip rows={(d) => [[valueLabel, format(d.value as number)], ...(secondaryLabel && d.secondary != null ? ([[secondaryLabel, secondaryFormat(d.secondary as number)]] as [string, string][]) : []), ...Object.entries((d.extra as Record<string, unknown>) ?? {}).map(([k, v]) => [k, String(v)] as [string, string])]} />} />
-          <Bar dataKey="value" radius={[6, 6, 6, 6]} maxBarSize={16} isAnimationActive={false} onClick={(d) => onClick?.((d as unknown as BarDatum).key)} cursor={onClick ? 'pointer' : undefined}>
+          <Bar dataKey="value" radius={[6, 6, 6, 6]} maxBarSize={13} isAnimationActive={false} onClick={(d) => onClick?.((d as unknown as BarDatum).key)} cursor={onClick ? 'pointer' : undefined}>
             {data.map((d, i) => <Cell key={d.key} fill={colorful ? series[i % series.length] : c} fillOpacity={anySel && !d.selected ? 0.35 : 1} />)}
             <LabelList dataKey="value" position="right" formatter={(v: number) => format(v)} style={{ fontSize: 10, fill: ink.secondary }} />
           </Bar>
@@ -88,19 +88,24 @@ export function HBars({ data, format = fmtInt, secondaryLabel, secondaryFormat =
 }
 
 // ---------------------------------------------------------------- vertical bars + optional line on a second panel
-export function VBars({ data, xKey, bars, format = fmtInt, onClick, stacked }: { data: Record<string, unknown>[]; xKey: string; bars: { key: string; label: string }[]; format?: (v: number) => string; onClick?: (key: string) => void; stacked?: boolean }) {
+export function VBars({ data, xKey, bars, format = fmtInt, onClick, stacked, minBarWidth = 34 }: { data: Record<string, unknown>[]; xKey: string; bars: { key: string; label: string }[]; format?: (v: number) => string; onClick?: (key: string) => void; stacked?: boolean; minBarWidth?: number }) {
   const { series, ink } = useTheme();
+  // each category gets at least `minBarWidth` px; when that exceeds the card the chart scrolls sideways instead of squeezing the labels
   return (
+    <div className="h-full w-full overflow-x-auto overflow-y-hidden">
+    <div className="h-full" style={{ width: `max(100%, ${data.length * minBarWidth}px)` }}>
     <ResponsiveContainer width="100%" height="100%">
       <BarChart data={data} margin={{ top: 8, right: 8, left: -18, bottom: 0 }} barCategoryGap={4} barGap={2}>
         <CartesianGrid vertical={false} stroke={ink.grid} />
-        <XAxis dataKey={xKey} {...axis} tick={{ fontSize: 11 }} interval={0} />
+        <XAxis dataKey={xKey} {...axis} tick={{ fontSize: 10 }} interval={0} angle={-40} textAnchor="end" height={36} />
         <YAxis {...axis} tickFormatter={fmtCompact} width={48} />
         <Tooltip cursor={{ fill: ink.grid, opacity: 0.4 }} content={<Tip rows={(d) => bars.map((b) => [b.label, format(d[b.key] as number)])} />} />
         {bars.length > 1 && <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 11 }} />}
         {bars.map((b, i) => <Bar key={b.key} dataKey={b.key} name={b.label} fill={series[i]} stackId={stacked ? 's' : undefined} radius={stacked && i < bars.length - 1 ? 0 : [6, 6, 0, 0]} maxBarSize={40} isAnimationActive={false} onClick={(d) => onClick?.(String((d as Record<string, unknown>)[xKey]))} cursor={onClick ? 'pointer' : undefined} />)}
       </BarChart>
     </ResponsiveContainer>
+    </div>
+    </div>
   );
 }
 
