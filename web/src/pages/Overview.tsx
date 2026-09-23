@@ -17,6 +17,7 @@ interface OverviewResponse {
     avg_touches_alltime: number | null; avg_touches_alltime_per_lead: number | null; avg_touches_alltime_n: number;
     avg_touches_window: number | null; avg_touches_window_per_lead: number | null; avg_touches_window_n: number;
     stale_new: number; stale_new_untouched: number; new_total: number; stale_days: number;
+    stale_nc: number; stale_nc_untouched: number; nc_total: number;
   };
   stages: { key: string; leads: number; converted: number }[];
   ic_status: { key: string; leads: number; ics: number }[];
@@ -111,8 +112,8 @@ export default function Overview() {
       <PageHeader title="Overview" subtitle={`${f.basis === 'created' ? 'lead created' : 'touch date'} ${f.from} → ${f.to}${f.pay ? ` · payment date ${f.pfrom} → ${f.pto}` : ''} · same definitions as the Tableau "Lead Touch - Overview" dashboard`} />
       {q.error && <Note>⚠ {q.error.message}</Note>}
 
-      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 xl:grid-cols-7">
-        {q.isLoading && Array.from({ length: 7 }).map((_, i) => <Skeleton key={i} className="h-[92px]" />)}
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 xl:grid-cols-8">
+        {q.isLoading && Array.from({ length: 8 }).map((_, i) => <Skeleton key={i} className="h-[92px]" />)}
         {k && <>
           <Kpi tone="tone-blue" icon={<Icon.Users />} title="Total leads" value={fmtInt(k.leads)} sub={f.basis === 'created' ? 'distinct leads created in the window' : 'distinct leads touched in the window'} def={`${def.leads_basis ?? ''} ${def.leads ?? ''}`} onClick={() => open('leads', 'Total leads')} />
           <Kpi tone="tone-teal" icon={<Icon.Touch />} title="Total lead touches" value={fmtInt(k.touches)} sub={`${fmt2(k.touches_per_lead)} touches per lead`} def={def.touches} onClick={() => open('touches', 'Total lead touches')} />
@@ -126,6 +127,8 @@ export default function Overview() {
           <Kpi tone="tone-slate" icon={<Icon.Spark />} title="Salesforce Is_Converted flag" value={fmtInt(k.sf_converted)} sub="reference only" def={def.sf_converted} onClick={() => open('sf_converted', 'Salesforce Is_Converted flag')} />
           <Kpi tone="tone-red" icon={<Icon.Calendar />} title={`Still New after ${k.stale_days} days`} value={fmtInt(k.stale_new)} sub={`of ${fmtInt(k.new_total)} leads in stage New · ${fmtInt(k.stale_new_untouched)} never touched after creation`} def={def.stale_new}
             onClick={() => open('stale_new', `Still New after ${k.stale_days} days`, undefined, undefined, 'leads still in stage New, created more than 5 days ago and not touched in the last 5 days · sorted by last touch')} />
+          <Kpi tone="tone-amber" icon={<Icon.Calendar />} title={`Still Not Connected after ${k.stale_days} days`} value={fmtInt(k.stale_nc)} sub={`of ${fmtInt(k.nc_total)} leads in stage Not Connected · ${fmtInt(k.stale_nc_untouched)} never touched after creation`} def={def.stale_nc}
+            onClick={() => open('stale_not_connected', `Still Not Connected after ${k.stale_days} days`, undefined, undefined, 'leads still in stage Not Connected, created more than 5 days ago and not touched in the last 5 days · sorted by last touch')} />
         </>}
       </div>
 

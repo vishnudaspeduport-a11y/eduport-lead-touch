@@ -99,14 +99,15 @@ overview.get('/overview', (c) =>
                count(*) FILTER (WHERE ${conv})::int AS touches_of_converted
         FROM analytics.mv_touch_flat t WHERE ${w}`,
       // leads in the selection still in stage New, created more than N days ago and not touched in the last N days
-      sql<{ stale_new: number; stale_new_untouched: number; new_total: number }[]>`
+      sql<{ stale_new: number; stale_new_untouched: number; new_total: number; stale_nc: number; stale_nc_untouched: number; nc_total: number }[]>`
         WITH n AS (
-          SELECT t.lead_id, max(t.lead_created_date) AS created, (SELECT max(t2.touch_at) FROM analytics.mv_touch_flat t2 WHERE t2.lead_id = t.lead_id) AS last_touch
-          FROM analytics.mv_touch_flat t WHERE ${w} AND t.lead_stage = 'New' GROUP BY t.lead_id)
-        SELECT count(*) FILTER (WHERE created <= (now() AT TIME ZONE 'Asia/Kolkata')::date - ${staleDays}::int AND last_touch < now() - make_interval(days => ${staleDays}))::int AS stale_new,
-               count(*) FILTER (WHERE created <= (now() AT TIME ZONE 'Asia/Kolkata')::date - ${staleDays}::int AND last_touch < now() - make_interval(days => ${staleDays}) AND last_touch < created::timestamp AT TIME ZONE 'Asia/Kolkata' + interval '1 day')::int AS stale_new_untouched,
-               count(*)::int AS new_total
-        FROM n`,
+          SELECT t.lead_id, max(t.lead_stage) AS stage, max(t.lead_created_date) AS created, (SELECT max(t2.touch_at) FROM analytics.mv_touch_flat t2 WHERE t2.lead_id = t.lead_id) AS last_touch
+          FROM analytics.mv_touch_flat t WHERE ${w} AND t.lead_stage IN ('New', 'Not Connected') GROUP BY t.lead_id),
+        s AS (SELECT stage, (created <= (now() AT TIME ZONE 'Asia/Kolkata')::date - ${staleDays}::int AND last_touch < now() - make_interval(days => ${staleDays})) AS stale,
+                     (last_touch < created::timestamp AT TIME ZONE 'Asia/Kolkata' + interval '1 day') AS untouched FROM n)
+        SELECT count(*) FILTER (WHERE stage = 'New' AND stale)::int AS stale_new, count(*) FILTER (WHERE stage = 'New' AND stale AND untouched)::int AS stale_new_untouched, count(*) FILTER (WHERE stage = 'New')::int AS new_total,
+               count(*) FILTER (WHERE stage = 'Not Connected' AND stale)::int AS stale_nc, count(*) FILTER (WHERE stage = 'Not Connected' AND stale AND untouched)::int AS stale_nc_untouched, count(*) FILTER (WHERE stage = 'Not Connected')::int AS nc_total
+        FROM s`,
       // Tableau formula: AVG over touch rows (of leads with any valid payment) of the lead's all-time touch count
       sql<{ avg_rows: number | null; avg_leads: number | null; n_leads: number }[]>`
         SELECT avg(t.n_touches_all)::float8 AS avg_rows,
@@ -147,6 +148,7 @@ overview.get('/overview', (c) =>
         avg_touches_window_per_lead: avgWin?.avg_leads ?? null,
         avg_touches_window_n: avgWin?.n_leads ?? 0,
         stale_new: stale?.stale_new ?? 0, stale_new_untouched: stale?.stale_new_untouched ?? 0, new_total: stale?.new_total ?? 0, stale_days: staleDays,
+        stale_nc: stale?.stale_nc ?? 0, stale_nc_untouched: stale?.stale_nc_untouched ?? 0, nc_total: stale?.nc_total ?? 0,
       },
       stages, ic_status: icStatus,
       touch_point: touchPoint, source, class_raw: classRaw, reason, medium, campaign, staff, daily,
@@ -165,6 +167,7 @@ overview.get('/overview', (c) =>
         avg_per_lead: 'Per-lead variant (each converted lead counted once): the honest average number of touches a paying lead received.',
         reason: 'Tableau "Last Reason" reads Task.Reason__c (activities), which are not replicated (2.4 M rows). Shown instead: Lead_Master__c.LM_Reason__c of the touched leads.',
         stale_new: `Leads in the selection whose Lead Stage is still "New" although they were created more than ${staleDays} days ago and have had no touch in the last ${staleDays} days (any touch, in any month). "Never touched after creation" = their only touches are from the creation day itself. Only leads with at least one touch exist on this page.`,
+        stale_nc: `Same rule for Lead Stage "Not Connected": created more than ${staleDays} days ago and no touch in the last ${staleDays} days.`,
         dim_converted: 'Per row: distinct converted leads (Tableau definition) having a touch of that value in the window. A lead can appear under several rows.',
       },
     };

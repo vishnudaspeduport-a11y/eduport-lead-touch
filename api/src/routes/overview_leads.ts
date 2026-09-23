@@ -18,7 +18,7 @@ import { flatWhere, FLAT_COLS, convCond, convFirstCond, convNewCond } from './ov
 export const overviewLeads = new Hono<AppEnv>();
 
 type Rec = Record<string, unknown>;
-const METRICS = ['leads', 'touches', 'converted', 'first_touch', 'last_touch', 'stale_new', 'converted_first', 'converted_in_window', 'sf_converted', 'avg_alltime', 'avg_window'] as const;
+const METRICS = ['leads', 'touches', 'converted', 'first_touch', 'last_touch', 'stale_new', 'stale_not_connected', 'converted_first', 'converted_in_window', 'sf_converted', 'avg_alltime', 'avg_window'] as const;
 type Metric = (typeof METRICS)[number];
 
 const SORTABLE: Record<string, string> = {
@@ -49,9 +49,10 @@ function dimCond(sql: Sql, q: Record<string, string>): Frag {
 function metricHaving(sql: Sql, metric: Metric, p: Period, f?: Filters, q: Record<string, string> = {}): Frag {
   const conv = f ? convCond(sql, f) : sql`t.tab_converted`;
   switch (metric) {
-    case 'stale_new': {
+    case 'stale_new': case 'stale_not_connected': {
       const days = Math.max(1, Math.min(365, Number.parseInt(q.stale_days ?? '5', 10) || 5));
-      return sql`max(t.lead_stage) = 'New' AND max(t.lead_created_date) <= (now() AT TIME ZONE 'Asia/Kolkata')::date - ${days}::int
+      const stage = metric === 'stale_new' ? 'New' : 'Not Connected';
+      return sql`max(t.lead_stage) = ${stage} AND max(t.lead_created_date) <= (now() AT TIME ZONE 'Asia/Kolkata')::date - ${days}::int
         AND (SELECT max(t2.touch_at) FROM analytics.mv_touch_flat t2 WHERE t2.lead_id = t.lead_id) < now() - make_interval(days => ${days})`;
     }
     case 'converted': return sql`bool_or(${conv})`;
@@ -86,7 +87,7 @@ function leadQuery(sql: Sql, f: Filters, periods: { current: Period }, q: Record
   const metric = (METRICS as readonly string[]).includes(q.metric ?? '') ? (q.metric as Metric) : 'leads';
   const w = flatWhere(sql, f, metric === 'avg_alltime' ? null : periods.current);
   const sel = sql`${w} AND ${dimCond(sql, q)} AND ${searchCond(sql, q.q ?? '')}`;
-  const sortCol = SORTABLE[q.sort ?? ''] ?? (metric === 'stale_new' ? 'last_touch_in_window' : 'touches_in_window');
+  const sortCol = SORTABLE[q.sort ?? ''] ?? (metric.startsWith('stale') ? 'last_touch_in_window' : 'touches_in_window');
   const dir = q.dir === 'asc' ? sql`ASC NULLS FIRST` : sql`DESC NULLS LAST`;
   return sql<Rec[]>`
     WITH sel AS (
