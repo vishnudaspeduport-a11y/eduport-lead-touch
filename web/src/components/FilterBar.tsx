@@ -34,9 +34,6 @@ export function FilterBar() {
           <input type="date" className="input !py-1 text-xs" value={f.pto} min={f.pfrom} onChange={(e) => set({ pto: e.target.value })} />
         </>}
 
-        <Toggle checked={f.compare} onChange={(compare) => set({ compare })} label="vs previous period" />
-        <Toggle checked={f.converted} onChange={(converted) => set({ converted })} label="Converted only" />
-        <Toggle checked={f.dups} onChange={(dups) => set({ dups })} label="Include duplicates" title="Is_Duplicate__c = true rows are excluded by default" />
         <Segmented<'all' | 'paid' | 'organic'> size="xs" value={f.paid ?? 'all'} onChange={(v) => set({ paid: v === 'all' ? undefined : v })} options={[{ value: 'all', label: 'All' }, { value: 'paid', label: 'Paid' }, { value: 'organic', label: 'Organic' }]} />
 
         <Popover width="w-72" trigger={<button className="btn"><Icon.Plus /> Add filter</button>}>
