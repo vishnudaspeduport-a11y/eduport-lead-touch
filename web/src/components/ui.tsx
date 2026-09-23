@@ -80,6 +80,17 @@ export function Toggle({ checked, onChange, label, title }: { checked: boolean; 
   );
 }
 
+/** Search box for a card's rows; "Filter n" applies every matching value as a page filter */
+export function CardSearch({ value, onChange, count, onApply, placeholder = 'Search…' }: { value: string; onChange: (v: string) => void; count: number; onApply?: () => void; placeholder?: string }) {
+  return (
+    <span className="flex items-center gap-1">
+      <input className="input w-32 !py-0.5 text-[11px]" placeholder={placeholder} value={value} onChange={(e) => onChange(e.target.value)} />
+      {value && <button className="btn !px-1.5 !py-0.5 text-[10px]" onClick={() => onChange('')} title="Clear search"><Icon.Close /></button>}
+      {value && onApply && count > 0 && <button className="btn btn-dark !px-2 !py-0.5 text-[10px]" onClick={onApply} title="Filter every card by all the values that match">Filter {count}</button>}
+    </span>
+  );
+}
+
 export function Note({ children }: { children: ReactNode }) {
   return <div className="rounded-2xl bg-surface/70 px-3 py-2 text-[11px] leading-snug text-ink-2 ring-1 ring-ink/[0.04] backdrop-blur">{children}</div>;
 }

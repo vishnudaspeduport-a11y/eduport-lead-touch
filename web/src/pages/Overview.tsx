@@ -5,7 +5,7 @@ import { fmt2, fmtInt, fmtPct } from '../lib/format';
 import { ChartCard } from '../components/ChartCard';
 import { DataTable, type Col } from '../components/DataTable';
 import { Donut, HBars, VBars } from '../charts';
-import { Icon, Note, PageHeader, Popover, Skeleton } from '../components/ui';
+import { CardSearch, Icon, Note, PageHeader, Popover, Skeleton } from '../components/ui';
 import { DrillDrawer, type Drill, type DrillMetric } from '../components/DrillDrawer';
 
 interface DimRow { key: string; touches: number; leads: number; converted: number; converted_first: number; conv_rate?: number | null }
@@ -63,9 +63,36 @@ function Kpi({ title, value, sub, def, tone, icon, small, onClick, split }: { ti
   );
 }
 
+type DimCardOpts = { asTable?: boolean; height?: number; limit?: number; help?: string; subtitle?: string; colorful?: boolean };
+
+/** One dimension card (bars or table) with a search box; rows can be applied as a page filter one by one or all matches at once. */
+function DimCard({ title, rows, dim, measures, tone, opts, loading, error, onRetry, def, selected, toggleValue, setList }: {
+  title: string; rows: DimRow[] | undefined; dim: ListDim; measures: [Measure, Measure?]; tone: string; opts: DimCardOpts; loading: boolean; error: unknown; onRetry: () => void;
+  def: Record<string, string>; selected: string[]; toggleValue: (dim: ListDim, v: string) => void; setList: (dim: ListDim, v: string[]) => void;
+}) {
+  const [search, setSearch] = useState('');
+  const s = search.trim().toLowerCase();
+  const all = rows ?? [];
+  const filtered = s ? all.filter((r) => r.key.toLowerCase().includes(s)) : all;
+  const data = filtered.slice(0, opts.limit ?? 12);
+  const [m1, m2] = measures;
+  const cols = ALL_COLS.filter((c) => c.key === 'key' || measures.includes(c.key as Measure) || c.key === 'conv_rate');
+  return (
+    <ChartCard title={title} tone={tone} subtitle={opts.subtitle ?? (rows ? `${fmtInt(filtered.reduce((x, r) => x + r[m1], 0))} ${MEASURE_LABEL[m1].toLowerCase()}${s ? ` in ${filtered.length} matching rows` : ''} · click a row to filter every card` : undefined)}
+      loading={loading} error={error} onRetry={onRetry} rows={filtered} columns={ALL_COLS} height={opts.height ?? 250}
+      actions={<CardSearch value={search} onChange={setSearch} count={filtered.length} onApply={() => setList(dim, filtered.map((r) => r.key))} />}
+      help={opts.help ?? `${title}: touches in the window grouped by this value. ${def.dim_converted ?? ''}`}>
+      {opts.asTable
+        ? <DataTable rows={filtered} compact maxHeight="100%" initialSort={{ id: m1, desc: true }} onRowClick={(r) => toggleValue(dim, r.key)} columns={cols} />
+        : <HBars colorful={opts.colorful} data={data.map((r) => ({ key: r.key, value: r[m1], secondary: m2 ? r[m2] : null, selected: selected.includes(r.key), extra: { 'Total leads': fmtInt(r.leads), 'Conv %': fmtPct(r.conv_rate) } }))}
+            valueLabel={MEASURE_LABEL[m1]} secondaryLabel={m2 ? MEASURE_LABEL[m2] : undefined} secondaryFormat={fmtInt} onClick={(key) => toggleValue(dim, key)} />}
+    </ChartCard>
+  );
+}
+
 /** Mirrors the Tableau "Lead Touch - Overview" dashboard: touch-date window, touch grain. */
 export default function Overview() {
-  const { f, params, toggleValue, set } = useFilters();
+  const { f, params, toggleValue, setList, set } = useFilters();
   const q = useApi<OverviewResponse>('/overview', params);
   const d = q.data?.data;
   const k = d?.kpis;
@@ -73,22 +100,10 @@ export default function Overview() {
   const [drill, setDrill] = useState<Drill | null>(null);
   const open = (metric: DrillMetric, title: string, dim?: string, value?: string, subtitle?: string) => setDrill({ metric, title, dim, value, subtitle });
 
-  const dimCard = (title: string, rows: DimRow[] | undefined, dim: ListDim, measures: [Measure, Measure?], tone: string, opts: { asTable?: boolean; height?: number; limit?: number; help?: string; subtitle?: string; colorful?: boolean } = {}) => {
-    const data = (rows ?? []).slice(0, opts.limit ?? 12);
-    const selected = f.lists[dim] ?? [];
-    const [m1, m2] = measures;
-    const cols = ALL_COLS.filter((c) => c.key === 'key' || measures.includes(c.key as Measure) || c.key === 'conv_rate');
-    return (
-      <ChartCard title={title} tone={tone} subtitle={opts.subtitle ?? (rows ? `${fmtInt(rows.reduce((s, r) => s + r[m1], 0))} ${MEASURE_LABEL[m1].toLowerCase()} · click a row to filter every card` : undefined)}
-        loading={q.isLoading} error={q.error} onRetry={q.refetch} rows={rows ?? []} columns={ALL_COLS} height={opts.height ?? 250}
-        help={opts.help ?? `${title}: touches in the window grouped by this value. ${def.dim_converted ?? ''}`}>
-        {opts.asTable
-          ? <DataTable rows={rows ?? []} compact maxHeight="100%" initialSort={{ id: m1, desc: true }} onRowClick={(r) => toggleValue(dim, r.key)} columns={cols} />
-          : <HBars colorful={opts.colorful} data={data.map((r) => ({ key: r.key, value: r[m1], secondary: m2 ? r[m2] : null, selected: selected.includes(r.key), extra: { 'Total leads': fmtInt(r.leads), 'Conv %': fmtPct(r.conv_rate) } }))}
-              valueLabel={MEASURE_LABEL[m1]} secondaryLabel={m2 ? MEASURE_LABEL[m2] : undefined} secondaryFormat={fmtInt} onClick={(key) => toggleValue(dim, key)} />}
-      </ChartCard>
-    );
-  };
+  const dimCard = (title: string, rows: DimRow[] | undefined, dim: ListDim, measures: [Measure, Measure?], tone: string, opts: DimCardOpts = {}) => (
+    <DimCard key={title} title={title} rows={rows} dim={dim} measures={measures} tone={tone} opts={opts} loading={q.isLoading} error={q.error} onRetry={q.refetch}
+      def={def} selected={f.lists[dim] ?? []} toggleValue={toggleValue} setList={setList} />
+  );
 
   return (
     <div className="space-y-3">

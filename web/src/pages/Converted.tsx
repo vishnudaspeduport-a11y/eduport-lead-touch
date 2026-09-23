@@ -5,7 +5,7 @@ import { fmtINR, fmtInt, fmtPct, fmtDateTime } from '../lib/format';
 import { ChartCard } from '../components/ChartCard';
 import { DataTable, type Col } from '../components/DataTable';
 import { Donut, HBars, VBars } from '../charts';
-import { Icon, Note, PageHeader, Popover, Skeleton } from '../components/ui';
+import { CardSearch, Icon, Note, PageHeader, Popover, Skeleton } from '../components/ui';
 import { DrillDrawer, type Drill } from '../components/DrillDrawer';
 
 interface Dim { key: string; users: number; touches: number; revenue: number; new_users: number; share_pct: number | null }
@@ -52,9 +52,32 @@ function Kpi({ title, value, sub, def, tone, icon, onClick }: { title: string; v
   );
 }
 
+type ConvCardOpts = { filterDim?: ListDim; asTable?: boolean; height?: number; limit?: number; help?: string; cols?: Col<Dim>[] };
+
+function ConvCard({ title, rows, tone, opts, cols, loading, error, onRetry, help, selected, onRow, onApply }: {
+  title: string; rows: Dim[] | undefined; tone: string; opts: ConvCardOpts; cols: Col<Dim>[]; loading: boolean; error: unknown; onRetry: () => void; help: string;
+  selected: string[]; onRow: (key: string) => void; onApply?: (keys: string[]) => void;
+}) {
+  const [search, setSearch] = useState('');
+  const s = search.trim().toLowerCase();
+  const all = rows ?? [];
+  const filtered = s ? all.filter((r) => r.key.toLowerCase().includes(s)) : all;
+  const data = filtered.slice(0, opts.limit ?? 14);
+  return (
+    <ChartCard title={title} tone={tone} subtitle={rows ? `${fmtInt(filtered.reduce((x, r) => x + r.users, 0))} users${s ? ` in ${filtered.length} matching rows` : ''} · ${opts.filterDim ? 'click a row to filter every card' : 'click a row for the users'}` : undefined}
+      loading={loading} error={error} onRetry={onRetry} rows={filtered} columns={cols} height={opts.height ?? 340} help={help}
+      actions={<CardSearch value={search} onChange={setSearch} count={filtered.length} onApply={onApply ? () => onApply(filtered.map((r) => r.key)) : undefined} />}>
+      {opts.asTable
+        ? <DataTable rows={filtered} compact maxHeight="100%" initialSort={{ id: 'users', desc: true }} onRowClick={(r) => onRow(r.key)} columns={cols} />
+        : <HBars colorful data={data.map((r) => ({ key: r.key, value: r.users, secondary: r.share_pct, selected: selected.includes(r.key), extra: { Revenue: fmtINR(r.revenue), 'Touches before payment': fmtInt(r.touches) } }))}
+            valueLabel="Converted (users)" secondaryLabel="Share" onClick={onRow} />}
+    </ChartCard>
+  );
+}
+
 /** Tableau "Lead Touch - Converted": paying users by payment date, credited to their last touch before the payment. */
 export default function Converted() {
-  const { f, params, toggleValue } = useFilters();
+  const { f, params, toggleValue, setList } = useFilters();
   const [grade, setGrade] = useState<string>('');
   const q = useApi<Resp>('/converted', { ...params, grade });
   const d = q.data?.data;
@@ -72,21 +95,12 @@ export default function Converted() {
     { key: 'key', header: '' }, { key: 'users', header: 'Converted (users)', bar: true }, { key: 'touches', header: 'Payments' }, { key: 'revenue', header: 'Revenue (window)', render: (v) => fmtINR(v as number) },
   ];
 
-  const card = (title: string, rows: Dim[] | undefined, drillDim: string, tone: string, opts: { filterDim?: ListDim; asTable?: boolean; height?: number; limit?: number; help?: string; cols?: Col<Dim>[] } = {}) => {
-    const data = (rows ?? []).slice(0, opts.limit ?? 14);
-    const cols = opts.cols ?? dimCols;
-    const onRow = (key: string) => (opts.filterDim ? toggleValue(opts.filterDim, key) : open(`${title} · ${key}`, drillDim, key));
-    return (
-      <ChartCard title={title} tone={tone} subtitle={rows ? `${fmtInt(rows.reduce((s, r) => s + r.users, 0))} users · ${opts.filterDim ? 'click a row to filter every card' : 'click a row for the users'}` : undefined}
-        loading={q.isLoading} error={q.error} onRetry={q.refetch} rows={rows ?? []} columns={cols} height={opts.height ?? 340}
-        help={opts.help ?? `${title}. ${def.credit ?? ''}`}>
-        {opts.asTable
-          ? <DataTable rows={rows ?? []} compact maxHeight="100%" initialSort={{ id: 'users', desc: true }} onRowClick={(r) => onRow(r.key)} columns={cols} />
-          : <HBars colorful data={data.map((r) => ({ key: r.key, value: r.users, secondary: r.share_pct, selected: opts.filterDim ? (f.lists[opts.filterDim] ?? []).includes(r.key) : false, extra: { Revenue: fmtINR(r.revenue), 'Touches before payment': fmtInt(r.touches) } }))}
-              valueLabel="Converted (users)" secondaryLabel="Share" onClick={onRow} />}
-      </ChartCard>
-    );
-  };
+  const card = (title: string, rows: Dim[] | undefined, drillDim: string, tone: string, opts: ConvCardOpts = {}) => (
+    <ConvCard key={title} title={title} rows={rows} tone={tone} opts={opts} cols={opts.cols ?? dimCols} loading={q.isLoading} error={q.error} onRetry={q.refetch}
+      help={opts.help ?? `${title}. ${def.credit ?? ''}`} selected={opts.filterDim ? (f.lists[opts.filterDim] ?? []) : []}
+      onRow={(key) => (opts.filterDim ? toggleValue(opts.filterDim, key) : open(`${title} · ${key}`, drillDim, key))}
+      onApply={opts.filterDim ? (keys) => setList(opts.filterDim!, keys) : undefined} />
+  );
 
   return (
     <div className="space-y-3">

@@ -5,7 +5,7 @@ import { fmtInt, fmtPct } from '../lib/format';
 import { ChartCard } from '../components/ChartCard';
 import { DataTable, type Col } from '../components/DataTable';
 import { HBars, VBars } from '../charts';
-import { Icon, Note, PageHeader, Popover, Skeleton } from '../components/ui';
+import { CardSearch, Icon, Note, PageHeader, Popover, Skeleton } from '../components/ui';
 import { DrillDrawer, type Drill } from '../components/DrillDrawer';
 
 interface AttrRow { key: string; touches: number; leads: number; converted: number; attributed: number; conv_pct: number | null; attr_pct: number | null; share_pct: number | null }
@@ -36,9 +36,30 @@ function Kpi({ title, value, sub, def, tone, icon, onClick }: { title: string; v
   );
 }
 
+function AttrCard({ title, rows, dim, tone, opts, cols, label, mode, loading, error, onRetry, help, selected, toggleValue, setList }: {
+  title: string; rows: AttrRow[] | undefined; dim: ListDim; tone: string; opts: { asTable?: boolean; height?: number; limit?: number }; cols: Col<AttrRow>[]; label: string; mode: 'first' | 'last';
+  loading: boolean; error: unknown; onRetry: () => void; help: string; selected: string[]; toggleValue: (dim: ListDim, v: string) => void; setList: (dim: ListDim, v: string[]) => void;
+}) {
+  const [search, setSearch] = useState('');
+  const s = search.trim().toLowerCase();
+  const all = rows ?? [];
+  const filtered = s ? all.filter((r) => r.key.toLowerCase().includes(s)) : all;
+  const data = filtered.slice(0, opts.limit ?? 14);
+  return (
+    <ChartCard title={title} tone={tone} subtitle={rows ? `${fmtInt(filtered.reduce((x, r) => x + r.attributed, 0))} ${label.toLowerCase()}${s ? ` in ${filtered.length} matching rows` : ''} · click a row to filter every card` : undefined}
+      loading={loading} error={error} onRetry={onRetry} rows={filtered} columns={cols} height={opts.height ?? 340} help={help}
+      actions={<CardSearch value={search} onChange={setSearch} count={filtered.length} onApply={() => setList(dim, filtered.map((r) => r.key))} />}>
+      {opts.asTable
+        ? <DataTable rows={filtered} compact maxHeight="100%" initialSort={{ id: 'attributed', desc: true }} onRowClick={(r) => toggleValue(dim, r.key)} columns={cols} />
+        : <HBars colorful data={data.map((r) => ({ key: r.key, value: r.attributed, secondary: r.share_pct, selected: selected.includes(r.key), extra: { 'Total leads': fmtInt(r.leads), Converted: fmtInt(r.converted), [mode === 'first' ? 'Percentage' : 'Last-touch %']: fmtPct(r.attr_pct) } }))}
+            valueLabel={label} secondaryLabel="Share" onClick={(key) => toggleValue(dim, key)} />}
+    </ChartCard>
+  );
+}
+
 /** Tableau "Lead Touch - First Touch" / "Lead Touch - Last Touch": every converted lead credited to exactly one touch. */
 export default function TouchAttribution({ mode }: { mode: 'first' | 'last' }) {
-  const { f, params, toggleValue } = useFilters();
+  const { f, params, toggleValue, setList } = useFilters();
   const q = useApi<Resp>('/touch-attribution', { ...params, mode });
   const d = q.data?.data;
   const k = d?.kpis;
@@ -53,20 +74,10 @@ export default function TouchAttribution({ mode }: { mode: 'first' | 'last' }) {
     { key: 'conv_pct', header: 'Conv %', render: (v) => fmtPct(v as number) }, { key: 'share_pct', header: 'Share', render: (v) => fmtPct(v as number) },
   ];
 
-  const card = (title: string, rows: AttrRow[] | undefined, dim: ListDim, tone: string, opts: { asTable?: boolean; height?: number; limit?: number; help?: string } = {}) => {
-    const selected = f.lists[dim] ?? [];
-    const data = (rows ?? []).slice(0, opts.limit ?? 14);
-    return (
-      <ChartCard title={title} tone={tone} subtitle={rows ? `${fmtInt(rows.reduce((s, r) => s + r.attributed, 0))} ${label.toLowerCase()} · click a row to filter every card` : undefined}
-        loading={q.isLoading} error={q.error} onRetry={q.refetch} rows={rows ?? []} columns={cols} height={opts.height ?? 340}
-        help={opts.help ?? `${title}: ${def.attributed ?? ''} Total leads and Converted are the same measures as the Overview.`}>
-        {opts.asTable
-          ? <DataTable rows={rows ?? []} compact maxHeight="100%" initialSort={{ id: 'attributed', desc: true }} onRowClick={(r) => toggleValue(dim, r.key)} columns={cols} />
-          : <HBars colorful data={data.map((r) => ({ key: r.key, value: r.attributed, secondary: r.share_pct, selected: selected.includes(r.key), extra: { 'Total leads': fmtInt(r.leads), Converted: fmtInt(r.converted), [mode === 'first' ? 'Percentage' : 'Last-touch %']: fmtPct(r.attr_pct) } }))}
-              valueLabel={label} secondaryLabel="Share" onClick={(key) => toggleValue(dim, key)} />}
-      </ChartCard>
-    );
-  };
+  const card = (title: string, rows: AttrRow[] | undefined, dim: ListDim, tone: string, opts: { asTable?: boolean; height?: number; limit?: number; help?: string } = {}) => (
+    <AttrCard key={title} title={title} rows={rows} dim={dim} tone={tone} opts={opts} cols={cols} label={label} mode={mode} loading={q.isLoading} error={q.error} onRetry={q.refetch}
+      help={opts.help ?? `${title}: ${def.attributed ?? ''} Total leads and Converted are the same measures as the Overview.`} selected={f.lists[dim] ?? []} toggleValue={toggleValue} setList={setList} />
+  );
 
   return (
     <div className="space-y-3">
