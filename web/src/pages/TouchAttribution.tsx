@@ -100,7 +100,7 @@ export default function TouchAttribution({ mode }: { mode: 'first' | 'last' }) {
       <Note>
         {mode === 'first'
           ? <>Each converted lead is credited to <b>one</b> touch: its selected first touch (earliest touch on/after 1 March 2026, or its latest touch if none after that date), exactly as the workbook's "first touch" measure. </>
-          : <>Each lead is credited to <b>one</b> touch: its last valid touch, the latest touch dated on/before its last valid payment, exactly as the workbook's "lasttouch point count". </>}
+          : <>Each lead is credited to <b>one</b> touch: its last valid touch, the latest touch dated <b>before the day</b> of its last valid payment, exactly as the workbook's "lasttouch point count". Touches made on the payment day itself are not eligible in the workbook (its formula reads the payment date as midnight), so a same-day app touch before paying is skipped and the credit goes to the previous touch. </>}
         So the {label.toLowerCase()} column adds up across rows, unlike Total leads and Converted, where a lead can appear under several values. Clicking a KPI lists the leads; clicking a bar or row filters every card.
       </Note>
     </div>

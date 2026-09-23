@@ -11,7 +11,8 @@ import { flatWhere } from './overview';
  *   Total leads  = COUNTD(lead) over touches in the window with that value
  *   Converted    = COUNTD(lead) with any valid payment on/after such a touch           (workbook "Converted")
  *   first touch  = COUNTD(lead) whose *selected first touch* is such a touch and converted (workbook "first touch")
- *   last touch   = COUNTD(lead) whose *last valid touch* (latest touch on/before its last payment) is such a touch (workbook "lasttouch point count")
+ *   last touch   = COUNTD(lead) whose *last valid touch* (latest touch strictly BEFORE its last payment day) is such a touch (workbook "lasttouch point count";
+ *                  the workbook compares a touch timestamp with the payment DATE, which Tableau reads as midnight, so payment-day touches never qualify)
  *   percentage   = first touch / Total leads   |   % = Converted / Total leads
  * Selected first touch = the lead's earliest touch on/after 2026-03-01, else its latest touch (workbook LODs).
  */
@@ -56,7 +57,7 @@ touchAttribution.get('/touch-attribution', (c) =>
         converted: 'Tableau "Converted": distinct touched leads with any valid payment dated on/after such a touch.',
         attributed: mode === 'first'
           ? 'Tableau "first touch": converted leads whose selected first touch is in the window (per row: has that value). Selected first touch = the lead\'s earliest touch on/after 1 Mar 2026, or its latest touch if it has none after that date. Each converted lead is credited to exactly one touch point / source / medium / campaign / class.'
-          : 'Tableau "lasttouch point count": leads whose last valid touch (their latest touch dated on/before their last valid payment) is in the window (per row: has that value). Each such lead is credited to exactly one touch point / source / medium / campaign / class.',
+          : 'Tableau "lasttouch point count": leads whose last valid touch is in the window (per row: has that value). Last valid touch = the latest touch dated strictly BEFORE the day of the lead\'s last valid payment: the workbook compares the touch timestamp with the payment date read as midnight, so touches on the payment day itself never qualify. Each such lead is credited to exactly one touch point / source / medium / campaign / class. Verified against the workbook for Sep 2026 (Eduport App 1,644 vs 1,639).',
         attr_pct: mode === 'first' ? 'Tableau "percentage": first-touch conversions ÷ Total leads.' : 'Last-touch conversions ÷ Total leads (the workbook shows Converted ÷ Total leads as "%").',
         share_pct: `${label} of this row ÷ ${label.toLowerCase()} of all rows in the table (adds up to 100%).`,
         conv_pct: 'Tableau "%": Converted ÷ Total leads.',

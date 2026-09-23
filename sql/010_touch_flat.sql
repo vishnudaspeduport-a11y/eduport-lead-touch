@@ -69,7 +69,8 @@ seq AS (
       count(*) OVER (PARTITION BY lead_id, is_pre_conversion) END AS n_pre_touches,
     min(touch_at) FILTER (WHERE touch_date >= DATE '2026-03-01') OVER (PARTITION BY lead_id) AS tab_first_since_mar_at,
     max(touch_at) OVER (PARTITION BY lead_id)                                              AS tab_last_any_at,
-    max(touch_at) FILTER (WHERE last_payment_date IS NOT NULL AND touch_date <= last_payment_date) OVER (PARTITION BY lead_id) AS tab_last_valid_at
+    -- workbook: touch datetime <= payment_date, where Tableau reads the DATE as midnight -> touches ON the payment day are excluded
+    max(touch_at) FILTER (WHERE last_payment_date IS NOT NULL AND touch_date < last_payment_date) OVER (PARTITION BY lead_id) AS tab_last_valid_at
   FROM tv
   WINDOW w_all AS (PARTITION BY lead_id ORDER BY touch_at, touch_id)
 )
