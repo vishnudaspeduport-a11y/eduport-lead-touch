@@ -103,8 +103,8 @@ overview.get('/overview', (c) =>
         WITH n AS (
           SELECT t.lead_id, max(t.lead_created_date) AS created, (SELECT max(t2.touch_at) FROM analytics.mv_touch_flat t2 WHERE t2.lead_id = t.lead_id) AS last_touch
           FROM analytics.mv_touch_flat t WHERE ${w} AND t.lead_stage = 'New' GROUP BY t.lead_id)
-        SELECT count(*) FILTER (WHERE created <= (now() AT TIME ZONE 'Asia/Kolkata')::date - ${staleDays} AND last_touch < now() - make_interval(days => ${staleDays}))::int AS stale_new,
-               count(*) FILTER (WHERE created <= (now() AT TIME ZONE 'Asia/Kolkata')::date - ${staleDays} AND last_touch < now() - make_interval(days => ${staleDays}) AND last_touch < created::timestamp AT TIME ZONE 'Asia/Kolkata' + interval '1 day')::int AS stale_new_untouched,
+        SELECT count(*) FILTER (WHERE created <= (now() AT TIME ZONE 'Asia/Kolkata')::date - ${staleDays}::int AND last_touch < now() - make_interval(days => ${staleDays}))::int AS stale_new,
+               count(*) FILTER (WHERE created <= (now() AT TIME ZONE 'Asia/Kolkata')::date - ${staleDays}::int AND last_touch < now() - make_interval(days => ${staleDays}) AND last_touch < created::timestamp AT TIME ZONE 'Asia/Kolkata' + interval '1 day')::int AS stale_new_untouched,
                count(*)::int AS new_total
         FROM n`,
       // Tableau formula: AVG over touch rows (of leads with any valid payment) of the lead's all-time touch count

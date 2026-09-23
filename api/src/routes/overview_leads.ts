@@ -51,7 +51,7 @@ function metricHaving(sql: Sql, metric: Metric, p: Period, f?: Filters, q: Recor
   switch (metric) {
     case 'stale_new': {
       const days = Math.max(1, Math.min(365, Number.parseInt(q.stale_days ?? '5', 10) || 5));
-      return sql`max(t.lead_stage) = 'New' AND max(t.lead_created_date) <= (now() AT TIME ZONE 'Asia/Kolkata')::date - ${days}
+      return sql`max(t.lead_stage) = 'New' AND max(t.lead_created_date) <= (now() AT TIME ZONE 'Asia/Kolkata')::date - ${days}::int
         AND (SELECT max(t2.touch_at) FROM analytics.mv_touch_flat t2 WHERE t2.lead_id = t.lead_id) < now() - make_interval(days => ${days})`;
     }
     case 'converted': return sql`bool_or(${conv})`;
