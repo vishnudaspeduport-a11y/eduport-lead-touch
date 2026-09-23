@@ -24,12 +24,13 @@ export const FLAT_COLS: Partial<Record<(typeof LIST_KEYS)[number], string>> = {
 };
 
 /** "Converted" for the current filters: workbook rule (any valid payment on/after the touch day), or - when the
- *  payment-date window is switched on - any valid payment dated inside that window. */
+ *  payment-date window is switched on - a valid payment dated inside that window and on/after the touch day. */
 export function convCond(sql: Sql, f: Filters): Frag {
   const pp = paymentPeriod(f);
   if (!pp) return sql`t.tab_converted`;
   return sql`EXISTS (SELECT 1 FROM app.home_payment hp WHERE hp.user_id = t.app_user_id AND hp.payment_method = 0 AND hp.deleted = false
-                     AND hp.is_success = true AND hp.payment_success = true AND hp.payment_date BETWEEN ${pp.from} AND ${pp.to})`;
+                     AND hp.is_success = true AND hp.payment_success = true AND hp.payment_date BETWEEN ${pp.from} AND ${pp.to}
+                     AND hp.payment_date >= t.touch_date)`;   // still on/after the touch day, as in the workbook
 }
 /** first valid payment on/after a touch (brief definition), within the payment window when it is on */
 export function convFirstCond(sql: Sql, f: Filters): Frag {
