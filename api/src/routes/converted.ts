@@ -22,7 +22,7 @@ const VALID = (sql: Sql) => sql`hp.payment_method = 0 AND hp.deleted = false AND
 
 /** global filter chips that make sense on the payer grain */
 const PAYER_COLS: Partial<Record<(typeof LIST_KEYS)[number], string>> = {
-  lead_stage: 'lead_stage', lead_source: 'lead_source', class_raw: 'class_raw', class_group: 'class_group', owner: 'owner_name', lm_reason: 'lm_reason', district: 'district',
+  lead_stage: 'lead_stage', lead_source: 'lead_source', class_raw: 'class_raw', class_group: 'class_group', owner: 'owner_name',
   medium: 'last_touch_medium', source: 'last_touch_source', touch_point: 'last_touch_point', campaign: 'last_touch_campaign', staff: 'last_touch_staff',
 };
 const DIMS: Record<string, string> = {
@@ -79,14 +79,16 @@ converted.get('/converted', (c) =>
   handle(c, async ({ sql, f, periods, q }) => {
     const p = periods.current;
     const w = payerWhere(sql, f, p, q);
-    const [[k], byStage, byPoint, bySource, byMedium, byCampaign, byStaff, byCourse, byGrade, daily, grades, [touchRule]] = await Promise.all([
-      sql<{ users: number; new_users: number; no_touch: number; no_lead: number; payments: number; revenue: number; touches: number }[]>`
+    const [[k], [pk], byStage, byPoint, bySource, byMedium, byCampaign, byStaff, byCourse, byGrade, daily, grades, [touchRule]] = await Promise.all([
+      sql<{ users: number; new_users: number; no_touch: number; no_lead: number; revenue: number; touches: number }[]>`
         SELECT count(*)::int AS users, count(*) FILTER (WHERE m.first_payment_date BETWEEN ${p.from} AND ${p.to})::int AS new_users,
                count(*) FILTER (WHERE m.last_touch_id IS NULL)::int AS no_touch, count(*) FILTER (WHERE m.no_lead)::int AS no_lead,
-               (SELECT count(*)::int FROM app.home_payment hp WHERE ${VALID(sql)} AND hp.payment_date BETWEEN ${p.from} AND ${p.to} AND hp.user_id IN (SELECT m2.user_id FROM analytics.mv_payer m2 WHERE ${w.toString() ? sql`true` : sql`true`} AND m2.user_id = hp.user_id)) AS payments_all,
-               COALESCE((SELECT sum(hp.amount) FROM app.home_payment hp WHERE ${VALID(sql)} AND hp.payment_date BETWEEN ${p.from} AND ${p.to} AND hp.user_id IN (SELECT m3.user_id FROM analytics.mv_payer m3 WHERE ${w.toString() ? sql`true` : sql`true`} AND m3.user_id = hp.user_id)), 0)::float8 AS revenue_all,
-               count(*)::int AS payments, COALESCE(sum(m.revenue), 0)::float8 AS revenue, COALESCE(sum(m.touches_before_payment), 0)::int AS touches
+               COALESCE(sum(m.revenue), 0)::float8 AS revenue, COALESCE(sum(m.touches_before_payment), 0)::int AS touches
         FROM analytics.mv_payer m WHERE ${w}`,
+      sql<{ payments_all: number; revenue_all: number }[]>`
+        SELECT count(*)::int AS payments_all, COALESCE(sum(hp.amount), 0)::float8 AS revenue_all
+        FROM app.home_payment hp WHERE ${VALID(sql)} AND hp.payment_date BETWEEN ${p.from} AND ${p.to}
+          AND hp.user_id IN (SELECT m.user_id FROM analytics.mv_payer m WHERE ${w})`,
       byDim(sql, w, 'lead_stage', p), byDim(sql, w, 'last_touch_point', p), byDim(sql, w, 'last_touch_source', p), byDim(sql, w, 'last_touch_medium', p),
       byDim(sql, w, 'last_touch_campaign', p), byDim(sql, w, 'last_touch_staff', p),
       sql<PayerDim[]>`
@@ -110,7 +112,7 @@ converted.get('/converted', (c) =>
     ]);
     return {
       period: p,
-      kpis: { ...k, no_touch_pct: pct(k.no_touch, k.users), no_lead_pct: pct(k.no_lead, k.users), converted_leads_touch_rule: touchRule.n },
+      kpis: { ...k, ...pk, no_touch_pct: pct(k.no_touch, k.users), no_lead_pct: pct(k.no_lead, k.users), converted_leads_touch_rule: touchRule.n },
       by_stage: byStage, by_last_touch_point: byPoint, by_last_source: bySource, by_last_medium: byMedium, by_last_campaign: byCampaign, by_last_staff: byStaff,
       by_course: byCourse, by_grade: byGrade, daily, grades: grades.map((g) => g.key),
       definitions: {

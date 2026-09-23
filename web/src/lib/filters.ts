@@ -8,9 +8,8 @@ import { useSearchParams } from 'react-router-dom';
 export type Basis = 'created' | 'touch' | 'payment';
 
 export const LIST_DIMS = [
-  'lead_source', 'lead_source_detail', 'lead_stage', 'class_group', 'class_raw', 'district', 'city', 'state', 'priority', 'lead_type', 'owner',
-  'ic_course', 'ic_status', 'app_tier', 'campaign_quality', 'campaign_name', 'ad_campaign', 'lead_ad_set', 'lead_ad_name', 'ad_platform', 'ad_class',
-  'class_match', 'first_touch_point', 'last_touch_point', 'touch_bucket', 'lm_reason',
+  'lead_source', 'lead_stage', 'class_group', 'class_raw', 'district', 'city', 'priority', 'lead_type', 'owner',
+  'ic_status', 'ad_platform', 'first_touch_point', 'last_touch_point', 'touch_bucket', 'lm_reason',
   'source', 'medium', 'touch_point', 'campaign', 'ad_set', 'ad_name', 'staff', 'platform_id', 'gap_bucket',
 ] as const;
 export type ListDim = (typeof LIST_DIMS)[number];
@@ -25,27 +24,20 @@ export const FILTER_MENU: { key: ListDim; label: string; group: string }[] = [
   { key: 'priority', label: 'Priority', group: 'Lead' },
   { key: 'lead_type', label: 'Lead Type', group: 'Lead' },
   { key: 'owner', label: 'Owner (sales staff)', group: 'Lead' },
-  { key: 'ic_course', label: 'IC Course', group: 'Lead' },
   { key: 'ic_status', label: 'IC Status', group: 'Lead' },
-  { key: 'app_tier', label: 'App Engagement Tier', group: 'Lead' },
-  { key: 'campaign_quality', label: 'Campaign Quality', group: 'Lead' },
-  { key: 'class_match', label: 'Ad Class Match', group: 'Lead' },
-  { key: 'first_touch_point', label: 'First Touch Point', group: 'Lead' },
-  { key: 'last_touch_point', label: 'Last Touch Point', group: 'Lead' },
+  { key: 'lm_reason', label: 'LM Reason', group: 'Lead' },
+  { key: 'class_raw', label: 'Class (raw)', group: 'Lead' },
   { key: 'touch_point', label: 'Touch Point', group: 'Touch' },
   { key: 'source', label: 'Source (touch)', group: 'Touch' },
   { key: 'medium', label: 'Medium', group: 'Touch' },
   { key: 'campaign', label: 'Campaign', group: 'Touch' },
-  { key: 'ad_set', label: 'Ad Set', group: 'Touch' },
-  { key: 'ad_name', label: 'Ad', group: 'Touch' },
   { key: 'staff', label: 'Staff (touch)', group: 'Touch' },
 ];
 export const DIM_LABEL: Record<string, string> = Object.fromEntries(FILTER_MENU.map((m) => [m.key, m.label]));
 Object.assign(DIM_LABEL, {
-  lead_source_detail: 'Lead Source Detail', class_raw: 'Class (raw)', state: 'State', campaign_name: 'Campaign Name', ad_campaign: 'Ad Campaign',
-  lead_ad_set: 'Ad Set (lead)', lead_ad_name: 'Ad (lead)', ad_platform: 'Ad Platform', ad_class: 'Ad Class', touch_bucket: 'Touches', lm_reason: 'LM Reason',
-  platform_id: 'Platform ID', gap_bucket: 'Gap bucket', paid: 'Paid / Organic', paid_touch: 'Paid touch', hot: 'Hot', supreme_hot: 'Supreme Hot',
-  relogged: 'Re-logged', repeat: 'Repeat lead', pre_existing: 'Pre-existing customer',
+  ad_platform: 'Ad Platform', touch_bucket: 'Touches', first_touch_point: 'First Touch Point', last_touch_point: 'Last Touch Point',
+  ad_set: 'Ad Set', ad_name: 'Ad', platform_id: 'Platform ID', gap_bucket: 'Gap bucket', paid: 'Paid / Organic', paid_touch: 'Paid touch',
+  repeat: 'Repeat lead', pre_existing: 'Pre-existing customer',
 });
 
 export interface FilterState {

@@ -20,7 +20,7 @@ WITH pay AS (
   FROM analytics.v_valid_payment vp LEFT JOIN app.core_batch b ON b.id = vp.batch_id
   GROUP BY 1, 2),
 leads AS (
-  SELECT c.lead_id, c.phone_key, c.lead_name, c.lead_stage, c.class_raw, c.class_group, c.lead_source, c.owner_name, c.created_at, c.lm_reason, c.district
+  SELECT c.lead_id, c.phone_key, c.lead_name, c.lead_stage, c.class_raw, c.class_group, c.lead_source, c.owner_name, c.created_at
   FROM analytics.v_lead_conv c WHERE c.phone_key IS NOT NULL),
 ul AS (SELECT p.user_id, l.* FROM pay p JOIN leads l USING (phone_key)),
 lead1 AS (SELECT DISTINCT ON (user_id) * FROM ul ORDER BY user_id, created_at DESC),          -- representative lead: latest created
@@ -36,16 +36,15 @@ ntb AS (
   SELECT x.user_id, count(*)::int AS touches_before, count(*) FILTER (WHERE x.touch_date <= p.last_payment_date)::int AS touches_on_before
   FROM touches x JOIN pay p USING (user_id) GROUP BY 1)
 SELECT p.user_id, p.phone_key, p.first_payment_date, p.last_payment_date, p.payments, p.revenue, p.courses, p.grades,
-       lead1.lead_id, lead1.lead_name, lead1.lead_stage, lead1.class_raw, lead1.class_group, lead1.lead_source, lead1.owner_name, lead1.lm_reason, lead1.district,
+       lead1.lead_id, lead1.lead_name, lead1.lead_stage, lead1.class_raw, lead1.class_group, lead1.lead_source, lead1.owner_name,
        (lead1.lead_id IS NULL) AS no_lead,
-       lt.touch_at AS last_touch_at, lt.touch_id AS last_touch_id, lt.lead_id AS last_touch_lead_id,
+       lt.touch_at AS last_touch_at, lt.touch_id AS last_touch_id,
        COALESCE(lt.touch_point, 'No Touch Before Payment') AS last_touch_point,
        COALESCE(lt.source,      'No Touch Before Payment') AS last_touch_source,
        COALESCE(lt.medium,      'No Touch Before Payment') AS last_touch_medium,
        COALESCE(lt.campaign,    'No Touch Before Payment') AS last_touch_campaign,
        COALESCE(lt.staff,       CASE WHEN lt.touch_id IS NULL THEN 'No Touch Before Payment' ELSE '(Blank)' END) AS last_touch_staff,
-       COALESCE(ntb.touches_on_before, 0) AS touches_before_payment,
-       COALESCE(ntb.touches_before, 0)    AS touches_all
+       COALESCE(ntb.touches_on_before, 0) AS touches_before_payment
 FROM pay p
 LEFT JOIN lead1 USING (user_id)
 LEFT JOIN lt    USING (user_id)

@@ -19,9 +19,8 @@ export const overview = new Hono<AppEnv>();
 /** filter key -> column on mv_touch_flat */
 export const FLAT_COLS: Partial<Record<(typeof LIST_KEYS)[number], string>> = {
   lead_source: 'lead_source', lead_stage: 'lead_stage', class_group: 'class_group', class_raw: 'class_raw', district: 'district', city: 'city',
-  priority: 'priority', lead_type: 'lead_type', owner: 'owner_name', ic_status: 'best_ic_status', app_tier: 'app_engagement_tier',
-  campaign_quality: 'campaign_quality', lm_reason: 'lm_reason', source: 'source', medium: 'medium', touch_point: 'touch_point',
-  campaign: 'campaign', ad_set: 'adset_name', ad_name: 'ad_name', staff: 'staff', gap_bucket: 'gap_bucket',
+  priority: 'priority', lead_type: 'lead_type', owner: 'owner_name', ic_status: 'best_ic_status',
+  lm_reason: 'lm_reason', source: 'source', medium: 'medium', touch_point: 'touch_point', campaign: 'campaign', staff: 'staff',
 };
 
 export function flatWhere(sql: Sql, f: Filters, p: Period | null): Frag {
@@ -50,14 +49,13 @@ export function flatWhere(sql: Sql, f: Filters, p: Period | null): Frag {
   return c.reduce((a, x) => sql`${a} AND ${x}`, sql`true`);
 }
 
-export interface DimRow { key: string; touches: number; leads: number; converted: number; converted_first: number; revenue: number; conv_rate?: number | null }
+export interface DimRow { key: string; touches: number; leads: number; converted: number; converted_first: number; conv_rate?: number | null }
 
 async function byDim(sql: Sql, w: Frag, col: string, limit = 40): Promise<DimRow[]> {
   const rows = await sql<DimRow[]>`
     SELECT COALESCE(t.${sql(col)}::text, '(null)') AS key, count(*)::int AS touches, count(DISTINCT t.lead_id)::int AS leads,
            count(DISTINCT t.lead_id) FILTER (WHERE t.tab_converted)::int AS converted,
-           count(DISTINCT t.lead_id) FILTER (WHERE t.converted AND t.is_pre_conversion)::int AS converted_first,
-           COALESCE(sum(t.credit_linear * t.revenue),0)::float8 AS revenue
+           count(DISTINCT t.lead_id) FILTER (WHERE t.converted AND t.is_pre_conversion)::int AS converted_first
     FROM analytics.mv_touch_flat t WHERE ${w} GROUP BY 1 ORDER BY touches DESC LIMIT ${limit}`;
   return rows.map((r) => ({ ...r, conv_rate: pct(r.converted, r.leads) }));
 }
@@ -67,15 +65,14 @@ overview.get('/overview', (c) =>
     const w = flatWhere(sql, f, periods.current);
     const wAll = flatWhere(sql, f, null);
     const [[k], [avgWin], [avgAll], stages, icStatus, touchPoint, source, classRaw, reason, medium, campaign, staff, daily] = await Promise.all([
-      sql<{ touches: number; leads: number; converted: number; converted_first: number; converted_in_window: number; sf_converted: number; touches_of_converted: number; revenue: number }[]>`
+      sql<{ touches: number; leads: number; converted: number; converted_first: number; converted_in_window: number; sf_converted: number; touches_of_converted: number }[]>`
         SELECT count(*)::int AS touches,
                count(DISTINCT t.lead_id)::int AS leads,
                count(DISTINCT t.lead_id) FILTER (WHERE t.tab_converted)::int AS converted,
                count(DISTINCT t.lead_id) FILTER (WHERE t.converted AND t.is_pre_conversion)::int AS converted_first,
                count(DISTINCT t.lead_id) FILTER (WHERE t.converted AND t.converted_at BETWEEN ${periods.current.from} AND ${periods.current.to})::int AS converted_in_window,
                count(DISTINCT t.lead_id) FILTER (WHERE t.lead_sf_is_converted)::int AS sf_converted,
-               count(*) FILTER (WHERE t.tab_converted)::int AS touches_of_converted,
-               COALESCE(sum(t.credit_linear * t.revenue),0)::float8 AS revenue
+               count(*) FILTER (WHERE t.tab_converted)::int AS touches_of_converted
         FROM analytics.mv_touch_flat t WHERE ${w}`,
       // Tableau formula: AVG over touch rows (of leads with any valid payment) of the lead's all-time touch count
       sql<{ avg_rows: number | null; avg_leads: number | null; n_leads: number }[]>`

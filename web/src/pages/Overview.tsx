@@ -1,14 +1,14 @@
 import { useState, type ReactNode } from 'react';
 import { useApi } from '../lib/api';
 import { useFilters, type ListDim } from '../lib/filters';
-import { fmt2, fmtINR, fmtInt, fmtPct } from '../lib/format';
+import { fmt2, fmtInt, fmtPct } from '../lib/format';
 import { ChartCard } from '../components/ChartCard';
 import { DataTable, type Col } from '../components/DataTable';
 import { Donut, HBars, VBars } from '../charts';
 import { Icon, Note, PageHeader, Popover, Skeleton } from '../components/ui';
 import { DrillDrawer, type Drill, type DrillMetric } from '../components/DrillDrawer';
 
-interface DimRow { key: string; touches: number; leads: number; converted: number; converted_first: number; revenue: number; conv_rate?: number | null }
+interface DimRow { key: string; touches: number; leads: number; converted: number; converted_first: number; conv_rate?: number | null }
 interface OverviewResponse {
   period: { from: string; to: string };
   kpis: {
@@ -30,7 +30,7 @@ const MEASURE_LABEL: Record<Measure, string> = { touches: 'Total lead touches', 
 const ALL_COLS: Col<DimRow>[] = [
   { key: 'key', header: '' }, { key: 'leads', header: 'Total leads' }, { key: 'touches', header: 'Total lead touches', bar: true },
   { key: 'converted', header: 'Converted' }, { key: 'conv_rate', header: 'Conv %', render: (v) => fmtPct(v as number) },
-  { key: 'converted_first', header: 'Converted (first payment)' }, { key: 'revenue', header: 'Revenue (linear)', render: (v) => fmtINR(v as number) },
+  { key: 'converted_first', header: 'Converted (first payment)' },
 ];
 
 /** Colourful KPI tile: tinted card, solid icon disc, big number */

@@ -16,20 +16,14 @@ export interface ObjectSpec {
   queryAll?: boolean;
 }
 
+// Trimmed 2026-09-23 (storage): only the columns a page reads. Ad / campaign / app-engagement / hot-lead /
+// follow-up / SF touch-summary fields were dropped from salesforce.lead_master__c (sql/015_slim.sql); add back here + a migration if needed.
 const LEAD_MASTER_FIELDS = [
-  'Id', 'Name', 'CreatedDate', 'LastModifiedDate', 'SystemModstamp', 'IsDeleted', 'OwnerId',
+  'Id', 'Name', 'CreatedDate', 'SystemModstamp', 'IsDeleted', 'OwnerId',
   'First_Name__c', 'Last_Name__c', 'Mobile_Number__c', 'Email__c', 'Class__c', 'Lead_Source__c',
-  'lead_source_detail__c', 'Lead_Stage__c', 'Lead_Type__c', 'Priority__c', 'District__c', 'City__c',
-  'State__c', 'Campaign_Name__c', 'Campaign_Quality__c', 'Campaign_Tag__c', 'Campaign_Date__c',
-  'Ad_Platform__c', 'Ad_Campaign__c', 'Ad_Set__c', 'Ad_Name__c', 'Ad_Class__c', 'Ad_Class_Match__c',
-  'Enquiry_Assigned_Date__c', 'Follow_Up_Date__c', 'Next_Followup_Due__c', 'Touch_Count__c',
-  'First_Touch_Date__c', 'First_Touch_Point__c', 'Last_Touch_Date__c', 'Last_Touch_Point__c',
-  'Is_Converted__c', 'Converted_Date__c', 'Converted_After_First_Touch__c', 'Customer_Before_First_Touch__c',
-  'Days_To_Convert__c', 'IC_Count__c', 'IC_Enrolled_Count__c', 'Best_IC_Status__c', 'IC_Course__c',
-  'Enrollment_Count__c', 'Enrolled_Value__c', 'App_Engagement_Tier__c', 'App_Time_30d_Min__c',
-  'App_Active_Days_30d__c', 'App_Last_Active__c', 'Is_Deleted__c', 'Is_Duplicate__c',
-  'Parent_Lead_Master__c', 'LM_Reason__c', 'Hot_Lead__c', 'Supreme_Hot__c', 'Relogged_In__c',
-  'gclid__c', 'fbclid__c', 'Meta_Lead_ID__c',
+  'Lead_Stage__c', 'Lead_Type__c', 'Priority__c', 'District__c', 'City__c', 'Ad_Platform__c',
+  'Touch_Count__c', 'Is_Converted__c', 'Best_IC_Status__c', 'Is_Deleted__c', 'Is_Duplicate__c',
+  'Parent_Lead_Master__c', 'LM_Reason__c', 'gclid__c', 'fbclid__c', 'Meta_Lead_ID__c',
 ];
 
 const LEAD_TOUCH_FIELDS = [
@@ -43,8 +37,7 @@ const LEAD_TOUCH_FIELDS = [
 
 const IC_FIELDS = [
   'Id', 'Name', 'CreatedDate', 'SystemModstamp', 'IsDeleted', 'Lead_Master__c', 'Course__c',
-  'Course_Name__c', 'Status__c', 'Is_Enrolled__c', 'Fees_Offered__c', 'Assigned_Date__c',
-  'Target_Customer__c', 'Ad_Campaign__c', 'Occupation_Categories__c', 'OwnerId',
+  'Course_Name__c', 'Status__c', 'Is_Enrolled__c',
 ];
 
 const TASK_FIELDS = [

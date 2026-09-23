@@ -21,35 +21,21 @@ export interface DimSpec { col: string; label: string; kind?: 'text' | 'bool'; b
 
 const LEAD_DIMS_RAW = {
   lead_source:        { col: 'lead_source',          label: 'Lead Source' },
-  lead_source_detail: { col: 'lead_source_detail',   label: 'Lead Source Detail' },
   lead_stage:         { col: 'lead_stage',           label: 'Lead Stage' },
   class_group:        { col: 'class_group',          label: 'Class Group' },
   class_raw:          { col: 'class_raw',            label: 'Class (raw)' },
   district:           { col: 'district',             label: 'District' },
   city:               { col: 'city',                 label: 'City' },
-  state:              { col: 'state',                label: 'State' },
   priority:           { col: 'priority',             label: 'Priority' },
   lead_type:          { col: 'lead_type',            label: 'Lead Type' },
   owner:              { col: 'owner_name',           label: 'Owner' },
-  ic_course:          { col: 'ic_course',            label: 'IC Course' },
   ic_status:          { col: 'best_ic_status',       label: 'IC Status' },
-  app_tier:           { col: 'app_engagement_tier',  label: 'App Engagement Tier' },
-  campaign_quality:   { col: 'campaign_quality',     label: 'Campaign Quality' },
-  campaign_name:      { col: 'campaign_name',        label: 'Campaign Name (lead)' },
-  ad_campaign:        { col: 'ad_campaign',          label: 'Ad Campaign (lead)' },
-  lead_ad_set:        { col: 'ad_set',               label: 'Ad Set (lead)' },
-  lead_ad_name:       { col: 'ad_name',              label: 'Ad (lead)' },
   ad_platform:        { col: 'ad_platform',          label: 'Ad Platform' },
-  ad_class:           { col: 'ad_class',             label: 'Ad Class' },
-  class_match:        { col: 'ad_class_match',       label: 'Ad Class Match' },
   first_touch_point:  { col: 'first_touch_point',    label: 'First Touch Point' },
   last_touch_point:   { col: 'last_touch_point',     label: 'Last Touch Point' },
   touch_bucket:       { col: 'touch_bucket',         label: 'Touches (bucket)' },
   lm_reason:          { col: 'lm_reason',            label: 'LM Reason' },
   paid:               { col: 'is_paid_lead',         label: 'Paid / Organic', kind: 'bool', boolLabels: ['Paid', 'Organic'] },
-  hot:                { col: 'is_hot',               label: 'Hot Lead',       kind: 'bool', boolLabels: ['Hot', 'Not hot'] },
-  supreme_hot:        { col: 'is_supreme_hot',       label: 'Supreme Hot',    kind: 'bool', boolLabels: ['Supreme Hot', 'No'] },
-  relogged:           { col: 'is_relogged',          label: 'Re-logged',      kind: 'bool', boolLabels: ['Re-logged', 'New'] },
   repeat:             { col: 'is_repeat',            label: 'Repeat lead',    kind: 'bool', boolLabels: ['Repeat', 'First'] },
   pre_existing:       { col: 'pre_existing_customer', label: 'Pre-existing customer', kind: 'bool', boolLabels: ['Pre-existing', 'New customer'] },
 } as const satisfies Record<string, DimSpec>;
@@ -79,19 +65,17 @@ export const dimSpec = (d: Dim): DimSpec => (isLeadDim(d) ? LEAD_DIMS[d] : TOUCH
 
 /** Lead attribute columns that ALSO exist on mv_touch_base (so lead x touch matrices work). */
 export const LEAD_DIMS_ON_TOUCH = new Set<LeadDim>([
-  'lead_source', 'class_group', 'lead_stage', 'lead_type', 'priority', 'district', 'city', 'owner',
-  'campaign_quality', 'app_tier', 'ic_course', 'ic_status', 'paid', 'pre_existing',
+  'lead_source', 'class_group', 'lead_stage', 'lead_type', 'priority', 'district', 'city', 'owner', 'ic_status', 'paid', 'pre_existing',
 ]);
 
 /** Multi-select (list) filter keys - every non-boolean dimension. */
 export const LIST_KEYS = [
-  'lead_source', 'lead_source_detail', 'lead_stage', 'class_group', 'class_raw', 'district', 'city', 'state', 'priority', 'lead_type', 'owner',
-  'ic_course', 'ic_status', 'app_tier', 'campaign_quality', 'campaign_name', 'ad_campaign', 'lead_ad_set', 'lead_ad_name', 'ad_platform', 'ad_class',
-  'class_match', 'first_touch_point', 'last_touch_point', 'touch_bucket', 'lm_reason',
+  'lead_source', 'lead_stage', 'class_group', 'class_raw', 'district', 'city', 'priority', 'lead_type', 'owner',
+  'ic_status', 'ad_platform', 'first_touch_point', 'last_touch_point', 'touch_bucket', 'lm_reason',
   'source', 'medium', 'touch_point', 'campaign', 'ad_set', 'ad_name', 'staff', 'platform_id', 'gap_bucket',
 ] as const satisfies readonly Dim[];
 export type ListKey = (typeof LIST_KEYS)[number];
-const BOOL_LEAD_KEYS = ['hot', 'supreme_hot', 'relogged', 'repeat', 'pre_existing'] as const;
+const BOOL_LEAD_KEYS = ['repeat', 'pre_existing'] as const;
 
 // ---------------------------------------------------------------- schema
 const list = z.preprocess(

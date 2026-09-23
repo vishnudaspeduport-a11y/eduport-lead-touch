@@ -5,17 +5,7 @@ import { authMiddleware } from './auth';
 import { getSql } from './db';
 import { meta } from './routes/meta';
 import { filters } from './routes/filters';
-import { kpis } from './routes/kpis';
-import { trend } from './routes/trend';
-import { breakdown } from './routes/breakdown';
-import { attribution } from './routes/attribution';
-import { touch } from './routes/touch';
-import { funnel } from './routes/funnel';
-import { cohorts } from './routes/cohorts';
-import { team } from './routes/team';
 import { leads } from './routes/leads';
-import { dq } from './routes/dq';
-import { movers } from './routes/movers';
 import { syncRoute } from './routes/sync';
 import { overview } from './routes/overview';
 import { overviewLeads } from './routes/overview_leads';
@@ -34,7 +24,7 @@ app.use('/api/*', async (c, next) => {
 app.use('/api/*', authMiddleware);
 
 const api = new Hono<AppEnv>();
-for (const r of [meta, filters, kpis, trend, breakdown, attribution, touch, funnel, cohorts, team, leads, dq, movers, syncRoute, overview, overviewLeads, touchAttribution, converted]) api.route('/', r);
+for (const r of [meta, filters, leads, syncRoute, overview, overviewLeads, touchAttribution, converted]) api.route('/', r);
 
 // Admin-only manual refresh (the Cron Trigger calls the same function)
 api.post('/admin/refresh', async (c) => {

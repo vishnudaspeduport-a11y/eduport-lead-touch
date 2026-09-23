@@ -44,8 +44,7 @@ WITH tv AS (
     c.created_at                        AS lead_created_at,
     c.created_date                      AS lead_created_date,
     c.lead_source, c.class_group, c.lead_stage, c.lead_type, c.priority,
-    c.district, c.city, c.owner_id, c.owner_name, c.campaign_quality,
-    c.app_engagement_tier, c.ic_course, c.best_ic_status, c.is_duplicate, c.is_paid_lead,
+    c.district, c.city, c.owner_id, c.owner_name, c.best_ic_status, c.is_duplicate, c.is_paid_lead,
     c.converted, c.converted_at, c.revenue, c.pre_existing_customer,
     (c.converted_at IS NULL OR analytics.ist_date(t.touch_date__c) <= c.converted_at) AS is_pre_conversion,
     c.last_payment_date,
@@ -156,12 +155,12 @@ LEFT JOIN ta ON ta.lead_id = c.lead_id;
 
 -- The one precomputed table
 CREATE MATERIALIZED VIEW analytics.mv_touch_flat AS
-SELECT touch_id, lead_id, lead_name, touch_at, touch_date, touch_point, source, medium, campaign, adset_name, ad_name, staff,
+-- slim column set (2026-09-23): only what the Overview / First & Last touch / lead lists read
+SELECT touch_id, lead_id, lead_name, touch_at, touch_date, touch_point, source, medium, campaign, staff,
        lead_created_date, lead_source, class_raw, class_group, lead_stage, lead_type, priority, district, city, owner_name,
-       campaign_quality, app_engagement_tier, best_ic_status, lm_reason, is_duplicate, is_paid_lead, is_paid_touch,
-       lead_sf_is_converted, sf_touch_count, converted, converted_at, last_payment_date, tab_converted, courses, app_user_id, revenue, pre_existing_customer, is_pre_conversion,
-       touch_seq, n_pre_touches, touch_seq_all, n_touches_all, is_first_touch, is_last_touch, tab_is_first_touch, tab_is_last_touch,
-       credit_first, credit_last, credit_linear, credit_position, gap_hours_from_prev, gap_bucket, touch_dow, touch_hour
+       best_ic_status, lm_reason, is_duplicate, is_paid_lead, is_paid_touch,
+       lead_sf_is_converted, sf_touch_count, converted, converted_at, last_payment_date, last_payment_at, tab_converted, courses, app_user_id, revenue, is_pre_conversion,
+       n_touches_all, tab_is_first_touch, tab_is_last_touch
 FROM analytics.v_touch_base
 WITH NO DATA;
 CREATE UNIQUE INDEX mv_touch_flat_pk   ON analytics.mv_touch_flat (touch_id);

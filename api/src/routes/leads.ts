@@ -11,16 +11,15 @@ const SORTABLE: Record<string, string> = {
   created_at: 'created_at', lead_name: 'lead_name', lead_source: 'lead_source', lead_stage: 'lead_stage', class_group: 'class_group',
   owner_name: 'owner_name', total_touches: 'total_touches', valid_touches: 'valid_touches', converted_at: 'converted_at',
   revenue: 'revenue', days_to_convert: 'days_to_convert', first_touch_at: 'first_touch_at', last_touch_any_at: 'last_touch_any_at',
-  response_hours: 'response_hours', district: 'district', priority: 'priority', app_engagement_tier: 'app_engagement_tier',
+  response_hours: 'response_hours', district: 'district', priority: 'priority',
 };
 
 const LIST_COLS = sql_cols([
-  'lead_id', 'lead_name', 'first_name', 'last_name', 'mobile', 'email', 'created_at', 'created_date', 'lead_source', 'lead_source_detail',
-  'lead_stage', 'lead_type', 'priority', 'class_raw', 'class_group', 'district', 'city', 'state', 'owner_name', 'campaign_name', 'campaign_quality',
-  'ad_campaign', 'ad_set', 'ad_name', 'ad_class', 'ad_class_match', 'app_engagement_tier', 'is_duplicate', 'is_hot', 'is_supreme_hot', 'is_relogged',
+  'lead_id', 'lead_name', 'first_name', 'last_name', 'mobile', 'email', 'created_at', 'created_date', 'lead_source',
+  'lead_stage', 'lead_type', 'priority', 'class_raw', 'class_group', 'district', 'city', 'owner_name', 'is_duplicate',
   'is_paid_lead', 'total_touches', 'valid_touches', 'touch_bucket', 'first_touch_at', 'first_touch_point', 'first_touch_source', 'last_touch_at',
   'last_touch_point', 'last_touch_any_at', 'response_hours', 'converted', 'converted_at', 'days_to_convert', 'pre_existing_customer', 'revenue',
-  'payment_count', 'ic_count', 'best_ic_status', 'ic_course', 'lm_reason', 'sf_is_converted', 'sf_touch_count', 'is_open',
+  'payment_count', 'best_ic_status', 'lm_reason', 'sf_is_converted', 'sf_touch_count', 'is_open',
 ]);
 function sql_cols(cols: string[]) { return cols; }
 
@@ -80,7 +79,7 @@ leads.get('/leads/:id', (c) =>
                credit_first, credit_last, credit_linear, credit_position, sf_is_first_touch, sf_is_last_touch, sf_is_converted,
                sf_was_customer_at_touch, ic_status, touch_ic_course, is_paid_touch
         FROM analytics.v_touch_base t WHERE t.lead_id = ${id} ORDER BY touch_at, touch_id`,
-      sql<Rec[]>`SELECT ic_id, course_name, status, is_enrolled, fees_offered::float8, assigned_date::text, target_customer, ad_campaign, occupation, ic_created_at::text
+      sql<Rec[]>`SELECT ic_id, course_name, status, is_enrolled, ic_created_at::text
                  FROM analytics.v_ic_base WHERE lead_id = ${id} ORDER BY ic_created_at`,
       phoneKey
         ? sql<Rec[]>`SELECT vp.payment_id, vp.payment_date::text, b.course_title AS course, b.title AS batch, vp.amount::float8, vp.total::float8, vp.discount::float8, vp.refund_amount::float8,

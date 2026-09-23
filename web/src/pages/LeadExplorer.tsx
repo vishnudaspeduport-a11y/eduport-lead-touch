@@ -42,7 +42,7 @@ export default function LeadExplorer() {
             { key: 'lead_source', header: 'Source' }, { key: 'lead_stage', header: 'Stage' }, { key: 'class_group', header: 'Class' }, { key: 'district', header: 'District' }, { key: 'owner_name', header: 'Owner' },
             { key: 'total_touches', header: 'Touches' }, { key: 'valid_touches', header: 'Pre-pay touches' }, { key: 'first_touch_point', header: 'First touch' }, { key: 'last_touch_point', header: 'Last touch' },
             { key: 'response_hours', header: 'Response (h)' }, { key: 'converted', header: 'Conv.', render: (v) => (v ? '✓' : '') }, { key: 'converted_at', header: 'Converted at' }, { key: 'days_to_convert', header: 'Days' },
-            { key: 'revenue', header: 'Revenue', render: (v) => fmtINRfull(v as number) }, { key: 'app_engagement_tier', header: 'App tier' }, { key: 'priority', header: 'Priority' }, { key: 'ad_class_match', header: 'Ad class match' },
+            { key: 'revenue', header: 'Revenue', render: (v) => fmtINRfull(v as number) }, { key: 'priority', header: 'Priority' }, { key: 'best_ic_status', header: 'IC status' },
             { key: 'is_duplicate', header: 'Dup' }, { key: 'sf_is_converted', header: 'SF conv flag' },
           ]} />
       )}

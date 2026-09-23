@@ -29,7 +29,7 @@ const SORTABLE: Record<string, string> = {
 
 const COLS = [
   'lead_id', 'lead_name', 'eps_id', 'first_name', 'last_name', 'mobile', 'email', 'lead_created_date', 'lead_source', 'lead_stage', 'lead_type', 'priority',
-  'class_raw', 'class_group', 'district', 'city', 'owner_name', 'campaign_quality', 'app_engagement_tier', 'best_ic_status', 'lm_reason', 'is_duplicate',
+  'class_raw', 'class_group', 'district', 'city', 'owner_name', 'best_ic_status', 'lm_reason', 'is_duplicate',
   'touches_in_window', 'n_touches_all', 'first_touch_in_window', 'last_touch_in_window', 'touch_points', 'sources', 'staff',
   'tab_converted', 'first_touch_point', 'last_touch_point', 'converted_first', 'converted', 'converted_at', 'last_payment_date', 'revenue', 'courses', 'sf_is_converted', 'sf_touch_count',
 ];
@@ -101,7 +101,7 @@ function leadQuery(sql: Sql, f: Filters, periods: { current: Period }, q: Record
     )
     SELECT pg.lead_id, pg.lead_name, x.eps_id, l.first_name__c AS first_name, l.last_name__c AS last_name, l.mobile_number__c AS mobile, l.email__c AS email,
            pg.lead_created_date::text AS lead_created_date, pg.lead_source, pg.lead_stage, x.lead_type, x.priority, pg.class_raw, x.class_group,
-           pg.district, x.city, pg.owner_name, x.campaign_quality, x.app_engagement_tier, x.best_ic_status, x.lm_reason, x.is_duplicate,
+           pg.district, x.city, pg.owner_name, x.best_ic_status, x.lm_reason, x.is_duplicate,
            pg.touches_in_window, pg.n_touches_all, pg.first_touch_in_window::text AS first_touch_in_window, pg.last_touch_in_window::text AS last_touch_in_window,
            x.touch_points, x.sources, x.staff, x.tab_converted, x.first_touch_point, x.last_touch_point, x.converted_first, x.converted,
            pg.converted_at::text AS converted_at, pg.last_payment_date::text AS last_payment_date, pg.revenue::float8 AS revenue, x.courses,
@@ -110,7 +110,7 @@ function leadQuery(sql: Sql, f: Filters, periods: { current: Period }, q: Record
     JOIN salesforce.lead_master__c l ON l.id = pg.lead_id
     JOIN LATERAL (
       SELECT max(t.lead_type) AS lead_type, max(t.priority) AS priority, max(t.class_group) AS class_group, max(t.city) AS city,
-             max(t.campaign_quality) AS campaign_quality, max(t.app_engagement_tier) AS app_engagement_tier, max(t.best_ic_status) AS best_ic_status,
+             max(t.best_ic_status) AS best_ic_status,
              max(t.lm_reason) AS lm_reason, bool_or(t.is_duplicate) AS is_duplicate,
              string_agg(DISTINCT t.touch_point, ', ') AS touch_points, string_agg(DISTINCT t.source, ', ') AS sources,
              string_agg(DISTINCT t.staff, ', ') FILTER (WHERE t.staff IS NOT NULL) AS staff,
