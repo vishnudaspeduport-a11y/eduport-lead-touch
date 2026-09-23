@@ -38,7 +38,7 @@ const ALL_COLS: Col<DimRow>[] = [
 /** Colourful KPI tile: tinted card, solid icon disc, big number */
 function Kpi({ title, value, sub, def, tone, icon, small, onClick, split }: { title: string; value: string; sub?: string; def?: string; tone: string; icon: ReactNode; small?: boolean; onClick?: () => void; split?: { label: string; value: string; onClick?: () => void; title?: string }[] }) {
   return (
-    <div className={`card ${tone} relative flex flex-col justify-between gap-1 overflow-hidden !p-2.5 ${small ? 'min-h-[64px]' : 'min-h-[84px]'} ${onClick ? 'cursor-pointer transition hover:-translate-y-0.5 hover:shadow-pop' : ''}`} onClick={onClick} title={onClick ? 'Click to see the leads' : undefined}>
+    <div className={`card ${tone} relative flex flex-col justify-start gap-1.5 overflow-hidden !p-2.5 ${onClick ? 'cursor-pointer transition hover:-translate-y-0.5 hover:shadow-pop' : ''}`} onClick={onClick} title={onClick ? 'Click to see the leads' : undefined}>
       <div className="pointer-events-none absolute -right-6 -top-6 h-20 w-20 rounded-full bg-tone opacity-70" />
       <div className="flex items-start justify-between gap-2">
         <div className="flex items-center gap-2">
@@ -112,7 +112,7 @@ export default function Overview() {
       <PageHeader title="Overview" subtitle={`${f.basis === 'created' ? 'lead created' : 'touch date'} ${f.from} → ${f.to}${f.pay ? ` · payment date ${f.pfrom} → ${f.pto}` : ''} · same definitions as the Tableau "Lead Touch - Overview" dashboard`} />
       {q.error && <Note>⚠ {q.error.message}</Note>}
 
-      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 xl:grid-cols-8">
+      <div className="grid grid-cols-2 items-start gap-2 sm:grid-cols-4 xl:grid-cols-8">
         {q.isLoading && Array.from({ length: 8 }).map((_, i) => <Skeleton key={i} className="h-[92px]" />)}
         {k && <>
           <Kpi tone="tone-blue" icon={<Icon.Users />} title="Total leads" value={fmtInt(k.leads)} sub={f.basis === 'created' ? 'distinct leads created in the window' : 'distinct leads touched in the window'} def={`${def.leads_basis ?? ''} ${def.leads ?? ''}`} onClick={() => open('leads', 'Total leads')} />
