@@ -243,7 +243,8 @@ async function cleanup(): Promise<void> {
   await sql.begin(async (sql) => {
   await sql`SET LOCAL statement_timeout = 0`;
   const r1 = await sql`DELETE FROM salesforce.lead_master__c l WHERE l.isdeleted OR l.is_deleted__c
-    OR (l.createddate < ${leadSince}::date AND NOT EXISTS (SELECT 1 FROM salesforce.lead_touch__c t WHERE t.lead_master__c = l.id AND NOT t.isdeleted))`;
+    OR (l.createddate < ${leadSince}::date AND COALESCE(l.is_converted__c, false) = false
+        AND NOT EXISTS (SELECT 1 FROM salesforce.lead_touch__c t WHERE t.lead_master__c = l.id AND NOT t.isdeleted))`;
   const r2 = await sql`DELETE FROM salesforce.interested_course__c ic WHERE ic.isdeleted OR NOT EXISTS (SELECT 1 FROM salesforce.lead_master__c l WHERE l.id = ic.lead_master__c)`;
   const r3 = await sql`DELETE FROM salesforce.lead_touch__c WHERE isdeleted`;
   const r4 = await sql`DELETE FROM salesforce.task WHERE isdeleted`;

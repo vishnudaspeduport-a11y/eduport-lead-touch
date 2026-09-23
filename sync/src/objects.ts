@@ -63,6 +63,10 @@ export const OBJECTS: ObjectSpec[] = [
   // Older leads (before the window) that HAVE touches: Tableau counts them, and they are few (~24k)
   { object: 'Lead_Master__c', key: 'Lead_Master__c_touched', table: 'lead_master__c', fields: LEAD_MASTER_FIELDS, queryAll: true,
     initialWhere: `CreatedDate < ${process.env.LEAD_SINCE ?? '2025-04-01T00:00:00Z'} AND Id IN (SELECT Lead_Master__c FROM Lead_Touch__c WHERE IsDeleted = false)` },
+  // Older leads with NO touches but converted in Salesforce (~61k): paying app users are matched to them on phone,
+  // so without them the Converted page shows those payers as "No Salesforce lead"
+  { object: 'Lead_Master__c', key: 'Lead_Master__c_converted', table: 'lead_master__c', fields: LEAD_MASTER_FIELDS, queryAll: true,
+    initialWhere: `CreatedDate < ${process.env.LEAD_SINCE ?? '2025-04-01T00:00:00Z'} AND Is_Converted__c = true AND Id NOT IN (SELECT Lead_Master__c FROM Lead_Touch__c WHERE IsDeleted = false)` },
   { object: 'Interested_Course__c', table: 'interested_course__c', fields: IC_FIELDS, queryAll: true,
     initialWhere: `CreatedDate >= ${process.env.LEAD_SINCE ?? '2025-04-01T00:00:00Z'}` },
   { object: 'Interested_Course__c', key: 'Interested_Course__c_touched', table: 'interested_course__c', fields: IC_FIELDS, queryAll: true,
