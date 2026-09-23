@@ -7,7 +7,11 @@ import { LeadDrawer } from './LeadDrawer';
 import { ErrorNote, Icon, Skeleton, useDebounce } from './ui';
 
 export type DrillMetric = 'leads' | 'touches' | 'converted' | 'first_touch' | 'last_touch' | 'converted_first' | 'converted_in_window' | 'sf_converted' | 'avg_alltime' | 'avg_window';
-export interface Drill { metric: DrillMetric; title: string; subtitle?: string; dim?: string; value?: string }
+export interface Drill {
+  metric: DrillMetric; title: string; subtitle?: string; dim?: string; value?: string;
+  /** alternative list endpoint (default /overview/leads) */
+  path?: string; csvPath?: string; columns?: Col<Row>[]; sortOptions?: [string, string][]; defaultSort?: string; extra?: Record<string, string | number>; noun?: string;
+}
 
 const METRIC_LABEL: Record<DrillMetric, string> = {
   leads: 'leads touched in the window', touches: 'leads touched in the window (with their touch counts)', converted: 'converted leads (valid payment on/after a touch)', first_touch: 'converted leads whose selected first touch is in the selection', last_touch: 'leads whose last valid touch (latest touch on/before their last payment) is in the selection',
@@ -54,7 +58,7 @@ export function DrillDrawer({ drill, onClose }: { drill: Drill; onClose: () => v
   const { params, toggleValue } = useFilters();
   const [page, setPage] = useState(1);
   const [limit, setLimit] = useState(50);
-  const [sort, setSort] = useState<{ id: string; desc: boolean }>({ id: 'touches_in_window', desc: true });
+  const [sort, setSort] = useState<{ id: string; desc: boolean }>({ id: drill.defaultSort ?? 'touches_in_window', desc: true });
   const [search, setSearch] = useState('');
   const [leadId, setLeadId] = useState<string | null>(null);
   const [dl, setDl] = useState(false);
@@ -62,8 +66,10 @@ export function DrillDrawer({ drill, onClose }: { drill: Drill; onClose: () => v
   useEffect(() => { setPage(1); }, [q, drill.metric, drill.dim, drill.value]);
   useEffect(() => { const k = (e: KeyboardEvent) => { if (e.key === 'Escape' && !leadId) onClose(); }; document.addEventListener('keydown', k); return () => document.removeEventListener('keydown', k); }, [onClose, leadId]);
 
-  const p: Params = { ...params, metric: drill.metric, dim: drill.dim, value: drill.value, q, page, limit, sort: sort.id, dir: sort.desc ? 'desc' : 'asc' };
-  const r = useApi<Resp>('/overview/leads', p, { placeholderData: (prev) => prev });
+  const p: Params = { ...params, ...(drill.extra ?? {}), metric: drill.metric, dim: drill.dim, value: drill.value, q, page, limit, sort: sort.id, dir: sort.desc ? 'desc' : 'asc' };
+  const r = useApi<Resp>(drill.path ?? '/overview/leads', p, { placeholderData: (prev) => prev });
+  const cols = drill.columns ?? COLS;
+  const noun = drill.noun ?? 'leads';
   const d = r.data?.data;
   const pages = d ? Math.max(1, Math.ceil(d.total / d.limit)) : 1;
   const dimLabel = drill.dim ? (DIM_LABEL[drill.dim] ?? drill.dim) : null;
@@ -76,7 +82,7 @@ export function DrillDrawer({ drill, onClose }: { drill: Drill; onClose: () => v
             <div className="flex flex-wrap items-baseline gap-2">
               <h2 className="text-base font-extrabold tracking-tight">{drill.title}</h2>
               {dimLabel && <span className="chip"><b>{dimLabel}</b>: {drill.value}</span>}
-              {d && <span className="text-xs text-ink-3">{fmtInt(d.total)} leads</span>}
+              {d && <span className="text-xs text-ink-3">{fmtInt(d.total)} {noun}</span>}
             </div>
             <div className="text-[11px] text-ink-3">{drill.subtitle ?? METRIC_LABEL[drill.metric]} · click a row for the full lead record{d?.masked ? ' · phone and email are masked on this public site' : ''}</div>
           </div>
@@ -85,7 +91,7 @@ export function DrillDrawer({ drill, onClose }: { drill: Drill; onClose: () => v
             {drill.dim && drill.value !== undefined && (
               <button className="btn" title="Apply this value as a page filter" onClick={() => { toggleValue(drill.dim as ListDim, drill.value!); onClose(); }}><Icon.Plus /> Filter page by this</button>
             )}
-            <button className="btn" disabled={dl} onClick={async () => { setDl(true); try { await downloadWithAuth('/overview/leads.csv', { ...p, page: undefined, limit: undefined }, `${drill.title.replace(/[^a-z0-9]+/gi, '_').toLowerCase()}.csv`); } catch (e) { alert(String(e)); } finally { setDl(false); } }}>
+            <button className="btn" disabled={dl} onClick={async () => { setDl(true); try { await downloadWithAuth(drill.csvPath ?? '/overview/leads.csv', { ...p, page: undefined, limit: undefined }, `${drill.title.replace(/[^a-z0-9]+/gi, '_').toLowerCase()}.csv`); } catch (e) { alert(String(e)); } finally { setDl(false); } }}>
               <Icon.Download /> {dl ? 'Preparing…' : 'CSV (all rows)'}
             </button>
             <button className="btn btn-dark" onClick={onClose}><Icon.Close /> Close</button>
@@ -97,7 +103,7 @@ export function DrillDrawer({ drill, onClose }: { drill: Drill; onClose: () => v
           {!d && r.isLoading && <div className="space-y-2"><Skeleton /><Skeleton /><Skeleton className="h-64" /></div>}
           {d && (
             <div className={`h-full ${r.isFetching ? 'opacity-70' : ''}`}>
-              <DataTable rows={d.rows} columns={COLS} compact maxHeight="100%" rowKey={(x) => String(x.lead_id)} onRowClick={(x) => setLeadId(String(x.lead_id))}
+              <DataTable rows={d.rows} columns={cols} compact maxHeight="100%" rowKey={(x) => String(x.lead_id ?? x.user_id)} onRowClick={(x) => { if (x.lead_id) setLeadId(String(x.lead_id)); }}
                 initialSort={sort} />
             </div>
           )}
@@ -107,7 +113,7 @@ export function DrillDrawer({ drill, onClose }: { drill: Drill; onClose: () => v
           <div className="flex items-center gap-2">
             <span>Sort</span>
             <select className="input !py-0.5" value={sort.id} onChange={(e) => setSort({ id: e.target.value, desc: sort.desc })}>
-              {[['touches_in_window', 'Touches (window)'], ['n_touches_all', 'Touches (all)'], ['last_touch_in_window', 'Last touch'], ['created_date', 'Created'], ['converted_at', 'First payment'], ['last_payment_date', 'Last payment'], ['revenue', 'Revenue'], ['lead_name', 'Lead ID'], ['lead_stage', 'Stage'], ['class_raw', 'Class'], ['owner_name', 'Owner']].map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+              {(drill.sortOptions ?? [['touches_in_window', 'Touches (window)'], ['n_touches_all', 'Touches (all)'], ['last_touch_in_window', 'Last touch'], ['created_date', 'Created'], ['converted_at', 'First payment'], ['last_payment_date', 'Last payment'], ['revenue', 'Revenue'], ['lead_name', 'Lead ID'], ['lead_stage', 'Stage'], ['class_raw', 'Class'], ['owner_name', 'Owner']]).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
             </select>
             <button className="btn" onClick={() => setSort({ ...sort, desc: !sort.desc })}>{sort.desc ? '▼ desc' : '▲ asc'}</button>
             <select className="input !py-0.5" value={limit} onChange={(e) => { setLimit(Number(e.target.value)); setPage(1); }}>{[25, 50, 100, 200].map((n) => <option key={n} value={n}>{n} / page</option>)}</select>

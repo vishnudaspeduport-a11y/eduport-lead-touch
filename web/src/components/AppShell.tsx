@@ -11,6 +11,7 @@ export const NAV = [
   { to: '/', label: 'Overview', icon: <Icon.Home /> },
   { to: '/first-touch', label: 'First touch', icon: <Icon.Touch /> },
   { to: '/last-touch', label: 'Last touch', icon: <Icon.Check /> },
+  { to: '/converted', label: 'Converted', icon: <Icon.Spark /> },
   { to: '/leads', label: 'Lead explorer', icon: <Icon.Users /> },
   // parked (slow: they compute on the fly until rebuilt on request): /touches /attribution /sources /funnel /cohorts /segments /team /quality
 ];

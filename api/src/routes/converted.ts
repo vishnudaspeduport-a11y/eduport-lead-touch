@@ -1,0 +1,196 @@
+import { Hono } from 'hono';
+import type { Sql } from 'postgres';
+import type { AppEnv, Role } from '../env';
+import { handle, intParam, maskEmail, maskName, maskPhone, pct } from '../http';
+import { LIST_KEYS, parseFilters, resolvePeriods, type Filters, type Frag, type Period } from '../filters';
+import { getSql, release } from '../db';
+
+/**
+ * "Converted" page = Tableau workbook "Converted", dashboard "Lead Touch - Converted".
+ *   grain   : paying app user with a valid payment whose PAYMENT DATE is in the window (the page's date range is the payment date)
+ *   credit  : the user's last touch on/before its last valid payment date (same day included), across all leads on the same phone;
+ *             users with no touch before the payment are shown as "No Touch Before Payment"
+ *   class   : grade of the purchased course (core_grade.title) -> the in-page "Purchased grade" filter and table
+ *   sheets  : CONVERTED (users), Lead stage distribution, Class wise conversion (purchased course), STAFF-WISE,
+ *             Lead source / Touch point / Medium / Campaign by LAST touch
+ * Reads analytics.mv_payer (one row per paying user) + app.home_payment/app.core_batch for per-payment course & grade.
+ */
+export const converted = new Hono<AppEnv>();
+
+type Rec = Record<string, unknown>;
+const VALID = (sql: Sql) => sql`hp.payment_method = 0 AND hp.deleted = false AND hp.is_success = true AND hp.payment_success = true`;
+
+/** global filter chips that make sense on the payer grain */
+const PAYER_COLS: Partial<Record<(typeof LIST_KEYS)[number], string>> = {
+  lead_stage: 'lead_stage', lead_source: 'lead_source', class_raw: 'class_raw', class_group: 'class_group', owner: 'owner_name', lm_reason: 'lm_reason', district: 'district',
+  medium: 'last_touch_medium', source: 'last_touch_source', touch_point: 'last_touch_point', campaign: 'last_touch_campaign', staff: 'last_touch_staff',
+};
+const DIMS: Record<string, string> = {
+  last_touch_point: 'last_touch_point', last_touch_source: 'last_touch_source', last_touch_medium: 'last_touch_medium', last_touch_campaign: 'last_touch_campaign',
+  last_touch_staff: 'last_touch_staff', lead_stage: 'lead_stage', lead_source: 'lead_source', class_raw: 'class_raw', owner_name: 'owner_name',
+};
+
+/** payments-in-window semi-join (+ optional grade / course restriction) */
+function payWindow(sql: Sql, p: Period, grades: string[], courses: string[]): Frag {
+  const gradeCond = grades.length ? sql`AND COALESCE(b.grade_title, 'No Grade On Batch') IN ${sql(grades)}` : sql``;
+  const courseCond = courses.length ? sql`AND COALESCE(b.course_title, 'batch ' || hp.batch_id::text) IN ${sql(courses)}` : sql``;
+  return sql`EXISTS (SELECT 1 FROM app.home_payment hp LEFT JOIN app.core_batch b ON b.id = hp.batch_id
+                     WHERE hp.user_id = m.user_id AND ${VALID(sql)} AND hp.payment_date BETWEEN ${p.from} AND ${p.to} ${gradeCond} ${courseCond})`;
+}
+
+function payerWhere(sql: Sql, f: Filters, p: Period, q: Record<string, string>): Frag {
+  const grades = (q.grade ?? '').split('|').map((s) => s.trim()).filter(Boolean);
+  const courses = (q.course ?? '').split('|').map((s) => s.trim()).filter(Boolean);
+  const c: Frag[] = [payWindow(sql, p, grades, courses)];
+  if (f.dups !== '1') c.push(sql`true`);
+  for (const k of LIST_KEYS) {
+    const col = PAYER_COLS[k]; const vals = f[k];
+    if (!col || !vals?.length) continue;
+    const hasNull = vals.includes('(null)'); const real = vals.filter((v) => v !== '(null)');
+    const ref = sql`m.${sql(col)}`;
+    if (hasNull && real.length) c.push(sql`(${ref} IN ${sql(real)} OR ${ref} IS NULL)`);
+    else if (hasNull) c.push(sql`${ref} IS NULL`);
+    else c.push(sql`${ref} IN ${sql(real)}`);
+  }
+  // drill-down dimension
+  if (q.dim && q.value !== undefined) {
+    if (q.dim === 'grade') c.push(payWindow(sql, p, [q.value], []));
+    else if (q.dim === 'course') c.push(payWindow(sql, p, [], [q.value]));
+    else {
+      const col = DIMS[q.dim];
+      if (!col) throw Object.assign(new Error(`unknown dim ${q.dim}`), { status: 400 });
+      c.push(q.value === '(null)' ? sql`m.${sql(col)} IS NULL` : sql`m.${sql(col)}::text = ${q.value}`);
+    }
+  }
+  return c.reduce((a, x) => sql`${a} AND ${x}`, sql`true`);
+}
+
+export interface PayerDim { key: string; users: number; touches: number; revenue: number; new_users: number; share_pct: number | null }
+async function byDim(sql: Sql, w: Frag, col: string, p: Period, limit = 40): Promise<PayerDim[]> {
+  const rows = await sql<Omit<PayerDim, 'share_pct'>[]>`
+    SELECT COALESCE(m.${sql(col)}::text, '(null)') AS key, count(*)::int AS users, COALESCE(sum(m.touches_before_payment), 0)::int AS touches,
+           COALESCE(sum(m.revenue), 0)::float8 AS revenue, count(*) FILTER (WHERE m.first_payment_date BETWEEN ${p.from} AND ${p.to})::int AS new_users
+    FROM analytics.mv_payer m WHERE ${w} GROUP BY 1 ORDER BY users DESC LIMIT ${limit}`;
+  const tot = rows.reduce((s, r) => s + r.users, 0);
+  return rows.map((r) => ({ ...r, share_pct: pct(r.users, tot) }));
+}
+
+converted.get('/converted', (c) =>
+  handle(c, async ({ sql, f, periods, q }) => {
+    const p = periods.current;
+    const w = payerWhere(sql, f, p, q);
+    const [[k], byStage, byPoint, bySource, byMedium, byCampaign, byStaff, byCourse, byGrade, daily, grades, [touchRule]] = await Promise.all([
+      sql<{ users: number; new_users: number; no_touch: number; no_lead: number; payments: number; revenue: number; touches: number }[]>`
+        SELECT count(*)::int AS users, count(*) FILTER (WHERE m.first_payment_date BETWEEN ${p.from} AND ${p.to})::int AS new_users,
+               count(*) FILTER (WHERE m.last_touch_id IS NULL)::int AS no_touch, count(*) FILTER (WHERE m.no_lead)::int AS no_lead,
+               (SELECT count(*)::int FROM app.home_payment hp WHERE ${VALID(sql)} AND hp.payment_date BETWEEN ${p.from} AND ${p.to} AND hp.user_id IN (SELECT m2.user_id FROM analytics.mv_payer m2 WHERE ${w.toString() ? sql`true` : sql`true`} AND m2.user_id = hp.user_id)) AS payments_all,
+               COALESCE((SELECT sum(hp.amount) FROM app.home_payment hp WHERE ${VALID(sql)} AND hp.payment_date BETWEEN ${p.from} AND ${p.to} AND hp.user_id IN (SELECT m3.user_id FROM analytics.mv_payer m3 WHERE ${w.toString() ? sql`true` : sql`true`} AND m3.user_id = hp.user_id)), 0)::float8 AS revenue_all,
+               count(*)::int AS payments, COALESCE(sum(m.revenue), 0)::float8 AS revenue, COALESCE(sum(m.touches_before_payment), 0)::int AS touches
+        FROM analytics.mv_payer m WHERE ${w}`,
+      byDim(sql, w, 'lead_stage', p), byDim(sql, w, 'last_touch_point', p), byDim(sql, w, 'last_touch_source', p), byDim(sql, w, 'last_touch_medium', p),
+      byDim(sql, w, 'last_touch_campaign', p), byDim(sql, w, 'last_touch_staff', p),
+      sql<PayerDim[]>`
+        SELECT COALESCE(b.course_title, 'batch ' || hp.batch_id::text) AS key, count(DISTINCT hp.user_id)::int AS users, count(*)::int AS touches,
+               COALESCE(sum(hp.amount), 0)::float8 AS revenue, 0::int AS new_users, NULL::float8 AS share_pct
+        FROM app.home_payment hp LEFT JOIN app.core_batch b ON b.id = hp.batch_id
+        WHERE ${VALID(sql)} AND hp.payment_date BETWEEN ${p.from} AND ${p.to} AND hp.user_id IN (SELECT m.user_id FROM analytics.mv_payer m WHERE ${w})
+        GROUP BY 1 ORDER BY users DESC LIMIT 60`,
+      sql<PayerDim[]>`
+        SELECT COALESCE(b.grade_title, 'No Grade On Batch') AS key, count(DISTINCT hp.user_id)::int AS users, count(*)::int AS touches,
+               COALESCE(sum(hp.amount), 0)::float8 AS revenue, 0::int AS new_users, NULL::float8 AS share_pct
+        FROM app.home_payment hp LEFT JOIN app.core_batch b ON b.id = hp.batch_id
+        WHERE ${VALID(sql)} AND hp.payment_date BETWEEN ${p.from} AND ${p.to} AND hp.user_id IN (SELECT m.user_id FROM analytics.mv_payer m WHERE ${w})
+        GROUP BY 1 ORDER BY users DESC`,
+      sql<{ d: string; users: number; payments: number; revenue: number }[]>`
+        SELECT hp.payment_date::text AS d, count(DISTINCT hp.user_id)::int AS users, count(*)::int AS payments, COALESCE(sum(hp.amount), 0)::float8 AS revenue
+        FROM app.home_payment hp WHERE ${VALID(sql)} AND hp.payment_date BETWEEN ${p.from} AND ${p.to} AND hp.user_id IN (SELECT m.user_id FROM analytics.mv_payer m WHERE ${w})
+        GROUP BY 1 ORDER BY 1`,
+      sql<{ key: string }[]>`SELECT DISTINCT COALESCE(grade_title, 'No Grade On Batch') AS key FROM app.core_batch ORDER BY 1`,
+      sql<{ n: number }[]>`SELECT count(DISTINCT t.lead_id)::int AS n FROM analytics.mv_touch_flat t WHERE t.touch_date BETWEEN ${p.from} AND ${p.to} AND t.tab_converted AND NOT t.is_duplicate`,
+    ]);
+    return {
+      period: p,
+      kpis: { ...k, no_touch_pct: pct(k.no_touch, k.users), no_lead_pct: pct(k.no_lead, k.users), converted_leads_touch_rule: touchRule.n },
+      by_stage: byStage, by_last_touch_point: byPoint, by_last_source: bySource, by_last_medium: byMedium, by_last_campaign: byCampaign, by_last_staff: byStaff,
+      by_course: byCourse, by_grade: byGrade, daily, grades: grades.map((g) => g.key),
+      definitions: {
+        users: 'Tableau "CONVERTED" = COUNTD(user_id) with a valid payment (payment_method 0, not deleted, is_success, payment_success) whose payment date is in the window. This is a count of paying app accounts, including people with no Salesforce lead.',
+        new_users: 'Paying users whose FIRST ever valid payment is inside the window (new customers).',
+        no_touch: 'Users with no lead touch on/before their payment: no Salesforce lead on that phone, or all touches came after the payment. Shown as "No Touch Before Payment" in the tables, like the workbook.',
+        no_lead: 'Paying users whose phone matches no Salesforce lead ("No Salesforce Lead" in the workbook).',
+        credit: 'Every user is credited to ONE touch: the latest touch dated on/before its last valid payment day, across all Salesforce leads with the same phone (workbook "Last Touch Date Before Payment"). Touch point, source, medium, campaign and staff come from that touch.',
+        touches: 'Tableau "total lead touches" on this sheet: number of touches on/before the payment for the users in the row.',
+        course: 'Tableau "Class wise conversion": users by the course they bought (core_syllabusstructure title); a user buying two courses appears under both.',
+        grade: 'Tableau "Class Group" on this dashboard = grade of the purchased course (core_grade title), not the lead\'s class.',
+        stage: 'Lead stage of the user\'s most recently created Salesforce lead; the workbook counts a user under every lead on the phone.',
+        converted_leads_touch_rule: 'For comparison: the Overview\'s "Total converted" (lead grain, touch-date window) for the same dates.',
+        revenue: 'Sum of payment amounts of the users in the row (all their valid payments, any date).',
+      },
+    };
+  }),
+);
+
+// ---------------------------------------------------------------- payer list (drill-down + CSV)
+const SORTABLE: Record<string, string> = { last_payment_date: 'last_payment_date', first_payment_date: 'first_payment_date', revenue: 'revenue', payments: 'payments', touches_before_payment: 'touches_before_payment', last_touch_at: 'last_touch_at', lead_name: 'lead_name', lead_stage: 'lead_stage', class_raw: 'class_raw' };
+const COLS = ['user_id', 'lead_name', 'first_name', 'last_name', 'mobile', 'email', 'lead_stage', 'class_raw', 'lead_source', 'owner_name', 'courses', 'grades', 'payments', 'first_payment_date', 'last_payment_date', 'revenue',
+  'last_touch_point', 'last_touch_source', 'last_touch_medium', 'last_touch_campaign', 'last_touch_staff', 'last_touch_at', 'touches_before_payment', 'no_lead', 'lead_id'];
+
+function maskRow(r: Rec, role: Role): Rec {
+  return { ...r, mobile: maskPhone(r.mobile as string | null, role), email: maskEmail(r.email as string | null, role), first_name: maskName(r.first_name as string | null, role), last_name: maskName(r.last_name as string | null, role) };
+}
+function searchCond(sql: Sql, s: string): Frag {
+  s = s.trim(); if (!s) return sql`true`;
+  const digits = s.replace(/\D/g, '');
+  if (digits.length >= 5 && digits.length === s.length) return sql`(m.phone_key LIKE ${'%' + digits} OR m.user_id::text = ${digits})`;
+  if (/^LM-\d+$/i.test(s)) return sql`upper(m.lead_name) = ${s.toUpperCase()}`;
+  const like = `%${s.toLowerCase()}%`;
+  return sql`(lower(l.first_name__c) LIKE ${like} OR lower(l.last_name__c) LIKE ${like} OR lower(l.email__c) LIKE ${like} OR lower(m.lead_name) LIKE ${like})`;
+}
+function listQuery(sql: Sql, f: Filters, p: Period, q: Record<string, string>, page: { limit: number; offset: number } | null) {
+  const w = payerWhere(sql, f, p, q);
+  const sortCol = SORTABLE[q.sort ?? ''] ?? 'last_payment_date';
+  const dir = q.dir === 'asc' ? sql`ASC NULLS FIRST` : sql`DESC NULLS LAST`;
+  return sql<Rec[]>`
+    SELECT m.user_id, m.lead_name, l.first_name__c AS first_name, l.last_name__c AS last_name, u.phone AS mobile, l.email__c AS email,
+           m.lead_stage, m.class_raw, m.lead_source, m.owner_name, m.courses, m.grades, m.payments,
+           m.first_payment_date::text AS first_payment_date, m.last_payment_date::text AS last_payment_date, m.revenue::float8 AS revenue,
+           m.last_touch_point, m.last_touch_source, m.last_touch_medium, m.last_touch_campaign, m.last_touch_staff, m.last_touch_at::text AS last_touch_at,
+           m.touches_before_payment, m.no_lead, m.lead_id, count(*) OVER ()::int AS total_rows
+    FROM analytics.mv_payer m
+    LEFT JOIN salesforce.lead_master__c l ON l.id = m.lead_id
+    LEFT JOIN app.home_customuser u ON u.id = m.user_id
+    WHERE ${w} AND ${searchCond(sql, q.q ?? '')}
+    ORDER BY m.${sql(sortCol)} ${dir}, m.user_id
+    ${page ? sql`LIMIT ${page.limit} OFFSET ${page.offset}` : sql``}`;
+}
+
+converted.get('/converted/users', (c) =>
+  handle(c, async ({ sql, f, periods, q, role }) => {
+    const limit = intParam(q, 'limit', 50, 1, 200);
+    const page = intParam(q, 'page', 1, 1, 100000);
+    const rows = await listQuery(sql, f, periods.current, q, { limit, offset: (page - 1) * limit });
+    const total = rows.length ? (rows[0].total_rows as number) : 0;
+    return { page, limit, total, rows: rows.map((r) => { const { total_rows: _t, ...rest } = maskRow(r, role); return rest; }), masked: role === 'viewer', columns: COLS };
+  }, 0),
+);
+
+converted.get('/converted/users.csv', async (c) => {
+  const q = c.req.query(); const f = parseFilters(q); const periods = resolvePeriods(f); const role = c.get('user').role;
+  const cap = Number.parseInt(c.env.EXPORT_ROW_CAP ?? '50000', 10) || 50000;
+  const sql = getSql(c.env); const enc = new TextEncoder();
+  const esc = (v: unknown) => { if (v == null) return ''; const s = String(v); return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; };
+  const stream = new ReadableStream<Uint8Array>({
+    async start(controller) {
+      try {
+        controller.enqueue(enc.encode(COLS.join(',') + '\n'));
+        const rows = await listQuery(sql, f, periods.current, q, { limit: cap, offset: 0 });
+        let chunk = '';
+        for (const r of rows) { const m = maskRow(r, role); chunk += COLS.map((k) => esc(m[k])).join(',') + '\n'; if (chunk.length > 65536) { controller.enqueue(enc.encode(chunk)); chunk = ''; } }
+        if (rows.length >= cap) chunk += `# truncated at ${cap} rows\n`;
+        if (chunk) controller.enqueue(enc.encode(chunk));
+        controller.close();
+      } catch (e) { controller.error(e); } finally { release(sql, c.executionCtx); }
+    },
+  });
+  return new Response(stream, { headers: { 'content-type': 'text/csv; charset=utf-8', 'content-disposition': `attachment; filename="converted_users_${periods.current.from}_${periods.current.to}.csv"`, 'cache-control': 'private, no-store' } });
+});
