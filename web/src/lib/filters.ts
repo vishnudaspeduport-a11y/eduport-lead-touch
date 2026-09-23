@@ -42,6 +42,8 @@ Object.assign(DIM_LABEL, {
 
 export interface FilterState {
   from: string; to: string; preset: string; basis: Basis; compare: boolean;
+  /** optional second window on the PAYMENT date; conversions are counted only for payments inside it */
+  pay: boolean; pfrom: string; pto: string;
   converted: boolean; dups: boolean; paid?: 'paid' | 'organic';
   lists: Partial<Record<ListDim, string[]>>;
   flags: Partial<Record<'hot' | 'supreme_hot' | 'relogged' | 'repeat' | 'pre_existing', '1' | '0'>>;
@@ -79,7 +81,8 @@ function parse(sp: URLSearchParams): FilterState {
   return {
     from: preset === 'custom' ? sp.get('from') ?? df : df,
     to: preset === 'custom' ? sp.get('to') ?? dt : dt,
-    preset, basis: (sp.get('basis') as Basis) || 'created', compare: sp.get('compare') === 'previous',
+    preset, basis: ((sp.get('basis') as Basis) === 'touch' ? 'touch' : 'created'), compare: sp.get('compare') === 'previous',
+    pay: sp.get('pay') === '1', pfrom: sp.get('pfrom') ?? (preset === 'custom' ? sp.get('from') ?? df : df), pto: sp.get('pto') ?? (preset === 'custom' ? sp.get('to') ?? dt : dt),
     converted: sp.get('converted') === '1', dups: sp.get('dups') === '1',
     paid: paid === 'paid' || paid === 'organic' ? paid : undefined, lists, flags,
   };
@@ -91,6 +94,7 @@ function serialize(f: FilterState): URLSearchParams {
   if (f.preset === 'custom') { sp.set('from', f.from); sp.set('to', f.to); }
   if (f.basis !== 'created') sp.set('basis', f.basis);
   if (f.compare) sp.set('compare', 'previous');
+  if (f.pay) { sp.set('pay', '1'); sp.set('pfrom', f.pfrom); sp.set('pto', f.pto); }
   if (f.converted) sp.set('converted', '1');
   if (f.dups) sp.set('dups', '1');
   if (f.paid) sp.set('paid', f.paid);
@@ -102,6 +106,7 @@ function serialize(f: FilterState): URLSearchParams {
 /** Query params for the API (everything the filter parser understands) */
 export function toApiParams(f: FilterState): Record<string, string> {
   const o: Record<string, string> = { from: f.from, to: f.to, basis: f.basis, compare: f.compare ? 'previous' : 'none' };
+  if (f.pay) { o.pay = '1'; o.pfrom = f.pfrom; o.pto = f.pto; }
   if (f.converted) o.converted = '1';
   if (f.dups) o.dups = '1';
   if (f.paid) o.paid = f.paid;
@@ -139,9 +144,9 @@ export function useFilters() {
     const nxt = cur.includes(value) ? cur.filter((v) => v !== value) : [...cur, value];
     return { ...p, lists: { ...p.lists, [dim]: nxt.length ? nxt : undefined } };
   }), [set]);
-  const clearAll = useCallback(() => set((p) => ({ ...p, lists: {}, flags: {}, paid: undefined, converted: false })), [set]);
+  const clearAll = useCallback(() => set((p) => ({ ...p, lists: {}, flags: {}, paid: undefined, converted: false, pay: false })), [set]);
 
   const params = useMemo(() => toApiParams(f), [f]);
-  const activeCount = Object.values(f.lists).filter((v) => v?.length).length + Object.values(f.flags).filter(Boolean).length + (f.paid ? 1 : 0) + (f.converted ? 1 : 0);
+  const activeCount = Object.values(f.lists).filter((v) => v?.length).length + Object.values(f.flags).filter(Boolean).length + (f.paid ? 1 : 0) + (f.converted ? 1 : 0) + (f.pay ? 1 : 0);
   return { f, set, setList, toggleValue, clearAll, params, activeCount };
 }

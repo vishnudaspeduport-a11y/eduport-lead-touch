@@ -24,7 +24,15 @@ export function FilterBar() {
         <input type="date" className="input !py-1 text-xs" value={f.to} min={f.from} onChange={(e) => set({ preset: 'custom', to: e.target.value })} />
 
         <Segmented<Basis> value={f.basis} onChange={(basis) => set({ basis })} size="xs"
-          options={[{ value: 'created', label: 'Lead created', title: 'Window on Lead_Master__c.CreatedDate' }, { value: 'touch', label: 'Touch date', title: 'Leads with a touch in the window; touches counted by Touch_Date__c' }, { value: 'payment', label: 'Payment date', title: 'Leads whose first valid payment falls in the window' }]} />
+          options={[{ value: 'created', label: 'Lead created', title: 'Leads created in the range (with all their touches)' }, { value: 'touch', label: 'Touch date', title: 'Touches dated in the range' }]} />
+
+        <span className="mx-1 h-5 w-px bg-line" />
+        <Toggle checked={f.pay} onChange={(pay) => set({ pay })} label="Payment date" title="When on, Converted counts only valid payments dated inside this second window" />
+        {f.pay && <>
+          <input type="date" className="input !py-1 text-xs" value={f.pfrom} max={f.pto} onChange={(e) => set({ pfrom: e.target.value })} />
+          <span className="text-xs text-ink-3">to</span>
+          <input type="date" className="input !py-1 text-xs" value={f.pto} min={f.pfrom} onChange={(e) => set({ pto: e.target.value })} />
+        </>}
 
         <Toggle checked={f.compare} onChange={(compare) => set({ compare })} label="vs previous period" />
         <Toggle checked={f.converted} onChange={(converted) => set({ converted })} label="Converted only" />

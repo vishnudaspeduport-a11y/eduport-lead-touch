@@ -3,7 +3,7 @@ import type { Sql } from 'postgres';
 import type { AppEnv } from '../env';
 import { handle, pct } from '../http';
 import type { Frag } from '../filters';
-import { flatWhere } from './overview';
+import { flatWhere, convCond } from './overview';
 
 /**
  * GET /api/touch-attribution?mode=first|last  - the Tableau "Lead Touch - First Touch" / "Lead Touch - Last Touch" dashboards.
@@ -20,10 +20,10 @@ export const touchAttribution = new Hono<AppEnv>();
 
 export interface AttrRow { key: string; touches: number; leads: number; converted: number; attributed: number; conv_pct: number | null; attr_pct: number | null; share_pct: number | null }
 
-async function byDim(sql: Sql, w: Frag, col: string, flag: Frag, limit = 40): Promise<AttrRow[]> {
+async function byDim(sql: Sql, w: Frag, col: string, flag: Frag, conv: Frag, limit = 40): Promise<AttrRow[]> {
   const rows = await sql<{ key: string; touches: number; leads: number; converted: number; attributed: number }[]>`
     SELECT COALESCE(t.${sql(col)}::text, '(null)') AS key, count(*)::int AS touches, count(DISTINCT t.lead_id)::int AS leads,
-           count(DISTINCT t.lead_id) FILTER (WHERE t.tab_converted)::int AS converted,
+           count(DISTINCT t.lead_id) FILTER (WHERE ${conv})::int AS converted,
            count(DISTINCT t.lead_id) FILTER (WHERE ${flag})::int AS attributed
     FROM analytics.mv_touch_flat t WHERE ${w} GROUP BY 1 ORDER BY attributed DESC, leads DESC LIMIT ${limit}`;
   const totalAttr = rows.reduce((s, r) => s + r.attributed, 0);
@@ -34,15 +34,16 @@ touchAttribution.get('/touch-attribution', (c) =>
   handle(c, async ({ sql, f, periods, q }) => {
     const mode = q.mode === 'last' ? 'last' : 'first';
     const w = flatWhere(sql, f, periods.current);
-    const flag = mode === 'first' ? sql`t.tab_is_first_touch AND t.tab_converted` : sql`t.tab_is_last_touch`;
+    const conv = convCond(sql, f);
+    const flag = mode === 'first' ? sql`t.tab_is_first_touch AND ${conv}` : sql`t.tab_is_last_touch AND ${conv}`;
     const [[k], touchPoint, classRaw, source, medium, campaign, daily] = await Promise.all([
       sql<{ touches: number; leads: number; converted: number; attributed: number; attributed_touches: number }[]>`
         SELECT count(*)::int AS touches, count(DISTINCT t.lead_id)::int AS leads,
-               count(DISTINCT t.lead_id) FILTER (WHERE t.tab_converted)::int AS converted,
+               count(DISTINCT t.lead_id) FILTER (WHERE ${conv})::int AS converted,
                count(DISTINCT t.lead_id) FILTER (WHERE ${flag})::int AS attributed,
                count(*) FILTER (WHERE ${mode === 'first' ? sql`t.tab_is_first_touch` : sql`t.tab_is_last_touch`})::int AS attributed_touches
         FROM analytics.mv_touch_flat t WHERE ${w}`,
-      byDim(sql, w, 'touch_point', flag), byDim(sql, w, 'class_raw', flag), byDim(sql, w, 'source', flag), byDim(sql, w, 'medium', flag), byDim(sql, w, 'campaign', flag),
+      byDim(sql, w, 'touch_point', flag, conv), byDim(sql, w, 'class_raw', flag, conv), byDim(sql, w, 'source', flag, conv), byDim(sql, w, 'medium', flag, conv), byDim(sql, w, 'campaign', flag, conv),
       sql<{ d: string; leads: number; attributed: number }[]>`
         SELECT t.touch_date::text AS d, count(DISTINCT t.lead_id)::int AS leads, count(DISTINCT t.lead_id) FILTER (WHERE ${flag})::int AS attributed
         FROM analytics.mv_touch_flat t WHERE ${w} GROUP BY 1 ORDER BY 1`,

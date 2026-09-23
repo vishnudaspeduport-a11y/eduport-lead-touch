@@ -91,6 +91,9 @@ export const FilterSchema = z.object({
   to: day.optional(),
   basis: z.enum(['created', 'touch', 'payment']).default('created'),
   compare: z.enum(['none', 'previous']).default('none'),
+  pay: flag,                          // 1 = the payment-date window below is active
+  pfrom: day.optional(),
+  pto: day.optional(),
   converted: flag,
   dups: flag,                         // 1 = include duplicates (default excluded)
   paid: z.enum(['paid', 'organic']).optional(),
@@ -125,6 +128,15 @@ const toDate = (s: string) => new Date(`${s}T00:00:00Z`);
 const fmt = (d: Date) => d.toISOString().slice(0, 10);
 const addDays = (s: string, n: number) => { const d = toDate(s); d.setUTCDate(d.getUTCDate() + n); return fmt(d); };
 const daysBetween = (a: string, b: string) => Math.round((toDate(b).getTime() - toDate(a).getTime()) / 86400000);
+
+/** Optional second window on the PAYMENT date (Overview & touch pages): conversions counted only for payments inside it. */
+export function paymentPeriod(f: Filters): Period | null {
+  if (f.pay !== '1') return null;
+  const to = f.pto ?? todayIST();
+  const from = f.pfrom ?? addDays(to, -29);
+  if (toDate(from) > toDate(to)) throw new z.ZodError([{ code: 'custom', path: ['pfrom'], message: 'payment from is after to' }]);
+  return { from, to };
+}
 
 export function resolvePeriods(f: Filters): Periods {
   const to = f.to ?? todayIST();

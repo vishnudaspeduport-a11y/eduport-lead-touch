@@ -10,7 +10,7 @@ import { DrillDrawer, type Drill, type DrillMetric } from '../components/DrillDr
 
 interface DimRow { key: string; touches: number; leads: number; converted: number; converted_first: number; conv_rate?: number | null }
 interface OverviewResponse {
-  period: { from: string; to: string };
+  period: { from: string; to: string }; payment_period: { from: string; to: string } | null; basis: 'created' | 'touch';
   kpis: {
     touches: number; leads: number; converted: number; converted_first: number; converted_in_window: number; sf_converted: number; touches_of_converted: number; revenue: number;
     conv_rate: number | null; touches_per_lead: number | null;
@@ -34,7 +34,7 @@ const ALL_COLS: Col<DimRow>[] = [
 ];
 
 /** Colourful KPI tile: tinted card, solid icon disc, big number */
-function Kpi({ title, value, sub, def, tone, icon, small, onClick }: { title: string; value: string; sub?: string; def?: string; tone: string; icon: ReactNode; small?: boolean; onClick?: () => void }) {
+function Kpi({ title, value, sub, def, tone, icon, small, onClick, split }: { title: string; value: string; sub?: string; def?: string; tone: string; icon: ReactNode; small?: boolean; onClick?: () => void; split?: { label: string; value: string; onClick?: () => void; title?: string }[] }) {
   return (
     <div className={`card ${tone} relative flex flex-col justify-between gap-1 overflow-hidden ${small ? 'min-h-[64px] !p-2.5' : 'min-h-[92px]'} ${onClick ? 'cursor-pointer transition hover:-translate-y-0.5 hover:shadow-pop' : ''}`} onClick={onClick} title={onClick ? 'Click to see the leads' : undefined}>
       <div className="pointer-events-none absolute -right-6 -top-6 h-20 w-20 rounded-full bg-tone opacity-70" />
@@ -48,6 +48,16 @@ function Kpi({ title, value, sub, def, tone, icon, small, onClick }: { title: st
       <div>
         <div className={`font-extrabold leading-none tabular-nums tracking-tight ${small ? 'text-lg' : 'text-2xl'}`}>{value}</div>
         {sub && <div className="mt-1 truncate text-[10px] text-ink-3">{sub}</div>}
+        {split && (
+          <div className="mt-1.5 grid grid-cols-2 gap-1 border-t border-line/70 pt-1.5">
+            {split.map((s) => (
+              <button key={s.label} title={s.title} className="rounded-lg px-1 py-0.5 text-left hover:bg-tone" onClick={(e) => { e.stopPropagation(); s.onClick?.(); }}>
+                <div className="text-[9px] uppercase leading-tight tracking-wide text-ink-3">{s.label}</div>
+                <div className="text-sm font-bold tabular-nums leading-tight">{s.value}</div>
+              </button>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );
@@ -82,26 +92,24 @@ export default function Overview() {
 
   return (
     <div className="space-y-3">
-      <PageHeader title="Overview" subtitle={`touch date ${f.from} → ${f.to} · same definitions as the Tableau "Lead Touch - Overview" dashboard`} />
+      <PageHeader title="Overview" subtitle={`${f.basis === 'created' ? 'lead created' : 'touch date'} ${f.from} → ${f.to}${f.pay ? ` · payment date ${f.pfrom} → ${f.pto}` : ''} · same definitions as the Tableau "Lead Touch - Overview" dashboard`} />
       {q.error && <Note>⚠ {q.error.message}</Note>}
 
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-5">
-        {q.isLoading && Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-[92px]" />)}
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-6">
+        {q.isLoading && Array.from({ length: 6 }).map((_, i) => <Skeleton key={i} className="h-[92px]" />)}
         {k && <>
-          <Kpi tone="tone-blue" icon={<Icon.Users />} title="Total leads" value={fmtInt(k.leads)} sub="distinct leads touched in the window" def={def.leads} onClick={() => open('leads', 'Total leads')} />
+          <Kpi tone="tone-blue" icon={<Icon.Users />} title="Total leads" value={fmtInt(k.leads)} sub={f.basis === 'created' ? 'distinct leads created in the window' : 'distinct leads touched in the window'} def={`${def.leads_basis ?? ''} ${def.leads ?? ''}`} onClick={() => open('leads', 'Total leads')} />
           <Kpi tone="tone-teal" icon={<Icon.Touch />} title="Total lead touches" value={fmtInt(k.touches)} sub={`${fmt2(k.touches_per_lead)} touches per lead`} def={def.touches} onClick={() => open('touches', 'Total lead touches')} />
-          <Kpi tone="tone-orange" icon={<Icon.Check />} title="Total converted" value={fmtInt(k.converted)} sub={`${fmtPct(k.conv_rate)} of touched leads · paid on/after a touch`} def={def.converted} onClick={() => open('converted', 'Total converted')} />
+          <Kpi tone="tone-orange" icon={<Icon.Check />} title="Total converted" value={fmtInt(k.converted)} sub={f.pay ? `${fmtPct(k.conv_rate)} of leads · paid ${f.pfrom} → ${f.pto}` : `${fmtPct(k.conv_rate)} of leads · paid on/after a touch`} def={`${def.converted} — ${def.converted_first} — ${def.converted_in_window}`} onClick={() => open('converted', 'Total converted')}
+            split={[
+              { label: 'First payment after a touch', value: fmtInt(k.converted_first), title: def.converted_first, onClick: () => open('converted_first', 'Converted · first payment after a touch') },
+              { label: f.pay ? 'New customers (payment window)' : 'New customers (in window)', value: fmtInt(k.converted_in_window), title: def.converted_in_window, onClick: () => open('converted_in_window', 'Converted · first payment inside window') },
+            ]} />
           <Kpi tone="tone-violet" icon={<Icon.Avg />} title="Avg touches before conversion" value={fmt2(k.avg_touches_alltime)} sub={`all time · ${fmt2(k.avg_touches_alltime_per_lead)} per lead (${fmtInt(k.avg_touches_alltime_n)} leads)`} def={`${def.avg_touches_alltime} ${def.avg_per_lead}`} onClick={() => open('avg_alltime', 'Avg touches before conversion', undefined, undefined, 'converted leads with their all-time touch counts (no date filter)')} />
           <Kpi tone="tone-green" icon={<Icon.Calendar />} title="Avg touches before conversion (date-wise)" value={fmt2(k.avg_touches_window)} sub={`in window · ${fmt2(k.avg_touches_window_per_lead)} per lead (${fmtInt(k.avg_touches_window_n)} leads)`} def={`${def.avg_touches_window} ${def.avg_per_lead}`} onClick={() => open('avg_window', 'Avg touches before conversion (date-wise)', undefined, undefined, 'converted leads touched in the window, with their all-time touch counts')} />
+          <Kpi tone="tone-slate" icon={<Icon.Spark />} title="Salesforce Is_Converted flag" value={fmtInt(k.sf_converted)} sub="reference only" def={def.sf_converted} onClick={() => open('sf_converted', 'Salesforce Is_Converted flag')} />
         </>}
       </div>
-      {k && (
-        <div className="grid grid-cols-3 gap-3">
-          <Kpi small tone="tone-pink" icon={<Icon.Check />} title="Converted · first payment after a touch" value={fmtInt(k.converted_first)} sub="brief definition (earliest valid payment)" def={def.converted_first} onClick={() => open('converted_first', 'Converted · first payment after a touch')} />
-          <Kpi small tone="tone-amber" icon={<Icon.Calendar />} title="Converted · first payment inside window" value={fmtInt(k.converted_in_window)} sub="new customers in the period" def={def.converted_in_window} onClick={() => open('converted_in_window', 'Converted · first payment inside window')} />
-          <Kpi small tone="tone-slate" icon={<Icon.Spark />} title="Salesforce Is_Converted flag" value={fmtInt(k.sf_converted)} sub="reference only" def={def.sf_converted} onClick={() => open('sf_converted', 'Salesforce Is_Converted flag')} />
-        </div>
-      )}
 
       <div className="grid gap-3 xl:grid-cols-2">
         <ChartCard title="Lead funnel · LM stage" tone="tone-blue" subtitle="Total leads by current Lead Stage · click a slice to filter" loading={q.isLoading} error={q.error} rows={d?.stages ?? []} height={300}
@@ -131,7 +139,7 @@ export default function Overview() {
       </div>
 
       {drill && <DrillDrawer drill={drill} onClose={() => setDrill(null)} />}
-      <Note>The date range is the <b>touch date</b>, as in the workbook. Filters on top apply to every card; the Class Group and Medium filters correspond to the two Tableau filters. Click a KPI tile to list the leads behind it (with CSV download). Clicking a bar, slice or table row filters every card by that value; remove the chip on top to undo. Every card also has a chart/table toggle. Hover the help icon on a card or KPI for the exact definition and any deviation from Tableau.</Note>
+      <Note>The main date range applies to the <b>lead created</b> date or the <b>touch date</b>, whichever is selected in the filter bar (the workbook uses touch date). Switch on <b>Payment date</b> to add a second window: Converted then counts only valid payments dated inside it. Filters on top apply to every card; the Class Group and Medium filters correspond to the two Tableau filters. Click a KPI tile to list the leads behind it (with CSV download). Clicking a bar, slice or table row filters every card by that value; remove the chip on top to undo. Every card also has a chart/table toggle. Hover the help icon on a card or KPI for the exact definition and any deviation from Tableau.</Note>
     </div>
   );
 }

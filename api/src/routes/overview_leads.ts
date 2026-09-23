@@ -4,7 +4,7 @@ import type { AppEnv, Role } from '../env';
 import { handle, intParam, maskEmail, maskName, maskPhone } from '../http';
 import { parseFilters, resolvePeriods, type Filters, type Frag, type Period } from '../filters';
 import { getSql, release } from '../db';
-import { flatWhere, FLAT_COLS } from './overview';
+import { flatWhere, FLAT_COLS, convCond, convFirstCond, convNewCond } from './overview';
 
 /**
  * Drill-down for the Overview: the leads behind any KPI, bar, donut slice or table row.
@@ -46,13 +46,14 @@ function dimCond(sql: Sql, q: Record<string, string>): Frag {
   return value === '(null)' ? sql`${ref} IS NULL` : sql`${ref}::text = ${value}`;
 }
 
-function metricHaving(sql: Sql, metric: Metric, p: Period): Frag {
+function metricHaving(sql: Sql, metric: Metric, p: Period, f?: Filters): Frag {
+  const conv = f ? convCond(sql, f) : sql`t.tab_converted`;
   switch (metric) {
-    case 'converted': return sql`bool_or(t.tab_converted)`;
-    case 'first_touch': return sql`bool_or(t.tab_is_first_touch AND t.tab_converted)`;
-    case 'last_touch': return sql`bool_or(t.tab_is_last_touch)`;
-    case 'converted_first': return sql`bool_or(t.converted AND t.is_pre_conversion)`;
-    case 'converted_in_window': return sql`bool_or(t.converted AND t.converted_at BETWEEN ${p.from} AND ${p.to})`;
+    case 'converted': return sql`bool_or(${conv})`;
+    case 'first_touch': return sql`bool_or(t.tab_is_first_touch AND ${conv})`;
+    case 'last_touch': return sql`bool_or(t.tab_is_last_touch AND ${conv})`;
+    case 'converted_first': return sql`bool_or(${f ? convFirstCond(sql, f) : sql`(t.converted AND t.is_pre_conversion)`})`;
+    case 'converted_in_window': return sql`bool_or(${f ? convNewCond(sql, f, p) : sql`(t.converted AND t.converted_at BETWEEN ${p.from} AND ${p.to})`})`;
     case 'sf_converted': return sql`bool_or(t.lead_sf_is_converted)`;
     case 'avg_alltime': case 'avg_window': return sql`bool_or(t.converted)`;
     default: return sql`true`;
@@ -92,7 +93,7 @@ function leadQuery(sql: Sql, f: Filters, periods: { current: Period }, q: Record
       FROM analytics.mv_touch_flat t
       WHERE ${sel}
       GROUP BY t.lead_id
-      HAVING ${metricHaving(sql, metric, periods.current)}
+      HAVING ${metricHaving(sql, metric, periods.current, f)}
     ),
     pg AS (
       SELECT sel.*, count(*) OVER ()::int AS total_rows FROM sel
