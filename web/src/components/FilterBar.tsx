@@ -10,7 +10,6 @@ export function FilterBar() {
   const chips: { label: string; onRemove: () => void }[] = [];
   for (const [k, vals] of Object.entries(f.lists)) if (vals?.length) chips.push({ label: `${DIM_LABEL[k] ?? k}: ${vals.length > 2 ? `${vals.slice(0, 2).join(', ')} +${vals.length - 2}` : vals.join(', ')}`, onRemove: () => setList(k as ListDim, []) });
   for (const [k, v] of Object.entries(f.flags)) if (v) chips.push({ label: `${DIM_LABEL[k] ?? k}: ${v === '1' ? 'yes' : 'no'}`, onRemove: () => set((p) => ({ ...p, flags: { ...p.flags, [k]: undefined } })) });
-  if (f.paid) chips.push({ label: `${f.paid === 'paid' ? 'Paid' : 'Organic'} leads`, onRemove: () => set({ paid: undefined }) });
 
   return (
     <div className="sticky top-2 z-30 mb-3 rounded-2xl bg-surface/80 px-3 py-2 shadow-card ring-1 ring-ink/[0.04] backdrop-blur">
@@ -34,7 +33,6 @@ export function FilterBar() {
           <input type="date" className="input !py-1 text-xs" value={f.pto} min={f.pfrom} onChange={(e) => set({ pto: e.target.value })} />
         </>}
 
-        <Segmented<'all' | 'paid' | 'organic'> size="xs" value={f.paid ?? 'all'} onChange={(v) => set({ paid: v === 'all' ? undefined : v })} options={[{ value: 'all', label: 'All' }, { value: 'paid', label: 'Paid' }, { value: 'organic', label: 'Organic' }]} />
 
         <Popover width="w-72" trigger={<button className="btn"><Icon.Plus /> Add filter</button>}>
           {(close) => (
