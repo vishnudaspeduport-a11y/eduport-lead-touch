@@ -4,7 +4,7 @@ import { useFilters, type ListDim } from '../lib/filters';
 import { fmtInt, fmtPct } from '../lib/format';
 import { ChartCard } from '../components/ChartCard';
 import { DataTable, type Col } from '../components/DataTable';
-import { HBars, VBars } from '../charts';
+import { DailyLines, HBars } from '../charts';
 import { CardSearch, Icon, Note, PageHeader, Popover, Skeleton } from '../components/ui';
 import { DrillDrawer, type Drill } from '../components/DrillDrawer';
 
@@ -103,7 +103,7 @@ export default function TouchAttribution({ mode }: { mode: 'first' | 'last' }) {
         {card('Medium', d?.medium, 'medium', 'tone-green', { asTable: true })}
         {card('Campaign name', d?.campaign, 'campaign', 'tone-blue', { asTable: true })}
         <ChartCard title={`${label} per day`} tone="tone-pink" subtitle={`distinct leads and ${label.toLowerCase()} by touch date`} loading={q.isLoading} error={q.error} rows={d?.daily ?? []} height={280}>
-          <VBars data={(d?.daily ?? []).map((r) => ({ d: r.d.slice(5), leads: r.leads, attributed: r.attributed }))} xKey="d" bars={[{ key: 'leads', label: 'Leads' }, { key: 'attributed', label }]} />
+          <DailyLines data={(d?.daily ?? []).map((r) => ({ d: r.d.slice(5), leads: r.leads, attributed: r.attributed }))} xKey="d" lines={[{ key: 'leads', label: 'Leads' }, { key: 'attributed', label }]} />
         </ChartCard>
       </div>
 

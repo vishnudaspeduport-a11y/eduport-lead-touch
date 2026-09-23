@@ -109,6 +109,23 @@ export function VBars({ data, xKey, bars, format = fmtInt, onClick, stacked, min
   );
 }
 
+// ---------------------------------------------------------------- daily lines: one label every 2nd day, no scrolling, click a point to pick that day
+export function DailyLines({ data, xKey, lines, format = fmtInt, onClick }: { data: Record<string, unknown>[]; xKey: string; lines: { key: string; label: string }[]; format?: (v: number) => string; onClick?: (x: string) => void }) {
+  const { series, ink } = useTheme();
+  return (
+    <ResponsiveContainer width="100%" height="100%">
+      <LineChart data={data} margin={{ top: 8, right: 12, left: -14, bottom: 0 }} onClick={(e) => { const l = (e as { activeLabel?: unknown } | null)?.activeLabel; if (l != null) onClick?.(String(l)); }} style={{ cursor: onClick ? 'pointer' : undefined }}>
+        <CartesianGrid vertical={false} stroke={ink.grid} />
+        <XAxis dataKey={xKey} {...axis} interval={1} tick={{ fontSize: 10 }} angle={-35} textAnchor="end" height={34} />
+        <YAxis {...axis} tickFormatter={fmtCompact} width={44} />
+        <Tooltip content={<Tip rows={(d) => lines.map((l) => [l.label, format(d[l.key] as number)])} />} />
+        {lines.length > 1 && <Legend iconType="plainline" wrapperStyle={{ fontSize: 11 }} />}
+        {lines.map((l, i) => <Line key={l.key} dataKey={l.key} name={l.label} stroke={series[i]} strokeWidth={2} dot={{ r: 2.5, strokeWidth: 0, fill: series[i] }} activeDot={{ r: 4 }} isAnimationActive={false} />)}
+      </LineChart>
+    </ResponsiveContainer>
+  );
+}
+
 // ---------------------------------------------------------------- multi-series line (touch curve etc.)
 export function Lines({ data, xKey, lines, format = fmtPct, yLabel }: { data: Record<string, unknown>[]; xKey: string; lines: { key: string; label: string }[]; format?: (v: number) => string; yLabel?: string }) {
   const { series, ink } = useTheme();

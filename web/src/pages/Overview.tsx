@@ -4,7 +4,7 @@ import { useFilters, type ListDim } from '../lib/filters';
 import { fmt2, fmtInt, fmtPct } from '../lib/format';
 import { ChartCard } from '../components/ChartCard';
 import { DataTable, type Col } from '../components/DataTable';
-import { Donut, HBars, VBars } from '../charts';
+import { DailyLines, Donut, HBars } from '../charts';
 import { CardSearch, Icon, Note, PageHeader, Popover, Skeleton } from '../components/ui';
 import { DrillDrawer, type Drill, type DrillMetric } from '../components/DrillDrawer';
 
@@ -151,8 +151,8 @@ export default function Overview() {
 
       <div className="grid gap-2 xl:grid-cols-2">
         {dimCard('Staff-wise', d?.staff, 'staff', ['leads', 'touches'], 'tone-pink', { asTable: true, height: 260 })}
-        <ChartCard title="Touches per day" tone="tone-teal" subtitle="touches and distinct leads by touch date · click a day to zoom the date range to it" loading={q.isLoading} error={q.error} rows={d?.daily ?? []} height={260}>
-          <VBars data={(d?.daily ?? []).map((r) => ({ d: r.d.slice(5), full: r.d, touches: r.touches, leads: r.leads }))} xKey="d" bars={[{ key: 'touches', label: 'Touches' }, { key: 'leads', label: 'Leads' }]} onClick={(key) => { const row = (d?.daily ?? []).find((r) => r.d.slice(5) === key); if (row) set({ preset: 'custom', from: row.d, to: row.d }); }} />
+        <ChartCard title="Touches per day" tone="tone-teal" subtitle="touches, distinct leads and converted leads by touch date · click a point to zoom the date range to that day" loading={q.isLoading} error={q.error} rows={d?.daily ?? []} height={260}>
+          <DailyLines data={(d?.daily ?? []).map((r) => ({ d: r.d.slice(5), touches: r.touches, leads: r.leads, converted: r.converted }))} xKey="d" lines={[{ key: 'touches', label: 'Touches' }, { key: 'leads', label: 'Leads' }, { key: 'converted', label: 'Converted' }]} onClick={(key) => { const row = (d?.daily ?? []).find((r) => r.d.slice(5) === key); if (row) set({ preset: 'custom', from: row.d, to: row.d }); }} />
         </ChartCard>
       </div>
 

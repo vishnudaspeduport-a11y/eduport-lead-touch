@@ -4,7 +4,7 @@ import { useFilters, type ListDim } from '../lib/filters';
 import { fmtINR, fmtInt, fmtPct, fmtDateTime } from '../lib/format';
 import { ChartCard } from '../components/ChartCard';
 import { DataTable, type Col } from '../components/DataTable';
-import { Donut, HBars, VBars } from '../charts';
+import { DailyLines, Donut, HBars } from '../charts';
 import { CardSearch, Icon, Note, PageHeader, Popover, Skeleton } from '../components/ui';
 import { DrillDrawer, type Drill } from '../components/DrillDrawer';
 
@@ -138,7 +138,7 @@ export default function Converted() {
         {card('Medium wise conversion (last touch)', d?.by_last_medium, 'last_touch_medium', 'tone-green', { filterDim: 'medium', asTable: true })}
         {card('Campaign wise conversion (last touch)', d?.by_last_campaign, 'last_touch_campaign', 'tone-blue', { filterDim: 'campaign', asTable: true })}
         <ChartCard title="Payments per day" tone="tone-teal" subtitle="paying users and payments by payment date" loading={q.isLoading} error={q.error} rows={d?.daily ?? []} height={260} className="xl:col-span-2">
-          <VBars data={(d?.daily ?? []).map((r) => ({ d: r.d.slice(5), users: r.users, payments: r.payments }))} xKey="d" bars={[{ key: 'users', label: 'Users' }, { key: 'payments', label: 'Payments' }]} />
+          <DailyLines data={(d?.daily ?? []).map((r) => ({ d: r.d.slice(5), users: r.users, payments: r.payments }))} xKey="d" lines={[{ key: 'users', label: 'Users' }, { key: 'payments', label: 'Payments' }]} />
         </ChartCard>
       </div>
 
