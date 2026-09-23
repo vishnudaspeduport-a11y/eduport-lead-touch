@@ -67,11 +67,10 @@ overview.get('/overview', (c) =>
     const w = flatWhere(sql, f, periods.current);
     const wAll = flatWhere(sql, f, null);
     const [[k], [avgWin], [avgAll], stages, icStatus, touchPoint, source, classRaw, reason, medium, campaign, staff, daily] = await Promise.all([
-      sql<{ touches: number; leads: number; converted: number; converted_paid: number; converted_first: number; converted_in_window: number; sf_converted: number; touches_of_converted: number; revenue: number }[]>`
+      sql<{ touches: number; leads: number; converted: number; converted_first: number; converted_in_window: number; sf_converted: number; touches_of_converted: number; revenue: number }[]>`
         SELECT count(*)::int AS touches,
                count(DISTINCT t.lead_id)::int AS leads,
                count(DISTINCT t.lead_id) FILTER (WHERE t.tab_converted)::int AS converted,
-               count(DISTINCT t.lead_id) FILTER (WHERE t.tab_converted_paid)::int AS converted_paid,
                count(DISTINCT t.lead_id) FILTER (WHERE t.converted AND t.is_pre_conversion)::int AS converted_first,
                count(DISTINCT t.lead_id) FILTER (WHERE t.converted AND t.converted_at BETWEEN ${periods.current.from} AND ${periods.current.to})::int AS converted_in_window,
                count(DISTINCT t.lead_id) FILTER (WHERE t.lead_sf_is_converted)::int AS sf_converted,
@@ -124,7 +123,6 @@ overview.get('/overview', (c) =>
         leads: 'Tableau "Total leads" = COUNTD(Lead Master) over touches whose touch date (IST) is in the window. Deleted leads excluded; duplicates excluded unless toggled.',
         touches: 'Tableau "total lead touches" = COUNTD(Lead Touch) over touches in the window (IsDeleted = false).',
         converted: 'Tableau "Converted" = distinct touched leads that have ANY valid payment (payment_method 0, not deleted, is_success, payment_success) dated on/after the touch day. Payment is matched on the normalised phone (last 10 digits); the workbook matches on the raw mobile string, which gives ~0.3% fewer.',
-        converted_paid: 'Same as Total converted but only payments with an amount above ₹0 count. Free and 100%-discounted enrolments (about 29,600 of 141,000 valid payments) are excluded.',
         converted_first: 'Brief definition: touched leads whose FIRST valid payment is on/after one of their touches in the window.',
         converted_in_window: 'Touched leads whose first valid payment date falls inside the window.',
         sf_converted: 'Touched leads with Salesforce Lead_Master__c.Is_Converted__c = true (reference).',

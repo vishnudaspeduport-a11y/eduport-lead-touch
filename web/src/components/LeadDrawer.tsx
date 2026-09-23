@@ -65,7 +65,7 @@ export function LeadDrawer({ leadId, onClose }: { leadId: string; onClose: () =>
                 <SimpleTable rows={d.ics} cols={['course_name', 'status', 'is_enrolled', 'fees_offered', 'assigned_date', 'target_customer', 'occupation']} />
               </Section>
               <Section title={`Valid payments (${d.payments.length})`}>
-                <SimpleTable rows={d.payments} cols={['payment_date', 'course', 'batch', 'total', 'tuition_fees', 'discount', 'refund_amount', 'batch_id', 'sales_person_id']} />
+                <SimpleTable rows={d.payments} cols={['payment_date', 'course', 'batch', 'amount', 'discount', 'refund_amount', 'total', 'batch_id', 'sales_person_id']} />
               </Section>
               <Section title={`Calls & tasks (${d.calls.length})`}>
                 <SimpleTable rows={d.calls} cols={['task_created_at', 'subject', 'status', 'call_status', 'call_seconds', 'reason', 'ic_status']} />

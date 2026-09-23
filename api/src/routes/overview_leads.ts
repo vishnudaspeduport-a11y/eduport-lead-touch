@@ -18,7 +18,7 @@ import { flatWhere, FLAT_COLS } from './overview';
 export const overviewLeads = new Hono<AppEnv>();
 
 type Rec = Record<string, unknown>;
-const METRICS = ['leads', 'touches', 'converted', 'converted_paid', 'converted_first', 'converted_in_window', 'sf_converted', 'avg_alltime', 'avg_window'] as const;
+const METRICS = ['leads', 'touches', 'converted', 'converted_first', 'converted_in_window', 'sf_converted', 'avg_alltime', 'avg_window'] as const;
 type Metric = (typeof METRICS)[number];
 
 const SORTABLE: Record<string, string> = {
@@ -31,7 +31,7 @@ const COLS = [
   'lead_id', 'lead_name', 'eps_id', 'first_name', 'last_name', 'mobile', 'email', 'lead_created_date', 'lead_source', 'lead_stage', 'lead_type', 'priority',
   'class_raw', 'class_group', 'district', 'city', 'owner_name', 'campaign_quality', 'app_engagement_tier', 'best_ic_status', 'lm_reason', 'is_duplicate',
   'touches_in_window', 'n_touches_all', 'first_touch_in_window', 'last_touch_in_window', 'touch_points', 'sources', 'staff',
-  'tab_converted', 'converted_paid', 'converted_first', 'converted', 'converted_at', 'last_payment_date', 'revenue', 'courses', 'sf_is_converted', 'sf_touch_count',
+  'tab_converted', 'converted_first', 'converted', 'converted_at', 'last_payment_date', 'revenue', 'courses', 'sf_is_converted', 'sf_touch_count',
 ];
 
 function dimCond(sql: Sql, q: Record<string, string>): Frag {
@@ -49,7 +49,6 @@ function dimCond(sql: Sql, q: Record<string, string>): Frag {
 function metricHaving(sql: Sql, metric: Metric, p: Period): Frag {
   switch (metric) {
     case 'converted': return sql`bool_or(t.tab_converted)`;
-    case 'converted_paid': return sql`bool_or(t.tab_converted_paid)`;
     case 'converted_first': return sql`bool_or(t.converted AND t.is_pre_conversion)`;
     case 'converted_in_window': return sql`bool_or(t.converted AND t.converted_at BETWEEN ${p.from} AND ${p.to})`;
     case 'sf_converted': return sql`bool_or(t.lead_sf_is_converted)`;
@@ -102,7 +101,7 @@ function leadQuery(sql: Sql, f: Filters, periods: { current: Period }, q: Record
            pg.lead_created_date::text AS lead_created_date, pg.lead_source, pg.lead_stage, x.lead_type, x.priority, pg.class_raw, x.class_group,
            pg.district, x.city, pg.owner_name, x.campaign_quality, x.app_engagement_tier, x.best_ic_status, x.lm_reason, x.is_duplicate,
            pg.touches_in_window, pg.n_touches_all, pg.first_touch_in_window::text AS first_touch_in_window, pg.last_touch_in_window::text AS last_touch_in_window,
-           x.touch_points, x.sources, x.staff, x.tab_converted, x.converted_paid, x.converted_first, x.converted,
+           x.touch_points, x.sources, x.staff, x.tab_converted, x.converted_first, x.converted,
            pg.converted_at::text AS converted_at, pg.last_payment_date::text AS last_payment_date, pg.revenue::float8 AS revenue, x.courses,
            x.sf_is_converted, x.sf_touch_count, pg.total_rows
     FROM pg
@@ -113,7 +112,7 @@ function leadQuery(sql: Sql, f: Filters, periods: { current: Period }, q: Record
              max(t.lm_reason) AS lm_reason, bool_or(t.is_duplicate) AS is_duplicate,
              string_agg(DISTINCT t.touch_point, ', ') AS touch_points, string_agg(DISTINCT t.source, ', ') AS sources,
              string_agg(DISTINCT t.staff, ', ') FILTER (WHERE t.staff IS NOT NULL) AS staff,
-             bool_or(t.tab_converted) AS tab_converted, bool_or(t.tab_converted_paid) AS converted_paid, bool_or(t.converted AND t.is_pre_conversion) AS converted_first, bool_or(t.converted) AS converted,
+             bool_or(t.tab_converted) AS tab_converted, bool_or(t.converted AND t.is_pre_conversion) AS converted_first, bool_or(t.converted) AS converted,
              max(t.courses) AS courses,
              bool_or(t.lead_sf_is_converted) AS sf_is_converted, max(t.sf_touch_count)::int AS sf_touch_count,
              max(t.app_user_id)::int AS eps_id

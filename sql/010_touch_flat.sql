@@ -51,9 +51,6 @@ WITH tv AS (
     c.app_user_id,
     -- Tableau workbook 'Converted': ANY valid payment dated on/after the touch day
     COALESCE(c.last_payment_date >= analytics.ist_date(t.touch_date__c), false) AS tab_converted,
-    -- same, but only payments with an amount > 0 ("Paid conversions"; free / 100%-discount enrolments excluded)
-    COALESCE(c.last_paid_payment_date >= analytics.ist_date(t.touch_date__c), false) AS tab_converted_paid,
-    c.last_paid_payment_date,
     c.courses,
     c.class_raw, c.lm_reason, c.sf_is_converted AS lead_sf_is_converted, c.sf_touch_count, c.lead_name
   FROM salesforce.lead_touch__c t
@@ -153,7 +150,7 @@ CREATE MATERIALIZED VIEW analytics.mv_touch_flat AS
 SELECT touch_id, lead_id, lead_name, touch_at, touch_date, touch_point, source, medium, campaign, adset_name, ad_name, staff,
        lead_created_date, lead_source, class_raw, class_group, lead_stage, lead_type, priority, district, city, owner_name,
        campaign_quality, app_engagement_tier, best_ic_status, lm_reason, is_duplicate, is_paid_lead, is_paid_touch,
-       lead_sf_is_converted, sf_touch_count, converted, converted_at, last_payment_date, tab_converted, tab_converted_paid, last_paid_payment_date, courses, app_user_id, revenue, pre_existing_customer, is_pre_conversion,
+       lead_sf_is_converted, sf_touch_count, converted, converted_at, last_payment_date, tab_converted, courses, app_user_id, revenue, pre_existing_customer, is_pre_conversion,
        touch_seq, n_pre_touches, touch_seq_all, n_touches_all, is_first_touch, is_last_touch,
        credit_first, credit_last, credit_linear, credit_position, gap_hours_from_prev, gap_bucket, touch_dow, touch_hour
 FROM analytics.v_touch_base

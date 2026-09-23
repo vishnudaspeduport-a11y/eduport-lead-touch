@@ -7,11 +7,11 @@ SELECT l.id AS lead_id,
        min(vp.payment_date) AS converted_at,
        min(vp.payment_time) AS first_payment_time,
        count(*)             AS payment_count,
-       sum(vp.total)        AS revenue,
+       sum(vp.amount)       AS revenue,   -- amount, not total: gateway-2 payment-link rows carry the money in amount/fee and leave total = 0
        sum(COALESCE(vp.refund_amount, 0)) AS refunds,
        min(vp.user_id)      AS app_user_id,
        max(vp.payment_date) AS last_payment_date,
-       max(vp.payment_date) FILTER (WHERE vp.total > 0) AS last_paid_payment_date,   -- for "Paid conversions" (amount > 0)
+       max(vp.payment_date) FILTER (WHERE vp.amount > 0) AS last_paid_payment_date,   -- kept for compatibility (view columns cannot be dropped in place); unused
        string_agg(DISTINCT COALESCE(b.title, 'batch ' || vp.batch_id::text), ' | ') AS courses
 FROM salesforce.lead_master__c l
 JOIN analytics.v_valid_payment vp ON vp.phone_key = analytics.phone_key(l.mobile_number__c)
