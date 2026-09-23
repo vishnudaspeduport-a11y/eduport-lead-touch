@@ -12,5 +12,3 @@ CREATE TABLE IF NOT EXISTS app.core_batch (
   updated_at    timestamptz,
   _synced_at    timestamptz
 );
-GRANT SELECT ON app.core_batch TO lt_app_ro;
-GRANT ALL ON app.core_batch TO lt_analytics_owner;
