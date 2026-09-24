@@ -12,6 +12,7 @@ export const NAV = [
   { to: '/first-touch', label: 'First touch', icon: <Icon.Touch /> },
   { to: '/last-touch', label: 'Last touch', icon: <Icon.Check /> },
   { to: '/converted', label: 'Converted', icon: <Icon.Spark /> },
+  { to: '/analysis', label: 'Analysis', icon: <Icon.Table /> },
   { to: '/leads', label: 'Lead explorer', icon: <Icon.Users /> },
 ];
 
