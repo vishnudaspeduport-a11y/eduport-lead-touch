@@ -37,11 +37,6 @@ export function convFirstCond(sql: Sql, f: Filters): Frag {
   const pp = paymentPeriod(f);
   return pp ? sql`(t.converted AND t.is_pre_conversion AND t.converted_at BETWEEN ${pp.from} AND ${pp.to})` : sql`(t.converted AND t.is_pre_conversion)`;
 }
-/** new customers: first valid payment inside the payment window (or the main window when it is off) */
-export function convNewCond(sql: Sql, f: Filters, p: Period): Frag {
-  const pp = paymentPeriod(f) ?? p;
-  return sql`(t.converted AND t.converted_at BETWEEN ${pp.from} AND ${pp.to})`;
-}
 
 /** main window: basis=created -> leads created in the range (all their touches); otherwise touches dated in the range */
 export function flatWhere(sql: Sql, f: Filters, p: Period | null): Frag {
@@ -85,16 +80,15 @@ overview.get('/overview', (c) =>
   handle(c, async ({ sql, f, periods, q }) => {
     const w = flatWhere(sql, f, periods.current);
     const wAll = flatWhere(sql, f, null);
-    const conv = convCond(sql, f); const convFirst = convFirstCond(sql, f); const convNew = convNewCond(sql, f, periods.current);
+    const conv = convCond(sql, f); const convFirst = convFirstCond(sql, f);
     const pp = paymentPeriod(f);
     const staleDays = Math.max(1, Math.min(365, Number.parseInt(q.stale_days ?? '5', 10) || 5));
     const [[k], [stale], [avgWin], [avgAll], stages, icStatus, touchPoint, source, classRaw, reason, medium, campaign, staff, daily] = await Promise.all([
-      sql<{ touches: number; leads: number; converted: number; converted_first: number; converted_in_window: number; sf_converted: number; touches_of_converted: number }[]>`
+      sql<{ touches: number; leads: number; converted: number; converted_first: number; sf_converted: number; touches_of_converted: number }[]>`
         SELECT count(*)::int AS touches,
                count(DISTINCT t.lead_id)::int AS leads,
                count(DISTINCT t.lead_id) FILTER (WHERE ${conv})::int AS converted,
                count(DISTINCT t.lead_id) FILTER (WHERE ${convFirst})::int AS converted_first,
-               count(DISTINCT t.lead_id) FILTER (WHERE ${convNew})::int AS converted_in_window,
                count(DISTINCT t.lead_id) FILTER (WHERE t.lead_sf_is_converted)::int AS sf_converted,
                count(*) FILTER (WHERE ${conv})::int AS touches_of_converted
         FROM analytics.mv_touch_flat t WHERE ${w}`,
@@ -160,7 +154,6 @@ overview.get('/overview', (c) =>
           : 'Tableau "Converted" = distinct leads in the selection that have ANY valid payment (payment_method 0, not deleted, is_success, payment_success) dated on/after the touch day. Payment is matched on the normalised phone (last 10 digits); the workbook matches on the raw mobile string, which gives ~0.3% fewer.',
         leads_basis: f.basis === 'created' ? 'Main window = LEAD CREATED date: leads created in the range, with all their touches.' : 'Main window = TOUCH date: touches dated in the range.',
         converted_first: 'Brief definition: touched leads whose FIRST valid payment is on/after one of their touches in the window.',
-        converted_in_window: 'Touched leads whose first valid payment date falls inside the window.',
         sf_converted: 'Touched leads with Salesforce Lead_Master__c.Is_Converted__c = true (reference).',
         avg_touches_alltime: 'Tableau "Avg Touches Before Conversion" (no date filter): average, over every touch row of leads with a valid payment, of the lead\'s all-time touch count. Row-weighted like the workbook; the workbook figure is additionally inflated by its Task / Interested-Course / payment joins, which duplicate rows.',
         avg_touches_window: 'Tableau "Avg Touches Before Conversion - Date wise": same as above restricted to touches in the window.',

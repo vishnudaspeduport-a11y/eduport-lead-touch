@@ -4,11 +4,11 @@ import type { AppEnv, Role } from '../env';
 import { handle, intParam, maskEmail, maskName, maskPhone } from '../http';
 import { parseFilters, resolvePeriods, type Filters, type Frag, type Period } from '../filters';
 import { getSql, release } from '../db';
-import { flatWhere, FLAT_COLS, convCond, convFirstCond, convNewCond } from './overview';
+import { flatWhere, FLAT_COLS, convCond, convFirstCond } from './overview';
 
 /**
  * Drill-down for the Overview: the leads behind any KPI, bar, donut slice or table row.
- *   GET /api/overview/leads?metric=leads|touches|converted|converted_first|converted_in_window|sf_converted|avg_alltime|avg_window
+ *   GET /api/overview/leads?metric=leads|touches|converted|converted_first|sf_converted|avg_alltime|avg_window
  *                          [&dim=touch_point&value=Eduport%20App] [&q=search] [&page&limit&sort&dir]
  *   GET /api/overview/leads.csv  (same params, streamed, capped by EXPORT_ROW_CAP)
  * One row per lead; touch columns summarise that lead's touches inside the selection.
@@ -18,7 +18,7 @@ import { flatWhere, FLAT_COLS, convCond, convFirstCond, convNewCond } from './ov
 export const overviewLeads = new Hono<AppEnv>();
 
 type Rec = Record<string, unknown>;
-const METRICS = ['leads', 'touches', 'converted', 'first_touch', 'last_touch', 'stale_new', 'stale_not_connected', 'converted_first', 'converted_in_window', 'sf_converted', 'avg_alltime', 'avg_window'] as const;
+const METRICS = ['leads', 'touches', 'converted', 'first_touch', 'last_touch', 'stale_new', 'stale_not_connected', 'converted_first', 'sf_converted', 'avg_alltime', 'avg_window'] as const;
 type Metric = (typeof METRICS)[number];
 
 const SORTABLE: Record<string, string> = {
@@ -59,7 +59,6 @@ function metricHaving(sql: Sql, metric: Metric, p: Period, f?: Filters, q: Recor
     case 'first_touch': return sql`bool_or(t.tab_is_first_touch AND ${conv})`;
     case 'last_touch': return sql`bool_or(t.tab_is_last_touch AND ${conv})`;
     case 'converted_first': return sql`bool_or(${f ? convFirstCond(sql, f) : sql`(t.converted AND t.is_pre_conversion)`})`;
-    case 'converted_in_window': return sql`bool_or(${f ? convNewCond(sql, f, p) : sql`(t.converted AND t.converted_at BETWEEN ${p.from} AND ${p.to})`})`;
     case 'sf_converted': return sql`bool_or(t.lead_sf_is_converted)`;
     case 'avg_alltime': case 'avg_window': return sql`bool_or(t.converted)`;
     default: return sql`true`;
