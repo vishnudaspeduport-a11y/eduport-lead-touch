@@ -4,6 +4,7 @@ import { useFilters, DIM_LABEL, type ListDim } from '../lib/filters';
 import { fmtDateTime, fmtInt, fmtINR } from '../lib/format';
 import { DataTable, type Col } from './DataTable';
 import { LeadDrawer } from './LeadDrawer';
+import { DrillSummary } from './DrillSummary';
 import { ErrorNote, Icon, Skeleton, useDebounce } from './ui';
 
 export type DrillMetric = 'leads' | 'touches' | 'converted' | 'first_touch' | 'last_touch' | 'stale_new' | 'stale_not_connected' | 'converted_first' | 'sf_converted' | 'avg_alltime' | 'avg_window';
@@ -11,7 +12,11 @@ export interface Drill {
   metric: DrillMetric; title: string; subtitle?: string; dim?: string; value?: string;
   /** alternative list endpoint (default /overview/leads) */
   path?: string; csvPath?: string; columns?: Col<Row>[]; sortOptions?: [string, string][]; defaultSort?: string; extra?: Record<string, string | number>; noun?: string;
+  /** open on the split-by-dimension overview instead of the lead list (Overview KPIs) */
+  summary?: boolean;
 }
+
+const EXTRA_LABEL: Record<string, string> = { grade: 'Purchased grade', course: 'Purchased course', owner: 'Owner', ic_status: 'IC status', lm_reason: 'LM reason', class_group: 'Lead class', lead_stage: 'Lead stage', lead_source: 'Lead source', touch_point: 'Touch point', source: 'Source', medium: 'Medium', district: 'District' };
 
 const METRIC_LABEL: Record<DrillMetric, string> = {
   leads: 'leads touched in the window', touches: 'leads touched in the window (with their touch counts)', converted: 'converted leads (valid payment on/after a touch)', first_touch: 'converted leads whose selected first touch is in the selection', stale_new: 'leads still in stage New, created more than 5 days ago and not touched in the last 5 days', stale_not_connected: 'leads still in stage Not Connected, created more than 5 days ago and not touched in the last 5 days', last_touch: 'leads whose last valid touch (latest touch on/before their last payment) is in the selection',
@@ -64,17 +69,24 @@ export function DrillDrawer({ drill, onClose }: { drill: Drill; onClose: () => v
   const [search, setSearch] = useState('');
   const [leadId, setLeadId] = useState<string | null>(null);
   const [dl, setDl] = useState(false);
+  const [view, setView] = useState<'summary' | 'list'>(drill.summary ? 'summary' : 'list');
+  // a row picked on the summary narrows the drawer to that value (on top of the drill's own dim)
+  const [pick, setPick] = useState<{ dim: string; value: string } | null>(null);
   const q = useDebounce(search, 300);
-  useEffect(() => { setPage(1); }, [q, drill.metric, drill.dim, drill.value]);
+  useEffect(() => { setPage(1); }, [q, drill.metric, drill.dim, drill.value, pick]);
+  useEffect(() => { setView(drill.summary ? 'summary' : 'list'); setPick(null); }, [drill]);
   useEffect(() => { const k = (e: KeyboardEvent) => { if (e.key === 'Escape' && !leadId) onClose(); }; document.addEventListener('keydown', k); return () => document.removeEventListener('keydown', k); }, [onClose, leadId]);
 
-  const p: Params = { ...params, ...(drill.extra ?? {}), metric: drill.metric, dim: drill.dim, value: drill.value, q, page, limit, sort: sort.id, dir: sort.desc ? 'desc' : 'asc' };
-  const r = useApi<Resp>(drill.path ?? '/overview/leads', p, { placeholderData: (prev) => prev });
+  const dim = pick?.dim ?? drill.dim; const value = pick?.value ?? drill.value;
+  const base: Params = { ...params, ...(drill.extra ?? {}), metric: drill.metric, dim, value, q };
+  const p: Params = { ...base, page, limit, sort: sort.id, dir: sort.desc ? 'desc' : 'asc' };
+  const r = useApi<Resp>(drill.path ?? '/overview/leads', p, { placeholderData: (prev) => prev, enabled: view === 'list' });
   const cols = drill.columns ?? COLS;
   const noun = drill.noun ?? 'leads';
   const d = r.data?.data;
   const pages = d ? Math.max(1, Math.ceil(d.total / d.limit)) : 1;
-  const dimLabel = drill.dim ? (DIM_LABEL[drill.dim] ?? drill.dim) : null;
+  const dimLabel = dim ? (DIM_LABEL[dim] ?? EXTRA_LABEL[dim] ?? dim) : null;
+  const canFilterPage = !!dim && value !== undefined && dim in DIM_LABEL;
 
   return (
     <div className="fixed inset-0 z-40 flex justify-end bg-black/30" onClick={onClose}>
@@ -83,15 +95,21 @@ export function DrillDrawer({ drill, onClose }: { drill: Drill; onClose: () => v
           <div className="min-w-0">
             <div className="flex flex-wrap items-baseline gap-2">
               <h2 className="text-base font-extrabold tracking-tight">{drill.title}</h2>
-              {dimLabel && <span className="chip"><b>{dimLabel}</b>: {drill.value}</span>}
-              {d && <span className="text-xs text-ink-3">{fmtInt(d.total)} {noun}</span>}
+              {dimLabel && <span className="chip"><b>{dimLabel}</b>: {value}{pick && <button className="ml-1 text-ink-3 hover:text-ink" title="Remove" onClick={() => setPick(null)}>×</button>}</span>}
+              {view === 'list' && d && <span className="text-xs text-ink-3">{fmtInt(d.total)} {noun}</span>}
             </div>
-            <div className="text-[11px] text-ink-3">{drill.subtitle ?? METRIC_LABEL[drill.metric]} · click a row for the full lead record{d?.masked ? ' · phone and email are masked on this public site' : ''}</div>
+            <div className="text-[11px] text-ink-3">{drill.subtitle ?? METRIC_LABEL[drill.metric]} · {view === 'summary' ? 'click a value to see those leads' : 'click a row for the full lead record'}{d?.masked ? ' · phone and email are masked on this public site' : ''}</div>
           </div>
           <div className="flex items-center gap-1.5">
-            <input className="input w-56" placeholder="Search name, phone, LM-id…" value={search} onChange={(e) => setSearch(e.target.value)} />
-            {drill.dim && drill.value !== undefined && (
-              <button className="btn" title="Apply this value as a page filter" onClick={() => { toggleValue(drill.dim as ListDim, drill.value!); onClose(); }}><Icon.Plus /> Filter page by this</button>
+            {!drill.path && (
+              <div className="inline-flex rounded-lg border border-line bg-surface-2 p-0.5 text-[11px] font-medium">
+                <button className={`rounded-md px-2.5 py-1 ${view === 'summary' ? 'bg-surface text-accent shadow-sm' : 'text-ink-2 hover:text-ink'}`} onClick={() => setView('summary')}>Summary</button>
+                <button className={`rounded-md px-2.5 py-1 ${view === 'list' ? 'bg-surface text-accent shadow-sm' : 'text-ink-2 hover:text-ink'}`} onClick={() => setView('list')}>All leads</button>
+              </div>
+            )}
+            {view === 'list' && <input className="input w-56" placeholder="Search name, phone, LM-id…" value={search} onChange={(e) => setSearch(e.target.value)} />}
+            {canFilterPage && (
+              <button className="btn" title="Apply this value as a page filter" onClick={() => { toggleValue(dim as ListDim, value!); onClose(); }}><Icon.Plus /> Filter page by this</button>
             )}
             <button className="btn" disabled={dl} onClick={async () => { setDl(true); try { await downloadWithAuth(drill.csvPath ?? '/overview/leads.csv', { ...p, page: undefined, limit: undefined }, `${drill.title.replace(/[^a-z0-9]+/gi, '_').toLowerCase()}.csv`); } catch (e) { alert(String(e)); } finally { setDl(false); } }}>
               <Icon.Download /> {dl ? 'Preparing…' : 'CSV (all rows)'}
@@ -101,9 +119,10 @@ export function DrillDrawer({ drill, onClose }: { drill: Drill; onClose: () => v
         </div>
 
         <div className="min-h-0 flex-1 overflow-hidden p-3">
-          {r.error && <ErrorNote error={r.error} onRetry={r.refetch} />}
-          {!d && r.isLoading && <div className="space-y-2"><Skeleton /><Skeleton /><Skeleton className="h-64" /></div>}
-          {d && (
+          {view === 'summary' && <DrillSummary params={base} onPick={(pd, pv) => { setPick({ dim: pd, value: pv }); setView('list'); }} />}
+          {view === 'list' && r.error && <ErrorNote error={r.error} onRetry={r.refetch} />}
+          {view === 'list' && !d && r.isLoading && <div className="space-y-2"><Skeleton /><Skeleton /><Skeleton className="h-64" /></div>}
+          {view === 'list' && d && (
             <div className={`h-full ${r.isFetching ? 'opacity-70' : ''}`}>
               <DataTable rows={d.rows} columns={cols} compact maxHeight="100%" rowKey={(x) => String(x.lead_id ?? x.user_id)} onRowClick={(x) => { if (x.lead_id) setLeadId(String(x.lead_id)); }}
                 initialSort={sort} />
@@ -111,7 +130,7 @@ export function DrillDrawer({ drill, onClose }: { drill: Drill; onClose: () => v
           )}
         </div>
 
-        <div className="flex flex-wrap items-center justify-between gap-2 border-t border-line px-4 py-2 text-xs text-ink-2">
+        {view === 'list' && <div className="flex flex-wrap items-center justify-between gap-2 border-t border-line px-4 py-2 text-xs text-ink-2">
           <div className="flex items-center gap-2">
             <span>Sort</span>
             <select className="input !py-0.5" value={sort.id} onChange={(e) => setSort({ id: e.target.value, desc: sort.desc })}>
@@ -127,7 +146,7 @@ export function DrillDrawer({ drill, onClose }: { drill: Drill; onClose: () => v
             <button className="btn" disabled={page >= pages} onClick={() => setPage(page + 1)}>›</button>
             <button className="btn" disabled={page >= pages} onClick={() => setPage(pages)}>»</button>
           </div>
-        </div>
+        </div>}
       </div>
       {leadId && <LeadDrawer leadId={leadId} onClose={() => setLeadId(null)} />}
     </div>

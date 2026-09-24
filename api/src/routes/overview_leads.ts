@@ -5,12 +5,14 @@ import { handle, intParam, maskEmail, maskName, maskPhone } from '../http';
 import { parseFilters, resolvePeriods, type Filters, type Frag, type Period } from '../filters';
 import { getSql, release } from '../db';
 import { flatWhere, FLAT_COLS, convCond, convFirstCond } from './overview';
+import { paymentPeriod } from '../filters';
 
 /**
  * Drill-down for the Overview: the leads behind any KPI, bar, donut slice or table row.
  *   GET /api/overview/leads?metric=leads|touches|converted|converted_first|sf_converted|avg_alltime|avg_window
  *                          [&dim=touch_point&value=Eduport%20App] [&q=search] [&page&limit&sort&dir]
  *   GET /api/overview/leads.csv  (same params, streamed, capped by EXPORT_ROW_CAP)
+ *   GET /api/overview/leads/summary (same params): the same leads split by purchased grade / course, stage, class, source, touch point ...
  * One row per lead; touch columns summarise that lead's touches inside the selection.
  * Two steps: (1) a light GROUP BY over the selection picks + sorts + pages the lead ids, (2) the page is enriched
  * per lead (lead_master join + a LATERAL aggregate over that lead's touches), so a 25k-lead list pages in well under a second.
@@ -34,11 +36,19 @@ const COLS = [
   'tab_converted', 'first_touch_point', 'last_touch_point', 'converted_first', 'converted', 'converted_at', 'last_payment_date', 'revenue', 'courses', 'sf_is_converted', 'sf_touch_count',
 ];
 
+const VALID_PAY = (sql: Sql) => sql`hp.payment_method = 0 AND hp.deleted = false AND hp.is_success = true AND hp.payment_success = true`;
+
 function dimCond(sql: Sql, q: Record<string, string>): Frag {
   const dim = q.dim; const value = q.value;
   if (!dim || value === undefined) return sql`true`;
   if (dim === 'ic_status') {
     return sql`t.lead_id IN (SELECT ic.lead_master__c FROM salesforce.interested_course__c ic WHERE NOT ic.isdeleted AND btrim(ic.status__c) = ${value})`;
+  }
+  if (dim === 'course' || dim === 'grade') {
+    // purchased course / grade: any valid payment of the lead's app user on that batch
+    const keyExpr = dim === 'course' ? sql`COALESCE(b.course_title, 'batch ' || hp.batch_id::text)` : sql`COALESCE(b.grade_title, 'No Grade On Batch')`;
+    return sql`EXISTS (SELECT 1 FROM app.home_payment hp LEFT JOIN app.core_batch b ON b.id = hp.batch_id
+                       WHERE hp.user_id = t.app_user_id AND ${VALID_PAY(sql)} AND ${keyExpr} = ${value})`;
   }
   const col = FLAT_COLS[dim as keyof typeof FLAT_COLS] ?? (dim === 'touch_date' ? 'touch_date' : undefined);
   if (!col) throw Object.assign(new Error(`unknown dim ${dim}`), { status: 400 });
@@ -81,11 +91,18 @@ function maskRow(r: Rec, role: Role): Rec {
   return { ...r, mobile: maskPhone(r.mobile as string | null, role), email: maskEmail(r.email as string | null, role), first_name: maskName(r.first_name as string | null, role), last_name: maskName(r.last_name as string | null, role) };
 }
 
-/** the lead list; `page` null = no paging (export) */
-function leadQuery(sql: Sql, f: Filters, periods: { current: Period }, q: Record<string, string>, page: { limit: number; offset: number } | null) {
+/** the selection shared by the list, the CSV and the summary: touch-row condition + per-lead GROUP BY / HAVING */
+function selection(sql: Sql, f: Filters, periods: { current: Period }, q: Record<string, string>) {
   const metric = (METRICS as readonly string[]).includes(q.metric ?? '') ? (q.metric as Metric) : 'leads';
   const w = flatWhere(sql, f, metric === 'avg_alltime' ? null : periods.current);
   const sel = sql`${w} AND ${dimCond(sql, q)} AND ${searchCond(sql, q.q ?? '')}`;
+  const having = metricHaving(sql, metric, periods.current, f, q);
+  return { metric, sel, having };
+}
+
+/** the lead list; `page` null = no paging (export) */
+function leadQuery(sql: Sql, f: Filters, periods: { current: Period }, q: Record<string, string>, page: { limit: number; offset: number } | null) {
+  const { metric, sel, having } = selection(sql, f, periods, q);
   const sortCol = SORTABLE[q.sort ?? ''] ?? (metric.startsWith('stale') ? 'last_touch_in_window' : 'touches_in_window');
   const dir = q.dir === 'asc' ? sql`ASC NULLS FIRST` : sql`DESC NULLS LAST`;
   return sql<Rec[]>`
@@ -98,7 +115,7 @@ function leadQuery(sql: Sql, f: Filters, periods: { current: Period }, q: Record
       FROM analytics.mv_touch_flat t
       WHERE ${sel}
       GROUP BY t.lead_id
-      HAVING ${metricHaving(sql, metric, periods.current, f, q)}
+      HAVING ${having}
     ),
     pg AS (
       SELECT sel.*, count(*) OVER ()::int AS total_rows FROM sel
@@ -139,6 +156,57 @@ overviewLeads.get('/overview/leads', (c) =>
     const rows = await leadQuery(sql, f, periods, q, { limit, offset: (page - 1) * limit });
     const total = rows.length ? (rows[0].total_rows as number) : 0;
     return { page, limit, total, rows: rows.map((r) => { const { total_rows: _t, ...rest } = maskRow(r, role); return rest; }), masked: role === 'viewer', columns: COLS };
+  }, 0),
+);
+
+const SPLITS: { dim: string; label: string; kind: 'lead' | 'touch' | 'pay' }[] = [
+  { dim: 'grade', label: 'Purchased grade', kind: 'pay' }, { dim: 'course', label: 'Purchased course', kind: 'pay' },
+  { dim: 'lead_stage', label: 'Lead stage', kind: 'lead' }, { dim: 'class_group', label: 'Lead class', kind: 'lead' }, { dim: 'lead_source', label: 'Lead source', kind: 'lead' },
+  { dim: 'touch_point', label: 'Touch point', kind: 'touch' }, { dim: 'source', label: 'Source', kind: 'touch' }, { dim: 'medium', label: 'Medium', kind: 'touch' },
+  { dim: 'owner', label: 'Owner', kind: 'lead' }, { dim: 'district', label: 'District', kind: 'lead' }, { dim: 'ic_status', label: 'IC status', kind: 'lead' }, { dim: 'lm_reason', label: 'LM reason', kind: 'lead' },
+];
+
+/** GET /overview/leads/summary : the selected leads split by purchase + lead + touch dimensions (for the drill drawer's overview) */
+overviewLeads.get('/overview/leads/summary', (c) =>
+  handle(c, async ({ sql, f, periods, q }) => {
+    const { sel, having } = selection(sql, f, periods, q);
+    const pp = paymentPeriod(f);
+    const payWin = pp ? sql`AND hp.payment_date BETWEEN ${pp.from} AND ${pp.to}` : sql``;
+    const rows = await sql<{ dim: string; key: string | null; leads: number; revenue: number | null }[]>`
+      WITH sel AS (
+        SELECT t.lead_id, max(t.app_user_id) AS app_user_id, max(t.revenue) AS revenue, count(*)::int AS touches_in_window
+        FROM analytics.mv_touch_flat t WHERE ${sel} GROUP BY t.lead_id HAVING ${having}
+      )
+      SELECT '_total' AS dim, NULL AS key, count(*)::int AS leads, sum(revenue)::float8 AS revenue FROM sel
+      UNION ALL
+      SELECT '_touches' AS dim, NULL AS key, sum(touches_in_window)::int AS leads, NULL::float8 AS revenue FROM sel
+      UNION ALL
+      SELECT d.dim, d.key, count(DISTINCT t.lead_id)::int AS leads, NULL::float8 AS revenue
+      FROM analytics.mv_touch_flat t JOIN sel s ON s.lead_id = t.lead_id
+      CROSS JOIN LATERAL (VALUES ('lead_stage', t.lead_stage), ('class_group', t.class_group), ('lead_source', t.lead_source),
+                                 ('touch_point', t.touch_point), ('source', t.source), ('medium', t.medium),
+                                 ('owner', t.owner_name), ('district', t.district), ('ic_status', t.best_ic_status), ('lm_reason', t.lm_reason)) AS d(dim, key)
+      WHERE ${sel}
+      GROUP BY d.dim, d.key
+      UNION ALL
+      SELECT p.dim, p.key, count(DISTINCT p.lead_id)::int AS leads, sum(p.amount)::float8 AS revenue
+      FROM (
+        SELECT s.lead_id, hp.amount, 'course' AS dim, COALESCE(b.course_title, 'batch ' || hp.batch_id::text) AS key
+        FROM sel s JOIN app.home_payment hp ON hp.user_id = s.app_user_id LEFT JOIN app.core_batch b ON b.id = hp.batch_id
+        WHERE ${VALID_PAY(sql)} ${payWin}
+        UNION ALL
+        SELECT s.lead_id, hp.amount, 'grade' AS dim, COALESCE(b.grade_title, 'No Grade On Batch') AS key
+        FROM sel s JOIN app.home_payment hp ON hp.user_id = s.app_user_id LEFT JOIN app.core_batch b ON b.id = hp.batch_id
+        WHERE ${VALID_PAY(sql)} ${payWin}
+      ) p
+      GROUP BY p.dim, p.key`;
+    const total = rows.find((r) => r.dim === '_total');
+    const touches = rows.find((r) => r.dim === '_touches');
+    const splits = SPLITS.map((s) => {
+      const list = rows.filter((r) => r.dim === s.dim).map((r) => ({ key: r.key ?? '(blank)', leads: r.leads, revenue: r.revenue })).sort((a, b) => b.leads - a.leads);
+      return { ...s, rows: list.slice(0, 40), distinct: list.length };
+    });
+    return { leads: total?.leads ?? 0, revenue: total?.revenue ?? 0, touches: touches?.leads ?? 0, payment_window: pp, splits };
   }, 0),
 );
 
