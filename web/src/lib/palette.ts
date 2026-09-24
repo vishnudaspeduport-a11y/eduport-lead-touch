@@ -5,12 +5,12 @@
  */
 import { useSyncExternalStore } from 'react';
 
-export const SERIES_LIGHT = ['#5b6cff', '#ff7a59', '#22c55e', '#f5b301', '#ec4899', '#14b8a6', '#8b5cf6', '#ef4444'];
-export const SERIES_DARK  = ['#818eff', '#ff8f73', '#4ade80', '#fbbf24', '#f472b6', '#2dd4bf', '#a78bfa', '#f87171'];
+export const SERIES_LIGHT = ['#4f46e5', '#0d9488', '#d97706', '#db2777', '#059669', '#7c3aed', '#ea580c', '#64748b'];
+export const SERIES_DARK  = ['#818cf8', '#2dd4bf', '#fbbf24', '#f472b6', '#34d399', '#a78bfa', '#fb923c', '#94a3b8'];
 export const SEQ = ['#e4e7ff', '#d3d8ff', '#c1c8ff', '#adb7ff', '#98a5ff', '#8393ff', '#6e80ff', '#5b6cff', '#4f5fe6', '#4352cc', '#3846b3', '#2e3a99', '#242e80'];
 export const DIVERGING = { neg: '#ef4444', mid_light: '#eef0f8', mid_dark: '#3a3d5c', pos: '#5b6cff' };
 export const STATUS = { good: '#0ca30c', warning: '#fab219', serious: '#ec835a', critical: '#d03b3b' };
-export const INK = { light: { primary: '#16182e', secondary: '#565a7a', muted: '#8f93b0', grid: '#e8eaf4', axis: '#c9cde0' }, dark: { primary: '#f6f6fc', secondary: '#bec1d8', muted: '#8488a5', grid: '#32344c', axis: '#454866' } };
+export const INK = { light: { primary: '#0f172a', secondary: '#475569', muted: '#64748b', grid: '#e2e8f0', axis: '#cbd5e1' }, dark: { primary: '#f6f6fc', secondary: '#bec1d8', muted: '#8488a5', grid: '#32344c', axis: '#454866' } };
 
 const listeners = new Set<() => void>();
 function subscribe(cb: () => void) {

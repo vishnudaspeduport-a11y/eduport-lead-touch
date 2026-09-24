@@ -38,17 +38,16 @@ const ALL_COLS: Col<DimRow>[] = [
 /** Colourful KPI tile: tinted card, solid icon disc, big number */
 function Kpi({ title, value, sub, def, tone, icon, small, onClick, split }: { title: string; value: string; sub?: string; def?: string; tone: string; icon: ReactNode; small?: boolean; onClick?: () => void; split?: { label: string; value: string; onClick?: () => void; title?: string }[] }) {
   return (
-    <div className={`card ${tone} relative flex flex-col justify-start gap-1.5 overflow-hidden !p-2.5 ${onClick ? 'cursor-pointer transition hover:-translate-y-0.5 hover:shadow-pop' : ''}`} onClick={onClick} title={onClick ? 'Click to see the leads' : undefined}>
-      <div className="pointer-events-none absolute -right-6 -top-6 h-20 w-20 rounded-full bg-tone opacity-70" />
+    <div className={`card ${tone} relative flex flex-col justify-start gap-1.5 overflow-hidden !p-2.5 ${onClick ? 'cursor-pointer transition hover:border-accent/40 hover:shadow-pop' : ''}`} onClick={onClick} title={onClick ? 'Click to see the leads' : undefined}>
       <div className="flex items-start justify-between gap-2">
         <div className="flex items-center gap-2">
-          <span className={`grid shrink-0 place-items-center rounded-full bg-tone-solid text-white shadow ${small ? 'h-6 w-6' : 'h-7 w-7'}`}>{icon}</span>
-          <div className="line-clamp-2 text-[10px] font-semibold uppercase leading-tight tracking-wide text-ink-3" title={title}>{title}</div>
+          <span className={`grid shrink-0 place-items-center rounded-lg bg-tone text-tone ${small ? 'h-6 w-6' : 'h-7 w-7'}`}>{icon}</span>
+          <div className="line-clamp-2 text-[10px] font-medium uppercase leading-tight tracking-wider text-ink-3" title={title}>{title}</div>
         </div>
         {def && <span onClick={(e) => e.stopPropagation()}><Popover align="right" width="w-80" trigger={<button className="relative rounded p-0.5 text-ink-3 hover:text-ink"><Icon.Help /></button>}><div className="text-xs leading-relaxed text-ink-2">{def}</div></Popover></span>}
       </div>
       <div>
-        <div className={`font-extrabold leading-none tabular-nums tracking-tight ${small ? 'text-lg' : 'text-xl'}`}>{value}</div>
+        <div className={`font-semibold leading-none tabular-nums tracking-tight ${small ? 'text-lg' : 'text-xl'}`}>{value}</div>
         {sub && <div className="mt-1 truncate text-[10px] text-ink-3">{sub}</div>}
         {split && (
           <div className="mt-1 flex flex-wrap items-baseline gap-x-2 gap-y-0.5 text-[10px] leading-tight">

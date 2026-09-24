@@ -144,8 +144,8 @@ export default function Analysis() {
               ['Converted', fmtInt(summary.converted), `${fmtPct(summary.phones ? Math.round((summary.converted / summary.phones) * 10000) / 100 : null)} of numbers have a valid payment`, 'converted'],
               ['Revenue', fmtINR(summary.revenue), 'all valid payments of these numbers', 'converted'],
             ] as [string, string, string, typeof view][]).map(([t, v, sub, target]) => (
-              <button key={t} className={`card !p-2.5 text-left transition hover:-translate-y-0.5 hover:shadow-pop ${view === target && t !== 'Revenue' ? 'ring-2 ring-accent' : ''}`} onClick={() => setView(target)} title="Click to filter the results">
-                <div className="text-[10px] font-semibold uppercase tracking-wide text-ink-3">{t}</div><div className="text-xl font-extrabold tabular-nums">{v}</div><div className="text-[10px] text-ink-3">{sub}</div>
+              <button key={t} className={`card !p-2.5 text-left transition hover:border-accent/40 hover:shadow-pop ${view === target && t !== 'Revenue' ? 'border-accent ring-1 ring-accent/30' : ''}`} onClick={() => setView(target)} title="Click to filter the results">
+                <div className="text-[10px] font-semibold uppercase tracking-wide text-ink-3">{t}</div><div className="text-xl font-semibold tabular-nums">{v}</div><div className="text-[10px] text-ink-3">{sub}</div>
               </button>
             ))}
           </div>

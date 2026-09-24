@@ -48,7 +48,7 @@ export function Popover({ trigger, children, align = 'left', width = 'w-80' }: {
     <div className="relative inline-block" ref={ref}>
       <span onClick={() => setOpen((o) => !o)}>{trigger}</span>
       {open && (
-        <div className={`absolute z-40 mt-1 ${align === 'right' ? 'right-0' : 'left-0'} ${width} rounded-2xl border border-line bg-surface p-3 shadow-pop`}>
+        <div className={`absolute z-40 mt-1 ${align === 'right' ? 'right-0' : 'left-0'} ${width} rounded-xl border border-line bg-surface p-3 shadow-pop`}>
           {typeof children === 'function' ? children(() => setOpen(false)) : children}
         </div>
       )}
@@ -58,10 +58,10 @@ export function Popover({ trigger, children, align = 'left', width = 'w-80' }: {
 
 export function Segmented<T extends string>({ value, onChange, options, size = 'sm' }: { value: T; onChange: (v: T) => void; options: { value: T; label: string; title?: string }[]; size?: 'sm' | 'xs' }) {
   return (
-    <div className="inline-flex rounded-full border border-line bg-surface p-0.5 shadow-sm">
+    <div className="inline-flex rounded-lg border border-line bg-surface-2 p-0.5">
       {options.map((o) => (
         <button key={o.value} title={o.title} onClick={() => onChange(o.value)}
-          className={`rounded-full px-2.5 ${size === 'xs' ? 'py-0.5 text-[11px]' : 'py-1 text-xs'} font-medium transition ${value === o.value ? 'bg-ink text-surface shadow' : 'text-ink-2 hover:text-ink'}`}>
+          className={`rounded-md px-2.5 ${size === 'xs' ? 'py-0.5 text-[11px]' : 'py-1 text-xs'} font-medium transition ${value === o.value ? 'bg-surface text-accent shadow-sm' : 'text-ink-2 hover:text-ink'}`}>
           {o.label}
         </button>
       ))}
@@ -92,14 +92,14 @@ export function CardSearch({ value, onChange, count, onApply, placeholder = 'Sea
 }
 
 export function Note({ children }: { children: ReactNode }) {
-  return <div className="rounded-2xl bg-surface/70 px-3 py-2 text-[11px] leading-snug text-ink-2 ring-1 ring-ink/[0.04] backdrop-blur">{children}</div>;
+  return <div className="rounded-lg border border-line bg-surface px-3 py-2 text-[11px] leading-snug text-ink-2">{children}</div>;
 }
 
 export function PageHeader({ title, subtitle, right }: { title: string; subtitle?: string; right?: ReactNode }) {
   return (
     <div className="mb-2 flex flex-wrap items-end justify-between gap-2">
       <div className="flex flex-wrap items-baseline gap-x-2">
-        <h1 className="text-xl font-extrabold tracking-tight text-ink">{title}</h1>
+        <h1 className="text-lg font-semibold tracking-tight text-ink">{title}</h1>
         {subtitle && <p className="text-[11px] text-ink-3">{subtitle}</p>}
       </div>
       {right}
