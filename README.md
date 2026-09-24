@@ -35,7 +35,7 @@ public.home_customuser / home_payment (app DB) ───────────
 ## 1b. How it is actually deployed (as of 2026-09-21)
 
 * **Database**: Supabase project `duotauyrrxjmqpzdjtph` (Singapore). Schema created with `sql/ALL_supabase_simple.sql` (single `postgres` login, no extra roles). Role default `statement_timeout = 90s` protects against stuck web sessions; the sync sets it to 0 for its own session.
-* **Worker + site**: https://eduport-lead-touch.vishnudasp-eduport.workers.dev, deployed from a PC with `npx wrangler deploy` (wrangler logged in). Connects to Supabase through **Hyperdrive** (direct Worker->Supabase connections time out). No login page (`AUTH_MODE=none`, `PUBLIC_ROLE=viewer` masks phone/e-mail). Switch to Supabase e-mail login by setting `AUTH_MODE=supabase` and filling `web/.env.production`.
+* **Worker + site**: https://eduport-lead-touch.vishnudasp-eduport.workers.dev, deployed from a PC with `npx wrangler deploy` (wrangler logged in). Connects to Supabase through **Hyperdrive** (direct Worker->Supabase connections time out). **Login** (`AUTH_MODE=password`): accounts live in `app_auth.users` (`sql/016_app_auth.sql`), passwords are PBKDF2-SHA256, the session is an HttpOnly cookie (30 days, sliding). On the first visit after deploy the app shows a one-time **setup screen** that creates the first admin - the e-mail must be in `ADMIN_EMAILS`. Admins then use the **Access** page to add accounts, set passwords, promote other admins, disable or delete. Roles: *admin* (everything + Access page) and *user* (all dashboard pages). `AUTH_MODE=none` turns the login off (everyone gets `PUBLIC_ROLE`). Hyperdrive caches plain SELECTs for 60 s, so every auth query mentions `now()` to stay uncached.
 * **Sync**: GitHub Actions `sync.yml` every 4 hours (05:45, 09:45, 13:45, 17:45, 21:45, 01:45 IST; run it any time from Actions -> sync -> Run workflow). Salesforce login = client-credentials against the org My Domain (repo variable `SF_MY_DOMAIN=https://velocity-fun-1818.my.salesforce.com`). Secrets: `DATABASE_URL` (Supabase session pooler, port 5432, password URL-encoded), `SF_CLIENT_ID`, `SF_CLIENT_SECRET`, optional `SF_USERNAME/SF_PASSWORD/SF_SECURITY_TOKEN`, and `SOURCE_DATABASE_URL` (production Postgres, read-only) for the payment tables.
 * **Ops**: the sync workflow accepts a `sql` input (Actions -> sync -> Run workflow) that runs ad-hoc SQL against Supabase and prints the rows - use it for `SELECT * FROM analytics.refresh_all()`, `pg_stat_activity`, or the reconciliation queries.
 
@@ -50,8 +50,8 @@ public.home_customuser / home_payment (app DB) ───────────
 | `sync/.env` | `DATABASE_URL` | = `OWNER_DATABASE_URL` |
 | `sync/.env` | `TASK_SINCE`, `REFRESH_AFTER_SYNC`, `SYNC_OBJECTS` | optional |
 | Cloudflare | Hyperdrive config | holds the `lt_app_ro` connection string (never in the repo) |
-| `api/wrangler.toml [vars]` | `AUTH_MODE`, `ACCESS_TEAM_DOMAIN`, `ACCESS_AUD`, `ADMIN_EMAILS`, `ALLOWED_EMAIL_DOMAIN`, `APP_VERSION`, `EXPORT_ROW_CAP` | non-secret config |
-| `api/.dev.vars` | `AUTH_MODE=dev`, `DEV_USER_EMAIL`, `WRANGLER_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE` | local dev only |
+| `api/wrangler.toml [vars]` | `AUTH_MODE` (password / none), `PUBLIC_ROLE`, `ADMIN_EMAILS` (who may create the first admin), `APP_VERSION`, `EXPORT_ROW_CAP` | non-secret config |
+| `api/.dev.vars` | `AUTH_MODE=none`, `WRANGLER_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE` | local dev only |
 
 Passwords for the two roles are set in `sql/001_schema_roles.sql` (`CHANGE_ME_*`) - change them before running, or `ALTER ROLE ... PASSWORD` afterwards.
 
@@ -130,14 +130,14 @@ Then map the custom domain (Workers → Settings → Domains & Routes) and make 
 
 ```bash
 # terminal 1 - API
-cd api && cp .dev.vars.example .dev.vars   # AUTH_MODE=dev, local Postgres connection string
+cd api && cp .dev.vars.example .dev.vars   # AUTH_MODE=none for no login, local Postgres connection string
 npm run dev                                 # http://127.0.0.1:8787/api/health
 
 # terminal 2 - web (proxies /api to 8787)
 cd web && npm run dev                       # http://localhost:5173
 ```
 
-`AUTH_MODE=dev` trusts `DEV_USER_EMAIL`; never deploy with it. Useful checks:
+`AUTH_MODE=none` skips the login; never deploy with it. Useful checks:
 
 ```bash
 curl -s "http://127.0.0.1:8787/api/kpis?from=2026-03-01&to=2026-08-31" | jq .data.current

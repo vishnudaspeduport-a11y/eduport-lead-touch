@@ -4,7 +4,8 @@ import { useTheme } from '../lib/palette';
 import { fmtDateTime, fmtInt } from '../lib/format';
 import { FilterBar } from './FilterBar';
 import { ErrorBoundary, Icon, Popover } from './ui';
-import { supabase } from '../lib/supabase';
+import { useAuth } from '../lib/auth';
+import { UserMenu } from './UserMenu';
 import { SyncButton } from './SyncButton';
 
 export const NAV = [
@@ -19,11 +20,13 @@ export const NAV = [
 export function AppShell() {
   const { data: meta, error } = useMeta();
   const { dark, toggle } = useTheme();
+  const { user } = useAuth();
+  const nav = user?.role === 'admin' ? [...NAV, { to: '/access', label: 'Access', icon: <Icon.Users /> }] : NAV;
   const asOf = meta?.dataAsOf;
   const stale = asOf?.refreshed_at ? Date.now() - new Date(asOf.refreshed_at).getTime() > 6 * 3600e3 : false;
   const syncErr = meta?.syncState.some((s) => s.last_error);
-  const initials = (meta?.user.email ?? 'bi').slice(0, 2).toUpperCase();
-  const noFilters = useLocation().pathname.startsWith('/analysis');   // the Analysis page works from the uploaded file, not the global filters
+  const path = useLocation().pathname;
+  const noFilters = path.startsWith('/analysis') || path.startsWith('/access');   // Analysis works from the uploaded file, Access is not data
 
   return (
     <div className="flex min-h-screen">
@@ -38,7 +41,7 @@ export function AppShell() {
           </div>
           <div className="px-3 pb-1 text-[10px] font-semibold uppercase tracking-wider text-ink-3">Pages</div>
           <nav className="space-y-0.5">
-            {NAV.map((n) => (
+            {nav.map((n) => (
               <NavLink key={n.to} to={{ pathname: n.to, search: window.location.search }} end={n.to === '/'}
                 className={({ isActive }) => `flex items-center gap-2.5 rounded-lg px-3 py-2 text-xs font-medium transition ${isActive ? 'bg-accent/10 text-accent' : 'text-ink-2 hover:bg-surface-2 hover:text-ink'}`}>
                 <span className="opacity-80">{n.icon}</span>{n.label}
@@ -56,8 +59,7 @@ export function AppShell() {
             <div className="mt-1.5 text-[10px] text-ink-3">Salesforce watermark {fmtDateTime(asOf?.salesforce_as_of)}</div>
           </div>
           <div className="mt-2 px-1 text-[10px] text-ink-3">
-            {meta && <span>v{meta.version} · {meta.user.role}</span>}
-            {supabase && <button className="ml-2 hover:text-ink" onClick={() => supabase?.auth.signOut()}>Sign out</button>}
+            {meta && <span>v{meta.version} · {user?.role === 'admin' ? 'admin' : 'user'}</span>}
           </div>
         </div>
       </aside>
@@ -66,7 +68,7 @@ export function AppShell() {
         <header className="flex items-center justify-between gap-2 border-b border-line bg-surface px-6 py-2.5">
           <div className="flex items-center gap-2">
             <select className="input md:hidden" value={window.location.pathname} onChange={(e) => (window.location.href = e.target.value + window.location.search)}>
-              {NAV.map((n) => <option key={n.to} value={n.to}>{n.label}</option>)}
+              {nav.map((n) => <option key={n.to} value={n.to}>{n.label}</option>)}
             </select>
             <Popover width="w-96" trigger={
               <button className={`chip ${stale || syncErr ? 'border-amber-400 text-ink' : ''}`} title="Data freshness">
@@ -87,7 +89,7 @@ export function AppShell() {
           <div className="flex items-center gap-2">
             <SyncButton />
             <button className="btn !px-2" onClick={toggle} title="Toggle theme">{dark ? <Icon.Sun /> : <Icon.Moon />}</button>
-            <span className="grid h-8 w-8 place-items-center rounded-full bg-accent/10 text-[11px] font-semibold text-accent" title={meta?.user.email}>{initials}</span>
+            <UserMenu />
           </div>
         </header>
         <main className="flex-1 px-6 pb-10 pt-4">

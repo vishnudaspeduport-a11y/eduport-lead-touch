@@ -33,11 +33,10 @@ crons = []
 
 # --- Non-secret config ---------------------------------------------------------
 [vars]
-AUTH_MODE = "none"                                            # "none" (no login) | "supabase" | "dev"
-PUBLIC_ROLE = "analyst"                                       # with AUTH_MODE=none: "viewer" masks name/phone/email, "analyst" shows them, "admin" also unlocks admin actions
+AUTH_MODE = "password"                                        # "password" (login page, accounts managed in the app) | "none" (no login)
+PUBLIC_ROLE = "analyst"                                       # only with AUTH_MODE=none: "viewer" masks name/phone/email, "analyst" shows them, "admin" also unlocks admin actions
 SUPABASE_URL = "https://duotauyrrxjmqpzdjtph.supabase.co"     # Project URL (Supabase -> Project Settings -> API)
-ADMIN_EMAILS = "bi_team@eduport.ai"                           # comma list; admins see unmasked phone/email
-ALLOWED_EMAIL_DOMAIN = "eduport.ai"                           # anyone with this domain can sign up as viewer
+ADMIN_EMAILS = "bi_team@eduport.ai"                           # comma list: e-mails allowed to create the FIRST admin account (setup screen); afterwards admins are managed on the Access page
 GITHUB_REPO = "vishnudaspeduport-a11y/eduport-lead-touch"           # manual "Sync now" button; token via: npx wrangler secret put GITHUB_TOKEN
 APP_VERSION = "1.0.0"
 EXPORT_ROW_CAP = "50000"

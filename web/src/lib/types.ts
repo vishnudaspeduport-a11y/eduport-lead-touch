@@ -5,7 +5,7 @@ export interface Period { from: string; to: string }
 export interface Definition { key: string; title: string; plain: string; sql: string; deviation?: string }
 
 export interface Meta {
-  user: { email: string; role: 'admin' | 'viewer' };
+  user: { email: string; role: 'admin' | 'analyst' | 'viewer'; name?: string };
   version: string;
   dataAsOf: { refreshed_at: string | null; salesforce_as_of: string | null; last_sync_run_at: string | null; lead_master_synced_at: string | null; lead_rows: number; touch_rows: number };
   syncState: { object_name: string; last_modstamp: string | null; last_run_at: string | null; last_run_rows: number | null; last_error: string | null }[];

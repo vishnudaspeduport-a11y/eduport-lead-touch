@@ -1,5 +1,6 @@
 # Copy to .dev.vars for `wrangler dev` (never committed)
-AUTH_MODE=dev
-DEV_USER_EMAIL=bi_team@eduport.ai
+# password = real login (needs the app_auth schema, sql/016_app_auth.sql); none = no login, everyone is PUBLIC_ROLE
+AUTH_MODE=none
+PUBLIC_ROLE=admin
 ADMIN_EMAILS=bi_team@eduport.ai
 DATABASE_URL=postgresql://postgres.PROJECT_REF:PASSWORD@aws-0-REGION.pooler.supabase.com:6543/postgres?sslmode=require

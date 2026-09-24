@@ -12,6 +12,7 @@ import { overviewLeads } from './routes/overview_leads';
 import { touchAttribution } from './routes/touch_attribution';
 import { converted } from './routes/converted';
 import { analysis } from './routes/analysis';
+import { authRoutes } from './routes/auth_routes';
 
 const app = new Hono<AppEnv>();
 
@@ -25,7 +26,7 @@ app.use('/api/*', async (c, next) => {
 app.use('/api/*', authMiddleware);
 
 const api = new Hono<AppEnv>();
-for (const r of [meta, filters, leads, syncRoute, overview, overviewLeads, touchAttribution, converted, analysis]) api.route('/', r);
+for (const r of [authRoutes, meta, filters, leads, syncRoute, overview, overviewLeads, touchAttribution, converted, analysis]) api.route('/', r);
 
 // Admin-only manual refresh (the Cron Trigger calls the same function)
 api.post('/admin/refresh', async (c) => {
