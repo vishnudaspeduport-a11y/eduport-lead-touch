@@ -1,4 +1,4 @@
-import { NavLink, Outlet } from 'react-router-dom';
+import { NavLink, Outlet, useLocation } from 'react-router-dom';
 import { useMeta } from '../hooks/useMeta';
 import { useTheme } from '../lib/palette';
 import { fmtDateTime, fmtInt } from '../lib/format';
@@ -23,6 +23,7 @@ export function AppShell() {
   const stale = asOf?.refreshed_at ? Date.now() - new Date(asOf.refreshed_at).getTime() > 6 * 3600e3 : false;
   const syncErr = meta?.syncState.some((s) => s.last_error);
   const initials = (meta?.user.email ?? 'bi').slice(0, 2).toUpperCase();
+  const noFilters = useLocation().pathname.startsWith('/analysis');   // the Analysis page works from the uploaded file, not the global filters
 
   return (
     <div className="flex min-h-screen">
@@ -89,7 +90,7 @@ export function AppShell() {
           </div>
         </header>
         <main className="flex-1 px-4 pb-8 pt-1">
-          <FilterBar />
+          {!noFilters && <FilterBar />}
           <ErrorBoundary label="page"><Outlet /></ErrorBoundary>
         </main>
       </div>

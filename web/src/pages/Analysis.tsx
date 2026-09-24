@@ -93,7 +93,7 @@ export default function Analysis() {
   const extraCols: Col<Row>[] = (parsed?.headers ?? []).filter((h) => h !== phoneCol).map((h) => ({ key: `file: ${h}`, header: `File · ${h}` }));
   const cols: Col<Row>[] = [
     { key: 'input_phone', header: 'Phone (file)' }, { key: 'matched', header: 'Lead found', render: (v) => (v ? 'Yes' : 'No') },
-    { key: 'lead_name', header: 'Lead ID' }, { key: 'eps_id', header: 'EPS ID' },
+    { key: 'lead_name', header: 'Lead ID' }, { key: 'eps_id', header: 'EPS ID', render: (v) => (v == null ? '–' : String(v)) },
     { key: 'first_name', header: 'Name', render: (v, r) => `${v ?? ''} ${r.last_name ?? ''}`.trim() || '–' }, { key: 'mobile', header: 'Mobile (Salesforce)' },
     { key: 'created_at', header: 'Created', render: (v) => fmtDateTime(v as string) }, { key: 'lead_stage', header: 'Stage' }, { key: 'class_raw', header: 'Class' },
     { key: 'lead_source', header: 'Lead source' }, { key: 'owner_name', header: 'Owner' }, { key: 'district', header: 'District' }, { key: 'lm_reason', header: 'LM reason' }, { key: 'best_ic_status', header: 'IC status' },
