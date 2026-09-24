@@ -12,7 +12,7 @@ export function FilterBar() {
   for (const [k, v] of Object.entries(f.flags)) if (v) chips.push({ label: `${DIM_LABEL[k] ?? k}: ${v === '1' ? 'yes' : 'no'}`, onRemove: () => set((p) => ({ ...p, flags: { ...p.flags, [k]: undefined } })) });
 
   return (
-    <div className="sticky top-2 z-30 mb-3 rounded-xl border border-line bg-surface/95 px-3 py-2 shadow-card backdrop-blur">
+    <div className="sticky top-2 z-30 mb-4 rounded-xl border border-line bg-surface/95 px-4 py-2.5 shadow-card backdrop-blur">
       <div className="flex flex-wrap items-center gap-1.5">
         {/* date preset */}
         <select className="input !py-1 text-xs" value={f.preset} onChange={(e) => { const p = PRESETS.find((x) => x.key === e.target.value)!; const [from, to] = p.range(); set({ preset: p.key, from, to }); }}>

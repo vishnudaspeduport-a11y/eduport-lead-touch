@@ -5,7 +5,8 @@ import { fmtInt, fmtPct } from '../lib/format';
 import { ChartCard } from '../components/ChartCard';
 import { DataTable, type Col } from '../components/DataTable';
 import { DailyLines, HBars } from '../charts';
-import { CardSearch, Icon, Note, PageHeader, Popover, Skeleton } from '../components/ui';
+import { CardSearch, Icon, Note, PageHeader, Skeleton } from '../components/ui';
+import { KpiTile } from '../components/KpiTile';
 import { DrillDrawer, type Drill } from '../components/DrillDrawer';
 
 interface AttrRow { key: string; touches: number; leads: number; converted: number; attributed: number; conv_pct: number | null; attr_pct: number | null; share_pct: number | null }
@@ -17,23 +18,7 @@ interface Resp {
   definitions: Record<string, string>;
 }
 
-function Kpi({ title, value, sub, def, tone, icon, onClick }: { title: string; value: string; sub?: string; def?: string; tone: string; icon: ReactNode; onClick?: () => void }) {
-  return (
-    <div className={`card ${tone} relative flex min-h-[84px] flex-col justify-between gap-1 overflow-hidden !p-2.5 ${onClick ? 'cursor-pointer transition hover:border-accent/40 hover:shadow-pop' : ''}`} onClick={onClick} title={onClick ? 'Click to see the leads' : undefined}>
-      <div className="flex items-start justify-between gap-2">
-        <div className="flex items-center gap-2">
-          <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-tone text-tone">{icon}</span>
-          <div className="line-clamp-2 text-[10px] font-medium uppercase leading-tight tracking-wider text-ink-3" title={title}>{title}</div>
-        </div>
-        {def && <span onClick={(e) => e.stopPropagation()}><Popover align="right" width="w-80" trigger={<button className="relative rounded p-0.5 text-ink-3 hover:text-ink"><Icon.Help /></button>}><div className="text-xs leading-relaxed text-ink-2">{def}</div></Popover></span>}
-      </div>
-      <div>
-        <div className="text-xl font-semibold leading-none tabular-nums tracking-tight">{value}</div>
-        {sub && <div className="mt-1 truncate text-[10px] text-ink-3">{sub}</div>}
-      </div>
-    </div>
-  );
-}
+function Kpi(p: { title: string; value: string; sub?: string; def?: string; tone: string; icon: ReactNode; onClick?: () => void }) { return <KpiTile {...p} />; }
 
 function AttrCard({ title, rows, dim, tone, opts, cols, label, mode, loading, error, onRetry, help, selected, toggleValue, setList }: {
   title: string; rows: AttrRow[] | undefined; dim: ListDim; tone: string; opts: { asTable?: boolean; height?: number; limit?: number }; cols: Col<AttrRow>[]; label: string; mode: 'first' | 'last';
@@ -79,12 +64,12 @@ export default function TouchAttribution({ mode }: { mode: 'first' | 'last' }) {
   );
 
   return (
-    <div className="space-y-2">
+    <div className="space-y-4">
       <PageHeader title={mode === 'first' ? 'First touch' : 'Last touch'}
         subtitle={`touch date ${f.from} → ${f.to} · same definitions as the Tableau "Lead Touch - ${mode === 'first' ? 'First' : 'Last'} Touch" dashboard`} />
       {q.error && <Note>⚠ {q.error.message}</Note>}
 
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+      <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
         {q.isLoading && Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-[92px]" />)}
         {k && <>
           <Kpi tone="tone-blue" icon={<Icon.Users />} title="Total leads" value={fmtInt(k.leads)} sub="distinct leads touched in the window" def={def.leads} onClick={() => setDrill({ metric: 'leads', title: 'Total leads' })} />
@@ -95,7 +80,7 @@ export default function TouchAttribution({ mode }: { mode: 'first' | 'last' }) {
         </>}
       </div>
 
-      <div className="grid gap-2 xl:grid-cols-2">
+      <div className="grid gap-4 xl:grid-cols-2">
         {card('Touch point analysis (converted leads)', d?.touch_point, 'touch_point', 'tone-teal')}
         {card('Class wise distribution', d?.class_raw, 'class_raw', 'tone-violet')}
         {card('Lead source distribution', d?.source, 'source', 'tone-orange', { asTable: true })}

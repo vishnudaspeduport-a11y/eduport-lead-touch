@@ -5,7 +5,8 @@ import { fmtINR, fmtInt, fmtPct, fmtDateTime } from '../lib/format';
 import { ChartCard } from '../components/ChartCard';
 import { DataTable, type Col } from '../components/DataTable';
 import { DailyLines, Donut, HBars } from '../charts';
-import { CardSearch, Icon, Note, PageHeader, Popover, Skeleton } from '../components/ui';
+import { CardSearch, Icon, Note, PageHeader, Skeleton } from '../components/ui';
+import { KpiTile } from '../components/KpiTile';
 import { DrillDrawer, type Drill } from '../components/DrillDrawer';
 
 interface Dim { key: string; users: number; touches: number; revenue: number; new_users: number; share_pct: number | null }
@@ -33,23 +34,7 @@ const USER_COLS: Col<Row>[] = [
 ];
 const USER_SORTS: [string, string][] = [['last_payment_date', 'Last payment'], ['first_payment_date', 'First payment'], ['revenue', 'Revenue'], ['payments', 'Payments'], ['touches_before_payment', 'Touches before payment'], ['last_touch_at', 'Last touch time'], ['lead_name', 'Lead ID'], ['lead_stage', 'Stage']];
 
-function Kpi({ title, value, sub, def, tone, icon, onClick }: { title: string; value: string; sub?: string; def?: string; tone: string; icon: ReactNode; onClick?: () => void }) {
-  return (
-    <div className={`card ${tone} relative flex min-h-[84px] flex-col justify-between gap-1 overflow-hidden !p-2.5 ${onClick ? 'cursor-pointer transition hover:border-accent/40 hover:shadow-pop' : ''}`} onClick={onClick} title={onClick ? 'Click to see the users' : undefined}>
-      <div className="flex items-start justify-between gap-2">
-        <div className="flex items-center gap-2">
-          <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-tone text-tone">{icon}</span>
-          <div className="line-clamp-2 text-[10px] font-medium uppercase leading-tight tracking-wider text-ink-3" title={title}>{title}</div>
-        </div>
-        {def && <span onClick={(e) => e.stopPropagation()}><Popover align="right" width="w-80" trigger={<button className="relative rounded p-0.5 text-ink-3 hover:text-ink"><Icon.Help /></button>}><div className="text-xs leading-relaxed text-ink-2">{def}</div></Popover></span>}
-      </div>
-      <div>
-        <div className="text-xl font-semibold leading-none tabular-nums tracking-tight">{value}</div>
-        {sub && <div className="mt-1 truncate text-[10px] text-ink-3">{sub}</div>}
-      </div>
-    </div>
-  );
-}
+function Kpi(p: { title: string; value: string; sub?: string; def?: string; tone: string; icon: ReactNode; onClick?: () => void }) { return <KpiTile {...p} />; }
 
 type ConvCardOpts = { filterDim?: ListDim; asTable?: boolean; height?: number; limit?: number; help?: string; cols?: Col<Dim>[] };
 
@@ -102,7 +87,7 @@ export default function Converted() {
   );
 
   return (
-    <div className="space-y-2">
+    <div className="space-y-4">
       <PageHeader title="Converted" subtitle={`payment date ${f.from} → ${f.to} · same definitions as the Tableau "Lead Touch - Converted" dashboard (paying users, credited to the last touch before payment)`}
         right={
           <label className="flex items-center gap-1.5 text-xs text-ink-2">Purchased grade
@@ -113,7 +98,7 @@ export default function Converted() {
           </label>} />
       {q.error && <Note>⚠ {q.error.message}</Note>}
 
-      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-6">
+      <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 xl:grid-cols-6">
         {q.isLoading && Array.from({ length: 6 }).map((_, i) => <Skeleton key={i} className="h-[92px]" />)}
         {k && <>
           <Kpi tone="tone-orange" icon={<Icon.Check />} title="Converted (users)" value={fmtInt(k.users)} sub={`${fmtInt(k.payments_all)} payments in the window`} def={def.users} onClick={() => open('Converted users')} />
@@ -125,7 +110,7 @@ export default function Converted() {
         </>}
       </div>
 
-      <div className="grid gap-2 xl:grid-cols-2">
+      <div className="grid gap-4 xl:grid-cols-2">
         <ChartCard title="Lead stage distribution" tone="tone-blue" subtitle="converted users by lead stage · click a slice to filter" loading={q.isLoading} error={q.error} rows={d?.by_stage ?? []} columns={dimCols} height={260} help={def.stage}>
           <Donut data={(d?.by_stage ?? []).map((s) => ({ key: s.key === '(null)' ? 'No Salesforce lead' : s.key, value: s.users, selected: (f.lists.lead_stage ?? []).includes(s.key) }))} valueLabel="Converted (users)" centerLabel="users" onClick={(key) => toggleValue('lead_stage', key === 'No Salesforce lead' ? '(null)' : key)} />
         </ChartCard>

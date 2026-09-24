@@ -27,7 +27,7 @@ export function AppShell() {
 
   return (
     <div className="flex min-h-screen">
-      <aside className="hidden w-52 shrink-0 flex-col border-r border-line bg-surface md:flex">
+      <aside className="hidden w-56 shrink-0 flex-col border-r border-line bg-surface md:flex">
         <div className="sticky top-0 flex h-screen flex-col p-3">
           <div className="flex items-center gap-2 px-1 pb-4 pt-1">
             <span className="grid h-8 w-8 place-items-center rounded-lg bg-accent text-white"><Icon.Spark /></span>
@@ -36,10 +36,11 @@ export function AppShell() {
               <div className="-mt-0.5 text-[10px] font-medium text-ink-3">Lead Touch analytics</div>
             </div>
           </div>
-          <nav className="space-y-1">
+          <div className="px-3 pb-1 text-[10px] font-semibold uppercase tracking-wider text-ink-3">Pages</div>
+          <nav className="space-y-0.5">
             {NAV.map((n) => (
               <NavLink key={n.to} to={{ pathname: n.to, search: window.location.search }} end={n.to === '/'}
-                className={({ isActive }) => `flex items-center gap-2 rounded-lg px-3 py-1.5 text-xs font-medium transition ${isActive ? 'bg-accent/10 text-accent' : 'text-ink-2 hover:bg-surface-2 hover:text-ink'}`}>
+                className={({ isActive }) => `flex items-center gap-2.5 rounded-lg px-3 py-2 text-xs font-medium transition ${isActive ? 'bg-accent/10 text-accent' : 'text-ink-2 hover:bg-surface-2 hover:text-ink'}`}>
                 <span className="opacity-80">{n.icon}</span>{n.label}
               </NavLink>
             ))}
@@ -62,7 +63,7 @@ export function AppShell() {
       </aside>
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="flex items-center justify-between gap-2 border-b border-line bg-surface px-4 py-2">
+        <header className="flex items-center justify-between gap-2 border-b border-line bg-surface px-6 py-2.5">
           <div className="flex items-center gap-2">
             <select className="input md:hidden" value={window.location.pathname} onChange={(e) => (window.location.href = e.target.value + window.location.search)}>
               {NAV.map((n) => <option key={n.to} value={n.to}>{n.label}</option>)}
@@ -89,7 +90,7 @@ export function AppShell() {
             <span className="grid h-8 w-8 place-items-center rounded-full bg-accent/10 text-[11px] font-semibold text-accent" title={meta?.user.email}>{initials}</span>
           </div>
         </header>
-        <main className="flex-1 px-4 pb-8 pt-3">
+        <main className="flex-1 px-6 pb-10 pt-4">
           {!noFilters && <FilterBar />}
           <ErrorBoundary label="page"><Outlet /></ErrorBoundary>
         </main>

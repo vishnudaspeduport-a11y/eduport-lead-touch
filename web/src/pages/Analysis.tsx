@@ -107,7 +107,7 @@ export default function Analysis() {
   ];
 
   return (
-    <div className="space-y-2">
+    <div className="space-y-4">
       <PageHeader title="Analysis" subtitle="upload a spreadsheet with phone numbers and get every lead's details back · the file is read in your browser and nothing is stored" />
 
       <div className="card flex flex-wrap items-center gap-3">
@@ -136,7 +136,7 @@ export default function Analysis() {
 
       {summary && results && (
         <>
-          <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
+          <div className="grid grid-cols-2 gap-4 sm:grid-cols-5">
             {([
               ['Numbers in file', fmtInt(summary.phones), 'unique, valid · click to show all', 'all'],
               ['Leads found', fmtInt(summary.matched), `${fmtPct(summary.phones ? Math.round((summary.matched / summary.phones) * 10000) / 100 : null)} of numbers · ${fmtInt(summary.leads)} lead records`, 'matched'],

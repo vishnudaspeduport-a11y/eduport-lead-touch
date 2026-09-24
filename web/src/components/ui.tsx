@@ -97,10 +97,10 @@ export function Note({ children }: { children: ReactNode }) {
 
 export function PageHeader({ title, subtitle, right }: { title: string; subtitle?: string; right?: ReactNode }) {
   return (
-    <div className="mb-2 flex flex-wrap items-end justify-between gap-2">
-      <div className="flex flex-wrap items-baseline gap-x-2">
+    <div className="mb-1 flex flex-wrap items-end justify-between gap-2">
+      <div className="min-w-0">
         <h1 className="text-lg font-semibold tracking-tight text-ink">{title}</h1>
-        {subtitle && <p className="text-[11px] text-ink-3">{subtitle}</p>}
+        {subtitle && <p className="mt-0.5 text-[11px] text-ink-3">{subtitle}</p>}
       </div>
       {right}
     </div>
