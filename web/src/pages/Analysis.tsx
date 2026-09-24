@@ -137,14 +137,16 @@ export default function Analysis() {
       {summary && results && (
         <>
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
-            {[
-              ['Numbers in file', fmtInt(summary.phones), 'unique, valid'],
-              ['Leads found', fmtInt(summary.matched), `${fmtPct(summary.phones ? Math.round((summary.matched / summary.phones) * 10000) / 100 : null)} of numbers · ${fmtInt(summary.leads)} lead records`],
-              ['Not in Salesforce', fmtInt(summary.phones - summary.matched), 'no lead with this number'],
-              ['Converted', fmtInt(summary.converted), `${fmtPct(summary.phones ? Math.round((summary.converted / summary.phones) * 10000) / 100 : null)} of numbers have a valid payment`],
-              ['Revenue', fmtINR(summary.revenue), 'all valid payments of these numbers'],
-            ].map(([t, v, s]) => (
-              <div key={t} className="card !p-2.5"><div className="text-[10px] font-semibold uppercase tracking-wide text-ink-3">{t}</div><div className="text-xl font-extrabold tabular-nums">{v}</div><div className="text-[10px] text-ink-3">{s}</div></div>
+            {([
+              ['Numbers in file', fmtInt(summary.phones), 'unique, valid · click to show all', 'all'],
+              ['Leads found', fmtInt(summary.matched), `${fmtPct(summary.phones ? Math.round((summary.matched / summary.phones) * 10000) / 100 : null)} of numbers · ${fmtInt(summary.leads)} lead records`, 'matched'],
+              ['Not in Salesforce', fmtInt(summary.phones - summary.matched), 'no lead with this number', 'unmatched'],
+              ['Converted', fmtInt(summary.converted), `${fmtPct(summary.phones ? Math.round((summary.converted / summary.phones) * 10000) / 100 : null)} of numbers have a valid payment`, 'converted'],
+              ['Revenue', fmtINR(summary.revenue), 'all valid payments of these numbers', 'converted'],
+            ] as [string, string, string, typeof view][]).map(([t, v, sub, target]) => (
+              <button key={t} className={`card !p-2.5 text-left transition hover:-translate-y-0.5 hover:shadow-pop ${view === target && t !== 'Revenue' ? 'ring-2 ring-accent' : ''}`} onClick={() => setView(target)} title="Click to filter the results">
+                <div className="text-[10px] font-semibold uppercase tracking-wide text-ink-3">{t}</div><div className="text-xl font-extrabold tabular-nums">{v}</div><div className="text-[10px] text-ink-3">{sub}</div>
+              </button>
             ))}
           </div>
 
