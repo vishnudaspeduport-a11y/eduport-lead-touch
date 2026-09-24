@@ -72,7 +72,7 @@ export default function TouchAttribution({ mode }: { mode: 'first' | 'last' }) {
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
         {q.isLoading && Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-[92px]" />)}
         {k && <>
-          <Kpi tone="tone-blue" icon={<Icon.Users />} title="Total leads" value={fmtInt(k.leads)} sub="distinct leads touched in the window" def={def.leads} onClick={() => setDrill({ metric: 'leads', title: 'Total leads' })} />
+          <Kpi tone="tone-brand" icon={<Icon.Users />} title="Total leads" value={fmtInt(k.leads)} sub="distinct leads touched in the window" def={def.leads} onClick={() => setDrill({ metric: 'leads', title: 'Total leads' })} />
           <Kpi tone="tone-orange" icon={<Icon.Check />} title="Converted" value={fmtInt(k.converted)} sub={`${fmtPct(k.conv_pct)} of touched leads`} def={def.converted} onClick={() => setDrill({ metric: 'converted', title: 'Converted' })} />
           <Kpi tone={mode === 'first' ? 'tone-green' : 'tone-pink'} icon={<Icon.Touch />} title={label} value={fmtInt(k.attributed)} sub={`${fmtPct(k.attr_of_converted_pct)} of converted leads have their ${mode} touch in the window`} def={def.attributed}
             onClick={() => setDrill({ metric, title: label })} />
@@ -85,7 +85,7 @@ export default function TouchAttribution({ mode }: { mode: 'first' | 'last' }) {
         {card('Class wise distribution', d?.class_raw, 'class_raw', 'tone-violet')}
         {card('Lead source distribution', d?.source, 'source', 'tone-orange', { asTable: true })}
         {card('Medium', d?.medium, 'medium', 'tone-green', { asTable: true })}
-        {card('Campaign name', d?.campaign, 'campaign', 'tone-blue', { asTable: true })}
+        {card('Campaign name', d?.campaign, 'campaign', 'tone-brand', { asTable: true })}
         <ChartCard title={`${label} per day`} tone="tone-pink" subtitle={`distinct leads and ${label.toLowerCase()} by touch date`} loading={q.isLoading} error={q.error} rows={d?.daily ?? []} height={280}>
           <DailyLines data={(d?.daily ?? []).map((r) => ({ d: r.d.slice(5), leads: r.leads, attributed: r.attributed }))} xKey="d" lines={[{ key: 'leads', label: 'Leads' }, { key: 'attributed', label }]} />
         </ChartCard>

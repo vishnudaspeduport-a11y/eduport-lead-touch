@@ -30,9 +30,9 @@ export function AppShell() {
       <aside className="hidden w-56 shrink-0 flex-col border-r border-line bg-surface md:flex">
         <div className="sticky top-0 flex h-screen flex-col p-3">
           <div className="flex items-center gap-2 px-1 pb-4 pt-1">
-            <span className="grid h-8 w-8 place-items-center rounded-lg bg-accent text-white"><Icon.Spark /></span>
+            <img src="/eduport-logo.png" alt="Eduport" className="h-10 w-10 rounded-full border border-line bg-white object-cover" />
             <div>
-              <div className="text-sm font-semibold tracking-tight">Eduport</div>
+              <div className="text-sm font-semibold tracking-tight text-accent">eduport</div>
               <div className="-mt-0.5 text-[10px] font-medium text-ink-3">Lead Touch analytics</div>
             </div>
           </div>

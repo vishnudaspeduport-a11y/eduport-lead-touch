@@ -10,7 +10,7 @@
   --ink-2: 71 85 105;          /* slate-600 */
   --ink-3: 100 116 139;        /* slate-500 */
   --line: 226 232 240;         /* slate-200 */
-  --accent: 79 70 229;         /* indigo-600 */
+  --accent: 240 78 35;         /* Eduport orange #F04E23 */
 }
 .dark {
   --surface: 24 28 40;
@@ -19,13 +19,13 @@
   --ink-2: 203 213 225;
   --ink-3: 148 163 184;
   --line: 45 52 70;
-  --accent: 129 140 248;
+  --accent: 255 122 80;
 }
 
 html { font-size: 13px; }
 body {
   color: rgb(var(--ink));
-  background: linear-gradient(180deg, #eef1f8 0%, rgb(var(--surface-2)) 240px);
+  background: linear-gradient(180deg, #fbf1ec 0%, rgb(var(--surface-2)) 240px);
   background-attachment: fixed;
 }
 .dark body { background: linear-gradient(180deg, #171b2a 0%, rgb(var(--surface-2)) 240px); background-attachment: fixed; }
@@ -40,7 +40,8 @@ body {
   .th { @apply sticky top-0 z-10 whitespace-nowrap border-b border-line bg-surface-2 px-2 py-1.5 text-left text-[10px] font-semibold uppercase tracking-wider text-ink-3; }
   .td { @apply whitespace-nowrap border-b border-line/70 px-2 py-[5px] text-xs tabular-nums; }
   /* colour tones: used for the small KPI / card markers only */
-  .tone-blue   { --tone: 79 70 229; }
+  .tone-brand  { --tone: 240 78 35; }
+  .tone-blue   { --tone: 37 99 235; }
   .tone-green  { --tone: 5 150 105; }
   .tone-orange { --tone: 234 88 12; }
   .tone-violet { --tone: 124 58 237; }
