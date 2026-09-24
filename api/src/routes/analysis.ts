@@ -28,7 +28,7 @@ analysis.post('/analysis/phones', async (c) => {
   const sql = getSql(c.env);
   try {
     const rows = await sql<Rec[]>`
-      WITH p AS (SELECT DISTINCT x AS phone_key FROM unnest(${phones}::text[]) AS x),
+      WITH p AS (SELECT DISTINCT x AS phone_key FROM unnest(string_to_array(${phones.join(",")}, ',')) AS x),
       leads AS (
         SELECT p.phone_key, l.id AS lead_id, l.name AS lead_name, l.first_name__c AS first_name, l.last_name__c AS last_name, l.mobile_number__c AS mobile, l.email__c AS email,
                l.createddate AS created_at, l.lead_stage__c AS lead_stage, l.class__c AS class_raw, analytics.class_group(l.class__c) AS class_group,
