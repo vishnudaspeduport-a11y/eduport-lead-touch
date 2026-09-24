@@ -139,7 +139,13 @@ function NewAccount({ onClose, onDone }: { onClose: () => void; onDone: () => vo
   const [busy, setBusy] = useState(false); const [err, setErr] = useState<string | null>(null);
   const submit = async (e: React.FormEvent) => {
     e.preventDefault(); setBusy(true); setErr(null);
-    try { await authCall('/auth/users', { body: { email, name, role, password } }); onDone(); } catch (x) { setErr((x as Error).message); } finally { setBusy(false); }
+    try { await authCall('/auth/users', { body: { email, name, role, password } }); onDone(); }
+    catch (x) {
+      // the first try may have been created even though its response was lost; treat a duplicate as done
+      const e = x as { status?: number; retried?: boolean };
+      if (e.status === 409 && e.retried) { onDone(); return; }
+      setErr((x as Error).message);
+    } finally { setBusy(false); }
   };
   return (
     <Modal title="Add account" onClose={onClose}>
