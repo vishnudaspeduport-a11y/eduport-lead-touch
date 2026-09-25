@@ -20,7 +20,7 @@ import { paymentPeriod } from '../filters';
 export const overviewLeads = new Hono<AppEnv>();
 
 type Rec = Record<string, unknown>;
-const METRICS = ['leads', 'touches', 'converted', 'first_touch', 'last_touch', 'stale_new', 'stale_not_connected', 'converted_first', 'sf_converted', 'avg_alltime', 'avg_window'] as const;
+const METRICS = ['leads', 'touches', 'converted', 'first_touch', 'last_touch', 'stale_new', 'stale_not_connected', 'converted_first', 'sf_converted', 'sf_flag_no_pay', 'paid_no_flag', 'avg_alltime', 'avg_window'] as const;
 type Metric = (typeof METRICS)[number];
 
 const SORTABLE: Record<string, string> = {
@@ -70,6 +70,8 @@ function metricHaving(sql: Sql, metric: Metric, p: Period, f?: Filters, q: Recor
     case 'last_touch': return sql`bool_or(t.tab_is_last_touch AND ${conv})`;
     case 'converted_first': return sql`bool_or(${f ? convFirstCond(sql, f) : sql`(t.converted AND t.is_pre_conversion)`})`;
     case 'sf_converted': return sql`bool_or(t.lead_sf_is_converted)`;
+    case 'sf_flag_no_pay': return sql`bool_or(t.lead_sf_is_converted) AND NOT bool_or(t.converted)`;
+    case 'paid_no_flag': return sql`bool_or(t.converted) AND NOT bool_or(t.lead_sf_is_converted)`;
     case 'avg_alltime': case 'avg_window': return sql`bool_or(t.converted)`;
     default: return sql`true`;
   }
