@@ -39,7 +39,8 @@ export function convFirstCond(sql: Sql, f: Filters): Frag {
 }
 
 /** main window: basis=created -> leads created in the range (all their touches); otherwise touches dated in the range */
-export function flatWhere(sql: Sql, f: Filters, p: Period | null): Frag {
+/** `skip` = a list dim to ignore (option lists cascade from every OTHER filter) */
+export function flatWhere(sql: Sql, f: Filters, p: Period | null, skip?: string): Frag {
   const c: Frag[] = [];
   if (p) c.push(f.basis === 'created' ? sql`t.lead_created_date BETWEEN ${p.from} AND ${p.to}` : sql`t.touch_date BETWEEN ${p.from} AND ${p.to}`);
   if (f.dups !== '1') c.push(sql`t.is_duplicate = false`);
@@ -49,7 +50,7 @@ export function flatWhere(sql: Sql, f: Filters, p: Period | null): Frag {
   if (f.paid_touch) c.push(f.paid_touch === 'paid' ? sql`t.is_paid_touch = true` : sql`t.is_paid_touch IS NOT TRUE`);
   for (const k of LIST_KEYS) {
     const col = FLAT_COLS[k]; const vals = f[k];
-    if (!col || !vals?.length) continue;
+    if (!col || !vals?.length || k === skip) continue;
     if (k === 'ic_status') {
       // same source as the IC-status funnel: any interested course of the lead in one of these statuses
       const real = vals.filter((v) => v !== '(null)');

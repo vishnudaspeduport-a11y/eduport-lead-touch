@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import type { AppEnv } from '../env';
 import { handle, intParam } from '../http';
 import { dimExpr, isLeadDim, isTouchDim, leadWhere, touchWhere, type Dim } from '../filters';
+import { flatWhere, FLAT_COLS } from './overview';
 
 export const filters = new Hono<AppEnv>();
 
@@ -20,6 +21,19 @@ filters.get('/filters', (c) =>
     const search = (q.q ?? '').trim().toLowerCase();
     const p = periods.current;
     const d = dim as Dim;
+
+    // Fast path: dims that live on the precomputed touch table are answered from it (same filters as the Overview cards)
+    const flatCol = FLAT_COLS[d as keyof typeof FLAT_COLS];
+    if (flatCol) {
+      const ref = sql`COALESCE(t.${sql(flatCol)}::text, '(null)')`;
+      const rows = await sql<{ value: string; leads: number; converted: number }[]>`
+        SELECT ${ref} AS value, count(DISTINCT t.lead_id)::int AS leads, count(DISTINCT t.lead_id) FILTER (WHERE t.tab_converted)::int AS converted
+        FROM analytics.mv_touch_flat t
+        WHERE ${flatWhere(sql, f, p, d)}
+          ${search ? sql`AND lower(${ref}) LIKE ${'%' + search + '%'}` : sql`AND true`}
+        GROUP BY 1 ORDER BY ${d === 'class_group' ? sql`min(analytics.class_group_order(t.class_group)), 1` : sql`2 DESC, 1`} LIMIT ${limit}`;
+      return { dim: d, options: rows };
+    }
 
     if (isLeadDim(d)) {
       const expr = dimExpr(sql, d, 'l');
