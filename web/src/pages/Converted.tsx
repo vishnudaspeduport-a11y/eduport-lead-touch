@@ -5,7 +5,7 @@ import { fmtINR, fmtInt, fmtPct, fmtDateTime } from '../lib/format';
 import { ChartCard } from '../components/ChartCard';
 import { DataTable, type Col } from '../components/DataTable';
 import { DailyLines, Donut, HBars } from '../charts';
-import { CardSearch, Icon, Note, PageHeader, Segmented, Skeleton } from '../components/ui';
+import { CardSearch, Icon, Note, PageHeader, Popover, Segmented, Skeleton } from '../components/ui';
 import { KpiTile } from '../components/KpiTile';
 import { DrillDrawer, type Drill } from '../components/DrillDrawer';
 
@@ -62,7 +62,8 @@ function ConvCard({ title, rows, tone, opts, cols, loading, error, onRetry, help
 /** Tableau "Lead Touch - Converted": paying users by payment date, credited to their last touch before the payment. */
 export default function Converted() {
   const { f, params, toggleValue, setList } = useFilters();
-  const [grade, setGrade] = useState<string>('');
+  const [grades, setGrades] = useState<string[]>([]);
+  const grade = grades.join('|');   // the API takes a pipe-separated list
   const [pm, setPm] = useState<'all' | 'm0' | 'm1'>(() => { try { return (localStorage.getItem('lt-pm') as 'all' | 'm0' | 'm1') || 'all'; } catch { return 'all'; } });
   const changePm = (v: 'all' | 'm0' | 'm1') => { setPm(v); try { localStorage.setItem('lt-pm', v); } catch { /* ignore */ } };
   const q = useApi<Resp>('/converted', { ...params, grade, pm });
@@ -96,10 +97,7 @@ export default function Converted() {
             <Segmented size="xs" value={pm} onChange={changePm} options={[{ value: 'all', label: 'All', title: 'Every successful payment (Metabase sales rule)' }, { value: 'm0', label: 'Method 0', title: 'payment_method = 0: the Tableau / Overview rule' }, { value: 'm1', label: 'Method 1', title: 'payment_method = 1: gateway EMI instalments' }]} />
           </label>
           <label className="flex items-center gap-1.5 text-xs text-ink-2">Purchased grade
-            <select className="input !py-1" value={grade} onChange={(e) => setGrade(e.target.value)}>
-              <option value="">All grades</option>
-              {(d?.grades ?? []).map((g) => <option key={g} value={g}>{g}</option>)}
-            </select>
+            <GradePicker all={d?.grades ?? []} value={grades} onChange={setGrades} />
           </label></div>} />
       {q.error && <Note>⚠ {q.error.message}</Note>}
 
@@ -133,5 +131,32 @@ export default function Converted() {
       {drill && <DrillDrawer drill={drill} onClose={() => setDrill(null)} />}
       <Note>This page counts <b>paying app users</b>, not Salesforce leads, and its date range is the <b>payment date</b>, whatever the basis switch says. Each user is credited to one touch: the latest touch dated on or before the last payment day, across every lead sharing the phone; users without such a touch are grouped as "No Touch Before Payment", and users whose phone matches no lead as "No Salesforce lead". Purchased grade and course come from the batch that was bought, so they can differ from the lead's class. The Class Group chip in the filter bar applies to the lead's class; use the Purchased grade selector above for the workbook's grade filter.</Note>
     </div>
+  );
+}
+
+/** Multi-select for the purchased grade: checkboxes in a popover, "All grades" when nothing is ticked. */
+function GradePicker({ all, value, onChange }: { all: string[]; value: string[]; onChange: (v: string[]) => void }) {
+  const label = value.length === 0 ? 'All grades' : value.length <= 2 ? value.join(', ') : `${value.length} grades`;
+  const toggle = (g: string) => onChange(value.includes(g) ? value.filter((x) => x !== g) : [...value, g]);
+  return (
+    <Popover align="right" width="w-64" trigger={<button className={`btn !py-1 ${value.length ? 'border-accent/40 text-accent' : ''}`}>{label} <Icon.Chevron open /></button>}>
+      {(close) => (
+        <div className="text-xs">
+          <div className="mb-1 flex items-center justify-between">
+            <span className="font-semibold">Purchased grade</span>
+            <button className="text-ink-3 hover:text-ink disabled:opacity-40" onClick={() => onChange([])} disabled={!value.length}>Clear</button>
+          </div>
+          <div className="max-h-72 space-y-0.5 overflow-y-auto">
+            {all.map((g) => (
+              <label key={g} className="flex cursor-pointer items-center gap-2 rounded px-1.5 py-1 hover:bg-surface-2">
+                <input type="checkbox" checked={value.includes(g)} onChange={() => toggle(g)} />
+                <span className="truncate">{g}</span>
+              </label>
+            ))}
+          </div>
+          <div className="mt-2 flex justify-end"><button className="btn btn-primary" onClick={close}>Done</button></div>
+        </div>
+      )}
+    </Popover>
   );
 }
