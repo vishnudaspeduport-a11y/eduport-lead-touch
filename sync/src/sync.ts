@@ -165,9 +165,10 @@ async function syncSalesforceObject(s: SfSession, spec: ObjectSpec): Promise<voi
 interface AppTableSpec { name: string; select: (src: Sql, since: Date | null) => AsyncIterable<Record<string, unknown>[]>; stampCol: string; }
 
 // Minimal copy (Supabase free tier): only payments that can ever count as valid + the users behind them,
-// and only the columns the analytics views read. Validity is still evaluated in analytics.v_valid_payment,
-// so a payment that is refunded / deleted later is corrected by the 45-day incremental tail.
-const VALID = `p.payment_method = 0 AND p.deleted = false AND p.is_success = true AND p.payment_success = true`;
+// and only the columns the analytics views read. Every payment_method is copied (0 = Tableau rule, 1 = gateway EMI
+// instalments; the Converted page can switch). Validity is still evaluated in the analytics views, so a payment
+// that is refunded / deleted later is corrected by the 45-day incremental tail.
+const VALID = `p.deleted = false AND p.is_success = true AND p.payment_success = true`;
 const APP_TABLES: AppTableSpec[] = [
   {
     name: 'home_payment', stampCol: 'created',
@@ -187,7 +188,7 @@ const APP_TABLES: AppTableSpec[] = [
       ? src`SELECT u.id, u.phone, u.is_deleted, u.created, u.updated_at
             FROM public.home_customuser u
             WHERE u.id IN (SELECT p.user_id FROM public.home_payment p WHERE p.created > ${since}::timestamptz - interval '45 days')
-               OR (u.updated_at > ${since}::timestamptz AND u.id IN (SELECT p.user_id FROM public.home_payment p WHERE p.payment_method = 0))
+               OR (u.updated_at > ${since}::timestamptz AND u.id IN (SELECT p.user_id FROM public.home_payment p WHERE p.is_success = true))
             ORDER BY u.id`.cursor(5000)
       : src.unsafe(`SELECT u.id, u.phone, u.is_deleted, u.created, u.updated_at
             FROM public.home_customuser u
