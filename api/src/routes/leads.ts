@@ -53,7 +53,8 @@ leads.get('/leads', (c) =>
     const page = intParam(q, 'page', 1, 1, 100000);
     const sortCol = SORTABLE[q.sort ?? ''] ?? 'created_at';
     const dir = q.dir === 'asc' ? sql`ASC NULLS FIRST` : sql`DESC NULLS LAST`;
-    const where = sql`${leadWhere(sql, f, periods.current)} AND ${searchCond(sql, q.q ?? '')}`;
+    // a search (phone / LM-id / name) looks across EVERY lead in the replica: the date window and the duplicate flag no longer apply
+    const where = (q.q ?? '').trim() ? searchCond(sql, q.q ?? '') : leadWhere(sql, f, periods.current);
     const [rows, [tot]] = await Promise.all([
       sql<Rec[]>`
         SELECT ${sql(LIST_COLS)} FROM analytics.v_lead_base l WHERE ${where}
@@ -111,7 +112,7 @@ leads.get('/leads/export.csv', async (c) => {
   const sql = getSql(c.env);
   const sortCol = SORTABLE[q.sort ?? ''] ?? 'created_at';
   const dir = q.dir === 'asc' ? sql`ASC NULLS FIRST` : sql`DESC NULLS LAST`;
-  const where = sql`${leadWhere(sql, f, periods.current)} AND ${searchCond(sql, q.q ?? '')}`;
+  const where = (q.q ?? '').trim() ? searchCond(sql, q.q ?? '') : leadWhere(sql, f, periods.current);
   const cols = LIST_COLS;
   const enc = new TextEncoder();
   const esc = (v: unknown) => {

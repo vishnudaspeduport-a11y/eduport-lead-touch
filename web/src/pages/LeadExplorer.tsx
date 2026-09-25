@@ -46,7 +46,7 @@ export default function LeadExplorer() {
             { key: 'is_duplicate', header: 'Dup' }, { key: 'sf_is_converted', header: 'SF conv flag' },
           ]} />
       )}
-      <div className="text-[11px] text-ink-3">Rows highlighted amber are pre-existing customers (payment before lead creation). Conversion % of this view: {d && d.total ? fmtPct(((d.rows.filter((r) => r.converted).length) / d.rows.length) * 100) : '–'} (this page only). Click a row for the full touch timeline, ICs, payments and calls.</div>
+      <div className="text-[11px] text-ink-3">Rows highlighted amber are pre-existing customers (payment before lead creation). Conversion % of this view: {d && d.total ? fmtPct(((d.rows.filter((r) => r.converted).length) / d.rows.length) * 100) : '–'} (this page only). Click a row for the full touch timeline, ICs, payments and calls. A search (phone, LM-id, name) looks across every lead in the database, whatever the date range and filters above.</div>
       {open && <LeadDrawer leadId={open} onClose={() => setOpen(null)} />}
     </div>
   );
