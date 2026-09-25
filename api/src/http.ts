@@ -1,7 +1,7 @@
 import type { Context } from 'hono';
 import type { Sql } from 'postgres';
 import type { AppEnv, Role } from './env';
-import { getSql, release } from './db';
+import { withSql } from './db';
 import { parseFilters, resolvePeriods, type Filters, type Periods } from './filters';
 
 export interface Ctx { sql: Sql; f: Filters; periods: Periods; q: Record<string, string>; role: Role; }
@@ -11,18 +11,13 @@ export async function handle<T>(c: Context<AppEnv>, fn: (x: Ctx) => Promise<T>, 
   const q = c.req.query();
   const f = parseFilters(q);
   const periods = resolvePeriods(f);
-  const sql = getSql(c.env);
   const t0 = Date.now();
-  try {
-    const data = await fn({ sql, f, periods, q, role: c.get('user').role });
-    return c.json(
-      { data, meta: { period: periods.current, previous: periods.previous, basis: f.basis, tookMs: Date.now() - t0 } },
-      200,
-      { 'Cache-Control': `private, max-age=${cache}` },
-    );
-  } finally {
-    release(sql, c.executionCtx);
-  }
+  const data = await withSql(c.env, c.executionCtx, (sql) => fn({ sql, f, periods, q, role: c.get('user').role }));
+  return c.json(
+    { data, meta: { period: periods.current, previous: periods.previous, basis: f.basis, tookMs: Date.now() - t0 } },
+    200,
+    { 'Cache-Control': `private, max-age=${cache}` },
+  );
 }
 
 export function intParam(q: Record<string, string>, key: string, def: number, min: number, max: number): number {

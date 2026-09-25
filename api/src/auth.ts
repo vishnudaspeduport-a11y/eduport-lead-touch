@@ -3,7 +3,7 @@ import type { Context } from 'hono';
 import { getCookie, setCookie, deleteCookie } from 'hono/cookie';
 import type { Sql } from 'postgres';
 import type { AppEnv, Env, User } from './env';
-import { getSql, release } from './db';
+import { getSql, release, withSql } from './db';
 import { newToken, sha256Hex } from './password';
 
 /**
@@ -89,8 +89,7 @@ export const authMiddleware = createMiddleware<AppEnv>(async (c, next) => {
   const hit = cache.get(hash);
   let user: User | null = hit && hit.until > Date.now() ? hit.user : null;
   if (!user) {
-    const sql = getSql(env);
-    try { user = await loadSession(sql, hash); } finally { release(sql, c.executionCtx); }
+    user = await withSql(env, c.executionCtx, (sql) => loadSession(sql, hash));
     if (!user) { deleteCookie(c, COOKIE, { path: '/' }); return c.json({ error: { code: 'unauthenticated', message: 'Session expired: sign in again' } }, 401); }
     cache.set(hash, { user, until: Date.now() + CACHE_MS });
   }

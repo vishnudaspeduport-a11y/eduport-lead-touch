@@ -2,7 +2,7 @@ import { Hono } from 'hono';
 import { getCookie } from 'hono/cookie';
 import { z } from 'zod';
 import type { AppEnv } from '../env';
-import { getSql, release } from '../db';
+import { getSql, release, withSql } from '../db';
 import { hashPassword, verifyPassword, passwordProblem, sha256Hex } from '../password';
 import { COOKIE, endSession, forgetAll, forgetSession, requireAdmin, startSession, type Account } from '../auth';
 
@@ -40,18 +40,19 @@ async function body<T>(c: { req: { json(): Promise<unknown> } }, schema: z.ZodTy
 /** GET /auth/status : { mode, setup_required, user } - public, called on every page load */
 authRoutes.get('/auth/status', async (c) => {
   if (c.env.AUTH_MODE === 'none') return c.json({ data: { mode: 'none', setup_required: false, user: { email: 'public', name: 'Public', role: c.env.PUBLIC_ROLE === 'admin' ? 'admin' : 'user' } } });
-  const sql = getSql(c.env);
-  try {
+  const token = getCookie(c, COOKIE);
+  const tokenHash = token ? await sha256Hex(token) : null;
+  const data = await withSql(c.env, c.executionCtx, async (sql) => {
     const [{ n }] = await sql<{ n: number }[]>`SELECT count(*)::int AS n FROM app_auth.users WHERE created_at <= now()`;
     let user: ReturnType<typeof publicUser> | null = null;
-    const token = getCookie(c, COOKIE);
-    if (n > 0 && token) {
+    if (n > 0 && tokenHash) {
       const rows = await sql<Account[]>`SELECT u.id::int AS id, u.email, u.name, u.role, u.is_active FROM app_auth.sessions s JOIN app_auth.users u ON u.id = s.user_id
-                                          WHERE s.token_hash = ${await sha256Hex(token)} AND s.expires_at > now() AND u.is_active`;
+                                          WHERE s.token_hash = ${tokenHash} AND s.expires_at > now() AND u.is_active`;
       if (rows[0]) user = publicUser(rows[0]);
     }
-    return c.json({ data: { mode: 'password', setup_required: n === 0, user } });
-  } finally { release(sql, c.executionCtx); }
+    return { mode: 'password' as const, setup_required: n === 0, user };
+  });
+  return c.json({ data });
 });
 
 /** POST /auth/setup : create the FIRST admin (only while there are no accounts; e-mail must be in ADMIN_EMAILS) */
