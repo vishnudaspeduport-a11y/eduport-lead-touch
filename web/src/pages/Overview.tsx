@@ -104,8 +104,8 @@ export default function Overview() {
             ]} />
           <Kpi tone="tone-red" icon={<Icon.Calendar />} title={`Still New after ${k.stale_days} days`} value={fmtInt(k.stale_new)} sub={`of ${fmtInt(k.new_total)} leads in stage New · ${fmtInt(k.stale_new_untouched)} never touched after creation`} def={def.stale_new}
             onClick={() => open('stale_new', `Still New after ${k.stale_days} days`, undefined, undefined, 'leads still in stage New, created more than 5 days ago and not touched in the last 5 days · sorted by last touch')} />
-          <Kpi tone="tone-violet" icon={<Icon.Touch />} title="Re-touched after a closed stage" value={fmtInt(k.stage_react)} sub={`of ${fmtInt(k.stage_react_total)} leads in a closed stage · touched after entering it`} def={def.stage_react}
-            onClick={() => open('stage_react', 'Re-touched after a closed stage')} />
+          <Kpi tone="tone-violet" icon={<Icon.Touch />} title="Closed leads touched again" value={fmtInt(k.stage_react)} sub={`of ${fmtInt(k.stage_react_total)} leads in Not Willing Now / Disqualified / Not Connected / P2 Completed · new touch after the stage was set`} def={def.stage_react}
+            onClick={() => open('stage_react', 'Closed leads touched again')} />
           <Kpi tone="tone-amber" icon={<Icon.Calendar />} title={`Still Not Connected after ${k.stale_days} days`} value={fmtInt(k.stale_nc)} sub={`of ${fmtInt(k.nc_total)} leads in stage Not Connected · ${fmtInt(k.stale_nc_untouched)} never touched after creation`} def={def.stale_nc}
             onClick={() => open('stale_not_connected', `Still Not Connected after ${k.stale_days} days`, undefined, undefined, 'leads still in stage Not Connected, created more than 5 days ago and not touched in the last 5 days · sorted by last touch')} />
         </>}
