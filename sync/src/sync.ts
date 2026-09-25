@@ -205,6 +205,8 @@ async function syncStageHistory(s: SfSession): Promise<void> {
 
 // ---------------------------------------------------------------- Salesforce call log (Task) -> one row per lead
 // Task is ~2 M rows since March 2026; we keep per lead: calls, first / last call, and the reason / status / owner of the LAST call.
+// Calls are logged either on the lead (What = Lead_Master__c) or, far more often, on one of its Interested Courses
+// (What = Interested_Course__c); TYPEOF resolves both to the lead id.
 // Watermark = Task CreatedDate (new calls only; later edits of an old call's reason are not picked up). A full load truncates first.
 const CALLS_KEY = 'Lead_Calls';
 interface CallAgg { lead_id: string; calls: number; first_call_at: string; last_call_at: string; last_reason: string | null; last_call_status: string | null; last_owner_id: string | null; last_subject: string | null; last_comment: string | null; _synced_at: Date }
@@ -212,7 +214,7 @@ async function syncCallSummary(s: SfSession): Promise<void> {
   const since = await getState(CALLS_KEY);
   const floor = process.env.CALLS_SINCE || process.env.LEAD_SINCE || '2026-03-01T00:00:00Z';   // repo variable CALLS_SINCE (2026-05-01)
   if (!since) await sql`TRUNCATE salesforce.lead_calls`;
-  const q = `SELECT Id, WhatId, CreatedDate, Reason__c, Call_Status__c, OwnerId, Subject, Activity_Comments__c FROM Task WHERE What.Type = 'Lead_Master__c' AND ${since ? `CreatedDate > ${since.toISOString()}` : `CreatedDate >= ${floor}`} ORDER BY CreatedDate ASC`;
+  const q = `SELECT Id, WhatId, CreatedDate, Reason__c, Call_Status__c, OwnerId, Subject, Activity_Comments__c, TYPEOF What WHEN Interested_Course__c THEN Lead_Master__c WHEN Lead_Master__c THEN Id END FROM Task WHERE What.Type IN ('Lead_Master__c', 'Interested_Course__c') AND ${since ? `CreatedDate > ${since.toISOString()}` : `CreatedDate >= ${floor}`} ORDER BY CreatedDate ASC`;
   console.log(`[${CALLS_KEY}] ${since ? `incremental since ${since.toISOString()}` : `FULL load (since ${floor})`}`);
   let n = 0; let maxStamp: string | null = since?.toISOString() ?? null; const t0 = Date.now();
   const flush = async (buf: Map<string, CallAgg>) => {
@@ -235,7 +237,12 @@ async function syncCallSummary(s: SfSession): Promise<void> {
     let buf = new Map<string, CallAgg>();
     for await (const page of soql(s, q, false)) {
       for (const rec of page) {
-        const lead = String(rec.WhatId); const at = String(rec.CreatedDate);
+        const what = rec.What as { Lead_Master__c?: string | null; Id?: string | null } | null;
+        const lead = what?.Lead_Master__c ?? what?.Id ?? (String(rec.WhatId).startsWith('a02') ? String(rec.WhatId) : null);
+        const at = String(rec.CreatedDate);
+        n++;
+        if (!maxStamp || at > maxStamp) maxStamp = at;
+        if (!lead) continue;   // IC without a lead
         const cur = buf.get(lead);
         const reason = rec.Reason__c == null ? null : String(rec.Reason__c).replace(/^[\s\u2060\u00a0]+/, '').trim();   // some picklist values carry invisible leading chars
         const comment = rec.Activity_Comments__c == null ? null : String(rec.Activity_Comments__c).trim().slice(0, 255) || null;
@@ -245,8 +252,6 @@ async function syncCallSummary(s: SfSession): Promise<void> {
           if (at < cur.first_call_at) cur.first_call_at = at;
           if (at >= cur.last_call_at) { cur.last_call_at = at; cur.last_reason = reason; cur.last_call_status = rec.Call_Status__c == null ? null : String(rec.Call_Status__c); cur.last_owner_id = rec.OwnerId == null ? null : String(rec.OwnerId); cur.last_subject = rec.Subject == null ? null : String(rec.Subject); cur.last_comment = comment; }
         }
-        if (!maxStamp || at > maxStamp) maxStamp = at;
-        n++;
         if (buf.size >= BATCH) { await flush(buf); buf = new Map(); }
       }
       if (n % 50000 < 2000) console.log(`[${CALLS_KEY}] ${n} calls...`);
