@@ -140,7 +140,7 @@ export default function Analysis() {
             {([
               ['Numbers in file', fmtInt(summary.phones), 'unique, valid · click to show all', 'all'],
               ['Leads found', fmtInt(summary.matched), `${fmtPct(summary.phones ? Math.round((summary.matched / summary.phones) * 10000) / 100 : null)} of numbers · ${fmtInt(summary.leads)} lead records`, 'matched'],
-              ['Not in Salesforce', fmtInt(summary.phones - summary.matched), 'no lead with this number', 'unmatched'],
+              ['Not in the dashboard database', fmtInt(summary.phones - summary.matched), 'no lead here: created before Mar 2026 with no touch, or not in Salesforce', 'unmatched'],
               ['Converted', fmtInt(summary.converted), `${fmtPct(summary.phones ? Math.round((summary.converted / summary.phones) * 10000) / 100 : null)} of numbers have a valid payment`, 'converted'],
               ['Revenue', fmtINR(summary.revenue), 'all valid payments of these numbers', 'converted'],
             ] as [string, string, string, typeof view][]).map(([t, v, sub, target]) => (
