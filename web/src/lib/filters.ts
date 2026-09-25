@@ -16,7 +16,7 @@ export type ListDim = (typeof LIST_DIMS)[number];
 
 /** The filter chips shown in the "Add filter" menu, in this order */
 export const FILTER_MENU: { key: ListDim; label: string; group: string }[] = [
-  { key: 'lead_source', label: 'Lead Source', group: 'Lead' },
+  { key: 'lead_source', label: 'Lead Source (Salesforce field)', group: 'Lead' },
   { key: 'lead_stage', label: 'Lead Stage', group: 'Lead' },
   { key: 'class_group', label: 'Class', group: 'Lead' },
   { key: 'district', label: 'District', group: 'Lead' },
@@ -28,7 +28,7 @@ export const FILTER_MENU: { key: ListDim; label: string; group: string }[] = [
   { key: 'lm_reason', label: 'LM Reason', group: 'Lead' },
   { key: 'class_raw', label: 'Class (raw)', group: 'Lead' },
   { key: 'touch_point', label: 'Touch Point', group: 'Touch' },
-  { key: 'source', label: 'Source (touch)', group: 'Touch' },
+  { key: 'source', label: 'Lead source (touch)', group: 'Touch' },
   { key: 'medium', label: 'Medium', group: 'Touch' },
   { key: 'campaign', label: 'Campaign', group: 'Touch' },
   { key: 'staff', label: 'Staff (touch)', group: 'Touch' },

@@ -6,7 +6,7 @@ import { MultiSelect } from './MultiSelect';
 /** mode "payment": the range IS the payment date (Converted page) - no basis switch, no second payment window */
 /** Always-visible pickers on the bar (multi-select). Rows clicked in any card write the same state, so they show up here too. */
 const QUICK: { key: ListDim; label: string }[] = [
-  { key: 'class_group', label: 'Class' }, { key: 'touch_point', label: 'Touch point' }, { key: 'lead_source', label: 'Lead source' }, { key: 'campaign', label: 'Campaign' },
+  { key: 'class_group', label: 'Class' }, { key: 'touch_point', label: 'Touch point' }, { key: 'source', label: 'Lead source' }, { key: 'campaign', label: 'Campaign' },
 ];
 const QUICK_KEYS = new Set<string>(QUICK.map((q) => q.key));
 
