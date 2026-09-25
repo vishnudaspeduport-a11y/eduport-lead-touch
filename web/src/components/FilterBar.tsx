@@ -4,12 +4,18 @@ import { Icon, Popover, Segmented, Toggle } from './ui';
 import { MultiSelect } from './MultiSelect';
 
 /** mode "payment": the range IS the payment date (Converted page) - no basis switch, no second payment window */
+/** Always-visible pickers on the bar (multi-select). Rows clicked in any card write the same state, so they show up here too. */
+const QUICK: { key: ListDim; label: string }[] = [
+  { key: 'class_group', label: 'Class' }, { key: 'touch_point', label: 'Touch point' }, { key: 'lead_source', label: 'Lead source' }, { key: 'campaign', label: 'Campaign' },
+];
+const QUICK_KEYS = new Set<string>(QUICK.map((q) => q.key));
+
 export function FilterBar({ mode }: { mode?: 'payment' } = {}) {
   const { f, set, setList, clearAll, activeCount } = useFilters();
   const [openDim, setOpenDim] = useState<ListDim | null>(null);
 
   const chips: { label: string; onRemove: () => void }[] = [];
-  for (const [k, vals] of Object.entries(f.lists)) if (vals?.length && k !== 'class_group') chips.push({ label: `${DIM_LABEL[k] ?? k}: ${vals.length > 2 ? `${vals.slice(0, 2).join(', ')} +${vals.length - 2}` : vals.join(', ')}`, onRemove: () => setList(k as ListDim, []) });
+  for (const [k, vals] of Object.entries(f.lists)) if (vals?.length && !QUICK_KEYS.has(k)) chips.push({ label: `${DIM_LABEL[k] ?? k}: ${vals.length > 2 ? `${vals.slice(0, 2).join(', ')} +${vals.length - 2}` : vals.join(', ')}`, onRemove: () => setList(k as ListDim, []) });
   for (const [k, v] of Object.entries(f.flags)) if (v) chips.push({ label: `${DIM_LABEL[k] ?? k}: ${v === '1' ? 'yes' : 'no'}`, onRemove: () => set((p) => ({ ...p, flags: { ...p.flags, [k]: undefined } })) });
 
   return (
@@ -38,10 +44,12 @@ export function FilterBar({ mode }: { mode?: 'payment' } = {}) {
         </>}
 
 
-        {/* Class: grouped lead class (SSLC -> Class 10, CUET -> Class 12, JEE/NEET repeaters -> Repeater ...), multi-select */}
-        <button className={`btn ${(f.lists.class_group?.length ?? 0) > 0 ? 'border-accent/40 text-accent' : ''}`} title="Filter by class group (multi-select)" onClick={() => setOpenDim('class_group')}>
-          <span className="text-ink-3">Class</span> {(() => { const v = f.lists.class_group ?? []; return v.length === 0 ? 'All' : v.length <= 2 ? v.join(', ') : `${v.length} selected`; })()} <Icon.Chevron open />
-        </button>
+        {/* quick pickers: Class (grouped: SSLC -> Class 10, CUET -> Class 12, repeaters -> Repeater ...), Touch point, Lead source, Campaign */}
+        {QUICK.map((qk) => { const v = f.lists[qk.key] ?? []; return (
+          <button key={qk.key} className={`btn max-w-[240px] ${v.length ? 'border-accent/40 text-accent' : ''}`} title={`Filter by ${qk.label.toLowerCase()} (multi-select)`} onClick={() => setOpenDim(qk.key)}>
+            <span className="text-ink-3">{qk.label}</span> <span className="truncate">{v.length === 0 ? 'All' : v.length <= 2 ? v.join(', ') : `${v.length} selected`}</span> <Icon.Chevron open />
+          </button>
+        ); })}
 
         <Popover width="w-72" trigger={<button className="btn"><Icon.Plus /> Add filter</button>}>
           {(close) => (
