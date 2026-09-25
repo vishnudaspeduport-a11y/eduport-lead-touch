@@ -207,19 +207,19 @@ async function syncStageHistory(s: SfSession): Promise<void> {
 // Task is ~2 M rows since March 2026; we keep per lead: calls, first / last call, and the reason / status / owner of the LAST call.
 // Watermark = Task CreatedDate (new calls only; later edits of an old call's reason are not picked up). A full load truncates first.
 const CALLS_KEY = 'Lead_Calls';
-interface CallAgg { lead_id: string; calls: number; first_call_at: string; last_call_at: string; last_reason: string | null; last_call_status: string | null; last_owner_id: string | null; last_subject: string | null; _synced_at: Date }
+interface CallAgg { lead_id: string; calls: number; first_call_at: string; last_call_at: string; last_reason: string | null; last_call_status: string | null; last_owner_id: string | null; last_subject: string | null; last_comment: string | null; _synced_at: Date }
 async function syncCallSummary(s: SfSession): Promise<void> {
   const since = await getState(CALLS_KEY);
   const floor = process.env.CALLS_SINCE || process.env.LEAD_SINCE || '2026-03-01T00:00:00Z';   // repo variable CALLS_SINCE (2026-05-01)
   if (!since) await sql`TRUNCATE salesforce.lead_calls`;
-  const q = `SELECT Id, WhatId, CreatedDate, Reason__c, Call_Status__c, OwnerId, Subject FROM Task WHERE What.Type = 'Lead_Master__c' AND ${since ? `CreatedDate > ${since.toISOString()}` : `CreatedDate >= ${floor}`} ORDER BY CreatedDate ASC`;
+  const q = `SELECT Id, WhatId, CreatedDate, Reason__c, Call_Status__c, OwnerId, Subject, Activity_Comments__c FROM Task WHERE What.Type = 'Lead_Master__c' AND ${since ? `CreatedDate > ${since.toISOString()}` : `CreatedDate >= ${floor}`} ORDER BY CreatedDate ASC`;
   console.log(`[${CALLS_KEY}] ${since ? `incremental since ${since.toISOString()}` : `FULL load (since ${floor})`}`);
   let n = 0; let maxStamp: string | null = since?.toISOString() ?? null; const t0 = Date.now();
   const flush = async (buf: Map<string, CallAgg>) => {
     if (!buf.size) return;
     const rows = [...buf.values()];
     await sql`
-      INSERT INTO salesforce.lead_calls ${sql(rows as unknown as Record<string, unknown>[], 'lead_id', 'calls', 'first_call_at', 'last_call_at', 'last_reason', 'last_call_status', 'last_owner_id', 'last_subject', '_synced_at')}
+      INSERT INTO salesforce.lead_calls ${sql(rows as unknown as Record<string, unknown>[], 'lead_id', 'calls', 'first_call_at', 'last_call_at', 'last_reason', 'last_call_status', 'last_owner_id', 'last_subject', 'last_comment', '_synced_at')}
       ON CONFLICT (lead_id) DO UPDATE SET
         calls = salesforce.lead_calls.calls + EXCLUDED.calls,
         first_call_at = LEAST(salesforce.lead_calls.first_call_at, EXCLUDED.first_call_at),
@@ -227,6 +227,7 @@ async function syncCallSummary(s: SfSession): Promise<void> {
         last_call_status = CASE WHEN EXCLUDED.last_call_at >= salesforce.lead_calls.last_call_at THEN EXCLUDED.last_call_status ELSE salesforce.lead_calls.last_call_status END,
         last_owner_id = CASE WHEN EXCLUDED.last_call_at >= salesforce.lead_calls.last_call_at THEN EXCLUDED.last_owner_id ELSE salesforce.lead_calls.last_owner_id END,
         last_subject = CASE WHEN EXCLUDED.last_call_at >= salesforce.lead_calls.last_call_at THEN EXCLUDED.last_subject ELSE salesforce.lead_calls.last_subject END,
+        last_comment = CASE WHEN EXCLUDED.last_call_at >= salesforce.lead_calls.last_call_at THEN EXCLUDED.last_comment ELSE salesforce.lead_calls.last_comment END,
         last_call_at = GREATEST(salesforce.lead_calls.last_call_at, EXCLUDED.last_call_at),
         _synced_at = EXCLUDED._synced_at`;
   };
@@ -237,11 +238,12 @@ async function syncCallSummary(s: SfSession): Promise<void> {
         const lead = String(rec.WhatId); const at = String(rec.CreatedDate);
         const cur = buf.get(lead);
         const reason = rec.Reason__c == null ? null : String(rec.Reason__c).replace(/^[\s\u2060\u00a0]+/, '').trim();   // some picklist values carry invisible leading chars
-        if (!cur) buf.set(lead, { lead_id: lead, calls: 1, first_call_at: at, last_call_at: at, last_reason: reason, last_call_status: rec.Call_Status__c == null ? null : String(rec.Call_Status__c), last_owner_id: rec.OwnerId == null ? null : String(rec.OwnerId), last_subject: rec.Subject == null ? null : String(rec.Subject), _synced_at: new Date() });
+        const comment = rec.Activity_Comments__c == null ? null : String(rec.Activity_Comments__c).trim().slice(0, 255) || null;
+        if (!cur) buf.set(lead, { lead_id: lead, calls: 1, first_call_at: at, last_call_at: at, last_reason: reason, last_call_status: rec.Call_Status__c == null ? null : String(rec.Call_Status__c), last_owner_id: rec.OwnerId == null ? null : String(rec.OwnerId), last_subject: rec.Subject == null ? null : String(rec.Subject), last_comment: comment, _synced_at: new Date() });
         else {
           cur.calls++;
           if (at < cur.first_call_at) cur.first_call_at = at;
-          if (at >= cur.last_call_at) { cur.last_call_at = at; cur.last_reason = reason; cur.last_call_status = rec.Call_Status__c == null ? null : String(rec.Call_Status__c); cur.last_owner_id = rec.OwnerId == null ? null : String(rec.OwnerId); cur.last_subject = rec.Subject == null ? null : String(rec.Subject); }
+          if (at >= cur.last_call_at) { cur.last_call_at = at; cur.last_reason = reason; cur.last_call_status = rec.Call_Status__c == null ? null : String(rec.Call_Status__c); cur.last_owner_id = rec.OwnerId == null ? null : String(rec.OwnerId); cur.last_subject = rec.Subject == null ? null : String(rec.Subject); cur.last_comment = comment; }
         }
         if (!maxStamp || at > maxStamp) maxStamp = at;
         n++;

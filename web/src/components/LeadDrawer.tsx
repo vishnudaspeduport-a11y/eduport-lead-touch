@@ -66,8 +66,17 @@ export function LeadDrawer({ leadId, onClose }: { leadId: string; onClose: () =>
               <Section title={`Valid payments (${d.payments.length})`}>
                 <SimpleTable rows={d.payments} cols={['payment_date', 'course', 'batch', 'amount', 'discount', 'refund_amount', 'total', 'batch_id', 'sales_person_id']} />
               </Section>
-              <Section title={`Calls & tasks (${d.calls.length})`}>
-                <SimpleTable rows={d.calls} cols={['task_created_at', 'subject', 'status', 'call_status', 'call_seconds', 'reason', 'ic_status']} />
+              <Section title={d.call_summary ? `Calls (${fmtInt(Number(d.call_summary.calls))} since May 2026)` : 'Calls'}>
+                {d.call_summary ? (
+                  <dl className="grid grid-cols-2 gap-x-4 gap-y-1 md:grid-cols-4">
+                    <div><dt className="text-[10px] uppercase tracking-wide text-ink-3">Last call</dt><dd>{fmtDateTime(d.call_summary.last_call_at as string)}</dd></div>
+                    <div><dt className="text-[10px] uppercase tracking-wide text-ink-3">Last reason</dt><dd>{(d.call_summary.last_reason as string) ?? '–'}</dd></div>
+                    <div><dt className="text-[10px] uppercase tracking-wide text-ink-3">Call status</dt><dd>{(d.call_summary.last_call_status as string) ?? '–'}</dd></div>
+                    <div><dt className="text-[10px] uppercase tracking-wide text-ink-3">Called by</dt><dd>{(d.call_summary.last_owner as string) ?? '–'}</dd></div>
+                    <div className="col-span-2 md:col-span-4"><dt className="text-[10px] uppercase tracking-wide text-ink-3">Executive's comment on the last call</dt><dd className="whitespace-pre-wrap rounded-lg bg-surface-2 px-2 py-1">{(d.call_summary.last_comment as string) || '–'}</dd></div>
+                    <div><dt className="text-[10px] uppercase tracking-wide text-ink-3">First call</dt><dd>{fmtDateTime(d.call_summary.first_call_at as string)}</dd></div>
+                  </dl>
+                ) : <div className="text-ink-3">No call logged since May 2026</div>}
               </Section>
               {d.siblings.length > 0 && (
                 <Section title={`Other leads on the same phone (${d.siblings.length})`}>

@@ -87,10 +87,9 @@ leads.get('/leads/:id', (c) =>
                      FROM analytics.v_valid_payment vp LEFT JOIN app.core_batch b ON b.id = vp.batch_id
                      WHERE vp.phone_key = ${phoneKey} ORDER BY vp.payment_date, vp.payment_id LIMIT 100`
         : Promise.resolve([] as Rec[]),
-      phoneKey
-        ? sql<Rec[]>`SELECT task_id, task_created_at::text, activity_date::text, subject, status, call_status, call_start_at::text, call_seconds, reason, ic_status, owner_id, is_call, is_connected
-                     FROM analytics.v_task_valid WHERE phone_key = ${phoneKey} ORDER BY task_created_at DESC LIMIT 200`
-        : Promise.resolve([] as Rec[]),
+      // per-lead call summary (salesforce.lead_calls, reduced from the Salesforce call log since May 2026)
+      sql<Rec[]>`SELECT c.calls, c.first_call_at::text AS first_call_at, c.last_call_at::text AS last_call_at, c.last_reason, c.last_comment, c.last_call_status, c.last_subject, u.name AS last_owner
+                 FROM salesforce.lead_calls c LEFT JOIN salesforce."user" u ON u.id = c.last_owner_id WHERE c.lead_id = ${id}`,
       phoneKey
         ? sql<Rec[]>`SELECT lead_id, lead_name, created_date::text, lead_source, lead_stage, is_duplicate, converted FROM analytics.v_lead_base
                      WHERE phone_key = ${phoneKey} AND lead_id <> ${id} ORDER BY created_at LIMIT 20`
@@ -98,7 +97,7 @@ leads.get('/leads/:id', (c) =>
     ]);
     const l = maskRow(lead, role);
     // stringify timestamps (postgres.js hands Date objects when types are known; with fetch_types=false they are strings already)
-    return { lead: l, touches, ics, payments, calls, siblings, masked: role === 'viewer' };
+    return { lead: l, touches, ics, payments, calls: [] as Rec[], call_summary: calls[0] ?? null, siblings, masked: role === 'viewer' };
   }, 0),
 );
 

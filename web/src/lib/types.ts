@@ -84,7 +84,7 @@ export interface TeamResponse { owners: OwnerRow[]; staff: StaffRow[]; fairness_
 
 export type LeadRow = Record<string, unknown> & { lead_id: string; lead_name: string };
 export interface LeadsResponse { page: number; limit: number; total: number; rows: LeadRow[]; masked: boolean }
-export interface LeadDetail { lead: LeadRow; touches: Record<string, unknown>[]; ics: Record<string, unknown>[]; payments: Record<string, unknown>[]; calls: Record<string, unknown>[]; siblings: Record<string, unknown>[]; masked: boolean }
+export interface LeadDetail { lead: LeadRow; touches: Record<string, unknown>[]; ics: Record<string, unknown>[]; payments: Record<string, unknown>[]; calls: Record<string, unknown>[]; call_summary: Record<string, unknown> | null; siblings: Record<string, unknown>[]; masked: boolean }
 
 export interface DqCheck { check_key: string; label: string; bad_rows: number; total_rows: number; pct: number | null }
 export interface DqResponse { checks: DqCheck[]; note: string }
