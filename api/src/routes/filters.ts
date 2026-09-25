@@ -28,7 +28,7 @@ filters.get('/filters', (c) =>
         FROM analytics.v_lead_base l
         WHERE ${leadWhere(sql, f, p, { skip: d })}
           ${search ? sql`AND lower(${expr}) LIKE ${'%' + search + '%'}` : sql`AND true`}
-        GROUP BY 1 ORDER BY 2 DESC, 1 LIMIT ${limit}`;
+        GROUP BY 1 ORDER BY ${d === 'class_group' ? sql`analytics.class_group_order(${expr}), 1` : sql`2 DESC, 1`} LIMIT ${limit}`;   // class groups in class order, others by size
       return { dim: d, options: rows };
     }
     const expr = dimExpr(sql, d, 't');

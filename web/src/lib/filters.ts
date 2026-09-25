@@ -18,7 +18,7 @@ export type ListDim = (typeof LIST_DIMS)[number];
 export const FILTER_MENU: { key: ListDim; label: string; group: string }[] = [
   { key: 'lead_source', label: 'Lead Source', group: 'Lead' },
   { key: 'lead_stage', label: 'Lead Stage', group: 'Lead' },
-  { key: 'class_group', label: 'Class Group', group: 'Lead' },
+  { key: 'class_group', label: 'Class', group: 'Lead' },
   { key: 'district', label: 'District', group: 'Lead' },
   { key: 'city', label: 'City', group: 'Lead' },
   { key: 'priority', label: 'Priority', group: 'Lead' },

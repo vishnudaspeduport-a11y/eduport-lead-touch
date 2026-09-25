@@ -9,7 +9,7 @@ export function FilterBar({ mode }: { mode?: 'payment' } = {}) {
   const [openDim, setOpenDim] = useState<ListDim | null>(null);
 
   const chips: { label: string; onRemove: () => void }[] = [];
-  for (const [k, vals] of Object.entries(f.lists)) if (vals?.length) chips.push({ label: `${DIM_LABEL[k] ?? k}: ${vals.length > 2 ? `${vals.slice(0, 2).join(', ')} +${vals.length - 2}` : vals.join(', ')}`, onRemove: () => setList(k as ListDim, []) });
+  for (const [k, vals] of Object.entries(f.lists)) if (vals?.length && k !== 'class_group') chips.push({ label: `${DIM_LABEL[k] ?? k}: ${vals.length > 2 ? `${vals.slice(0, 2).join(', ')} +${vals.length - 2}` : vals.join(', ')}`, onRemove: () => setList(k as ListDim, []) });
   for (const [k, v] of Object.entries(f.flags)) if (v) chips.push({ label: `${DIM_LABEL[k] ?? k}: ${v === '1' ? 'yes' : 'no'}`, onRemove: () => set((p) => ({ ...p, flags: { ...p.flags, [k]: undefined } })) });
 
   return (
@@ -37,6 +37,11 @@ export function FilterBar({ mode }: { mode?: 'payment' } = {}) {
         </>}
         </>}
 
+
+        {/* Class: grouped lead class (SSLC -> Class 10, CUET -> Class 12, JEE/NEET repeaters -> Repeater ...), multi-select */}
+        <button className={`btn ${(f.lists.class_group?.length ?? 0) > 0 ? 'border-accent/40 text-accent' : ''}`} title="Filter by class group (multi-select)" onClick={() => setOpenDim('class_group')}>
+          <span className="text-ink-3">Class</span> {(() => { const v = f.lists.class_group ?? []; return v.length === 0 ? 'All' : v.length <= 2 ? v.join(', ') : `${v.length} selected`; })()} <Icon.Chevron open />
+        </button>
 
         <Popover width="w-72" trigger={<button className="btn"><Icon.Plus /> Add filter</button>}>
           {(close) => (
