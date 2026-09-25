@@ -85,7 +85,7 @@ converted.get('/converted', (c) =>
     const w = payerWhere(sql, f, p, q);
     const pm = payMethod(q);
     const V = VALID(sql, pm);
-    const [[k], [pk], byStage, byPoint, bySource, byMedium, byCampaign, byStaff, byCourse, byGrade, daily, grades, [touchRule]] = await Promise.all([
+    const [[k], [pk], byStage, byPoint, bySource, byMedium, byCampaign, byStaff, byCourse, byGrade, daily, grades] = await Promise.all([
       sql<{ users: number; new_users: number; no_touch: number; no_lead: number; revenue: number; touches: number }[]>`
         SELECT count(*)::int AS users, count(*) FILTER (WHERE ${pm === 'm0' ? sql`m.first_payment_date_m0` : sql`m.first_payment_date`} BETWEEN ${p.from} AND ${p.to})::int AS new_users,
                count(*) FILTER (WHERE m.last_touch_id IS NULL)::int AS no_touch, count(*) FILTER (WHERE m.no_lead)::int AS no_lead,
@@ -114,11 +114,10 @@ converted.get('/converted', (c) =>
         FROM app.home_payment hp WHERE ${V} AND hp.payment_date BETWEEN ${p.from} AND ${p.to} AND hp.user_id IN (SELECT m.user_id FROM analytics.mv_payer m WHERE ${w})
         GROUP BY 1 ORDER BY 1`,
       sql<{ key: string }[]>`SELECT DISTINCT COALESCE(grade_title, 'No Grade On Batch') AS key FROM app.core_batch ORDER BY 1`,
-      sql<{ n: number }[]>`SELECT count(DISTINCT t.lead_id)::int AS n FROM analytics.mv_touch_flat t WHERE t.touch_date BETWEEN ${p.from} AND ${p.to} AND t.tab_converted AND NOT t.is_duplicate`,
     ]);
     return {
       period: p, pm,
-      kpis: { ...k, ...pk, no_touch_pct: pct(k.no_touch, k.users), no_lead_pct: pct(k.no_lead, k.users), converted_leads_touch_rule: touchRule.n },
+      kpis: { ...k, ...pk, no_touch_pct: pct(k.no_touch, k.users), no_lead_pct: pct(k.no_lead, k.users) },
       by_stage: byStage, by_last_touch_point: byPoint, by_last_source: bySource, by_last_medium: byMedium, by_last_campaign: byCampaign, by_last_staff: byStaff,
       by_course: byCourse, by_grade: byGrade, daily, grades: grades.map((g) => g.key),
       definitions: {
@@ -135,7 +134,6 @@ converted.get('/converted', (c) =>
         course: 'Tableau "Class wise conversion": users by the course they bought (core_syllabusstructure title); a user buying two courses appears under both.',
         grade: 'Tableau "Class Group" on this dashboard = grade of the purchased course (core_grade title), not the lead\'s class.',
         stage: 'Lead stage of the user\'s most recently created Salesforce lead; the workbook counts a user under every lead on the phone.',
-        converted_leads_touch_rule: 'For comparison: the Overview\'s "Total converted" (lead grain, touch-date window) for the same dates.',
         revenue: 'Sum of payment amounts of the users in the row (all their valid payments, any method, any date).',
         pm: 'Payment method: "All" counts every successful payment like the Metabase sales queries; "Method 0" is the Tableau / Overview rule; "Method 1" is the rest (gateway EMI instalments). The per-user columns payments / revenue / courses always cover every method.',
       },

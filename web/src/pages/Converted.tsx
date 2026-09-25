@@ -12,7 +12,7 @@ import { DrillDrawer, type Drill } from '../components/DrillDrawer';
 interface Dim { key: string; users: number; touches: number; revenue: number; new_users: number; share_pct: number | null }
 interface Resp {
   period: { from: string; to: string };
-  kpis: { users: number; new_users: number; no_touch: number; no_lead: number; payments_all: number; revenue_all: number; touches: number; no_touch_pct: number | null; no_lead_pct: number | null; converted_leads_touch_rule: number };
+  kpis: { users: number; new_users: number; no_touch: number; no_lead: number; payments_all: number; revenue_all: number; touches: number; no_touch_pct: number | null; no_lead_pct: number | null; };
   by_stage: Dim[]; by_last_touch_point: Dim[]; by_last_source: Dim[]; by_last_medium: Dim[]; by_last_campaign: Dim[]; by_last_staff: Dim[]; by_course: Dim[]; by_grade: Dim[];
   daily: { d: string; users: number; payments: number; revenue: number }[];
   grades: string[];
@@ -90,7 +90,7 @@ export default function Converted() {
 
   return (
     <div className="space-y-4">
-      <PageHeader title="Converted" subtitle={`payment date ${f.from} → ${f.to} · same definitions as the Tableau "Lead Touch - Converted" dashboard (paying users, credited to the last touch before payment)`}
+      <PageHeader title="Converted" subtitle={`payment date ${f.from} → ${f.to} · paying users by PAYMENT date, whatever their touch dates · credited to the last touch before payment (Tableau "Lead Touch - Converted")`}
         right={<div className="flex flex-wrap items-center gap-3">
           <label className="flex items-center gap-1.5 text-xs text-ink-2" title={def.pm}>Payment method
             <Segmented size="xs" value={pm} onChange={changePm} options={[{ value: 'all', label: 'All', title: 'Every successful payment (Metabase sales rule)' }, { value: 'm0', label: 'Method 0', title: 'payment_method = 0: the Tableau / Overview rule' }, { value: 'm1', label: 'Method 1', title: 'payment_method = 1: gateway EMI instalments' }]} />
@@ -103,7 +103,7 @@ export default function Converted() {
           </label></div>} />
       {q.error && <Note>⚠ {q.error.message}</Note>}
 
-      <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 xl:grid-cols-6">
+      <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 xl:grid-cols-5">
         {q.isLoading && Array.from({ length: 6 }).map((_, i) => <Skeleton key={i} className="h-[92px]" />)}
         {k && <>
           <Kpi tone="tone-orange" icon={<Icon.Check />} title="Converted (users)" value={fmtInt(k.users)} sub={`${fmtInt(k.payments_all)} payments in the window`} def={def.users} onClick={() => open('Converted users')} />
@@ -111,7 +111,6 @@ export default function Converted() {
           <Kpi tone="tone-violet" icon={<Icon.Avg />} title="Revenue (window)" value={fmtINR(k.revenue_all)} sub="payment amounts dated in the window" def={def.revenue} />
           <Kpi tone="tone-pink" icon={<Icon.Touch />} title="No touch before payment" value={fmtInt(k.no_touch)} sub={`${fmtPct(k.no_touch_pct)} of users`} def={def.no_touch} onClick={() => open('No touch before payment', 'last_touch_point', 'No Touch Before Payment')} />
           <Kpi tone="tone-slate" icon={<Icon.Users />} title="No Salesforce lead" value={fmtInt(k.no_lead)} sub={`${fmtPct(k.no_lead_pct)} of users`} def={def.no_lead} onClick={() => open('Users with no Salesforce lead', 'lead_stage', '(null)')} />
-          <Kpi tone="tone-brand" icon={<Icon.Calendar />} title="Total converted (touch rule)" value={fmtInt(k.converted_leads_touch_rule)} sub="Overview rule, same dates as touch dates" def={def.converted_leads_touch_rule} />
         </>}
       </div>
 

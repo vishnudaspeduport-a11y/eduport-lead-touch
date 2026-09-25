@@ -93,7 +93,7 @@ export function AppShell() {
           </div>
         </header>
         <main className="flex-1 px-6 pb-10 pt-4">
-          {!noFilters && <FilterBar />}
+          {!noFilters && <FilterBar mode={path.startsWith('/converted') ? 'payment' : undefined} />}
           <ErrorBoundary label="page"><Outlet /></ErrorBoundary>
         </main>
       </div>

@@ -3,7 +3,8 @@ import { DIM_LABEL, FILTER_MENU, PRESETS, useFilters, type Basis, type ListDim }
 import { Icon, Popover, Segmented, Toggle } from './ui';
 import { MultiSelect } from './MultiSelect';
 
-export function FilterBar() {
+/** mode "payment": the range IS the payment date (Converted page) - no basis switch, no second payment window */
+export function FilterBar({ mode }: { mode?: 'payment' } = {}) {
   const { f, set, setList, clearAll, activeCount } = useFilters();
   const [openDim, setOpenDim] = useState<ListDim | null>(null);
 
@@ -15,6 +16,7 @@ export function FilterBar() {
     <div className="sticky top-2 z-30 mb-4 rounded-xl border border-line bg-surface/95 px-4 py-2.5 shadow-card backdrop-blur">
       <div className="flex flex-wrap items-center gap-1.5">
         {/* date preset */}
+        {mode === 'payment' && <span className="chip border-accent/40 font-medium text-accent" title="On this page the date range is the payment date; touch dates are not checked">Payment date</span>}
         <select className="input !py-1 text-xs" value={f.preset} onChange={(e) => { const p = PRESETS.find((x) => x.key === e.target.value)!; const [from, to] = p.range(); set({ preset: p.key, from, to }); }}>
           {PRESETS.map((p) => <option key={p.key} value={p.key}>{p.label}</option>)}
         </select>
@@ -22,6 +24,7 @@ export function FilterBar() {
         <span className="text-xs text-ink-3">to</span>
         <input type="date" className="input !py-1 text-xs" value={f.to} min={f.from} onChange={(e) => set({ preset: 'custom', to: e.target.value })} />
 
+        {mode !== 'payment' && <>
         <Segmented<Basis> value={f.basis} onChange={(basis) => set({ basis })} size="xs"
           options={[{ value: 'created', label: 'Lead created', title: 'Leads created in the range (with all their touches)' }, { value: 'touch', label: 'Touch date', title: 'Touches dated in the range' }]} />
 
@@ -31,6 +34,7 @@ export function FilterBar() {
           <input type="date" className="input !py-1 text-xs" value={f.pfrom} max={f.pto} onChange={(e) => set({ pfrom: e.target.value })} />
           <span className="text-xs text-ink-3">to</span>
           <input type="date" className="input !py-1 text-xs" value={f.pto} min={f.pfrom} onChange={(e) => set({ pto: e.target.value })} />
+        </>}
         </>}
 
 
