@@ -183,6 +183,9 @@ overviewLeads.get('/overview/leads/summary', (c) =>
       UNION ALL
       SELECT '_touches' AS dim, NULL AS key, sum(touches_in_window)::int AS leads, NULL::float8 AS revenue FROM sel
       UNION ALL
+      SELECT '_payers' AS dim, NULL AS key, count(*)::int AS leads, NULL::float8 AS revenue FROM sel s
+      WHERE EXISTS (SELECT 1 FROM app.home_payment hp WHERE hp.user_id = s.app_user_id AND ${VALID_PAY(sql)} ${payWin})
+      UNION ALL
       SELECT d.dim, d.key, count(DISTINCT t.lead_id)::int AS leads, NULL::float8 AS revenue
       FROM analytics.mv_touch_flat t JOIN sel s ON s.lead_id = t.lead_id
       CROSS JOIN LATERAL (VALUES ('lead_stage', t.lead_stage), ('class_group', t.class_group), ('lead_source', t.lead_source),
@@ -204,11 +207,12 @@ overviewLeads.get('/overview/leads/summary', (c) =>
       GROUP BY p.dim, p.key`;
     const total = rows.find((r) => r.dim === '_total');
     const touches = rows.find((r) => r.dim === '_touches');
+    const payers = rows.find((r) => r.dim === '_payers');
     const splits = SPLITS.map((s) => {
       const list = rows.filter((r) => r.dim === s.dim).map((r) => ({ key: r.key ?? '(blank)', leads: r.leads, revenue: r.revenue })).sort((a, b) => b.leads - a.leads);
       return { ...s, rows: list.slice(0, 40), distinct: list.length };
     });
-    return { leads: total?.leads ?? 0, revenue: total?.revenue ?? 0, touches: touches?.leads ?? 0, payment_window: pp, splits };
+    return { leads: total?.leads ?? 0, revenue: total?.revenue ?? 0, touches: touches?.leads ?? 0, payers: payers?.leads ?? 0, payment_window: pp, splits };
   }, 0),
 );
 

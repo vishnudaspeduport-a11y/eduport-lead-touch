@@ -4,7 +4,7 @@ import { ErrorNote, Skeleton } from './ui';
 
 interface SplitRow { key: string; leads: number; revenue: number | null }
 interface Split { dim: string; label: string; kind: 'lead' | 'touch' | 'pay'; rows: SplitRow[]; distinct: number }
-interface Summary { leads: number; revenue: number; touches: number; payment_window: { from: string; to: string } | null; splits: Split[] }
+interface Summary { leads: number; revenue: number; touches: number; payers: number; payment_window: { from: string; to: string } | null; splits: Split[] }
 
 /**
  * Overview of the leads behind a drill: headline figures + one small "split" card per dimension
@@ -15,14 +15,13 @@ export function DrillSummary({ params, onPick }: { params: Params; onPick: (dim:
   const d = r.data?.data;
   if (r.error) return <ErrorNote error={r.error} onRetry={r.refetch} />;
   if (!d) return <div className="grid gap-3 md:grid-cols-3">{Array.from({ length: 6 }).map((_, i) => <Skeleton key={i} className="h-44" />)}</div>;
-  const payers = d.splits.find((s) => s.dim === 'grade')?.rows.reduce((a, x) => a + x.leads, 0) ?? 0;
   return (
     <div className={`h-full overflow-y-auto pr-1 ${r.isFetching ? 'opacity-70' : ''}`}>
       <div className="mb-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
         <Head label="Leads" value={fmtInt(d.leads)} />
         <Head label="Touches in window" value={fmtInt(d.touches)} sub={d.leads ? `${fmt1(d.touches / d.leads)} per lead` : undefined} />
         <Head label="Revenue" value={fmtINR(d.revenue)} sub="all valid payments of these leads" />
-        <Head label="With a purchase" value={fmtInt(Math.min(payers, d.leads))} sub={d.payment_window ? `paid ${d.payment_window.from} → ${d.payment_window.to}` : 'any valid payment'} />
+        <Head label="With a purchase" value={fmtInt(d.payers)} sub={d.payment_window ? `paid ${d.payment_window.from} → ${d.payment_window.to}` : 'any valid payment, any date'} />
       </div>
       <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
         {d.splits.map((s) => <SplitCard key={s.dim} split={s} total={d.leads} onPick={onPick} />)}
