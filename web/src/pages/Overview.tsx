@@ -104,7 +104,7 @@ export default function Overview() {
             ]} />
           <Kpi tone="tone-red" icon={<Icon.Calendar />} title={`Still New after ${k.stale_days} days`} value={fmtInt(k.stale_new)} sub={`of ${fmtInt(k.new_total)} leads in stage New · ${fmtInt(k.stale_new_untouched)} never touched after creation`} def={def.stale_new}
             onClick={() => open('stale_new', `Still New after ${k.stale_days} days`, undefined, undefined, 'leads still in stage New, created more than 5 days ago and not touched in the last 5 days · sorted by last touch')} />
-          <Kpi tone="tone-violet" icon={<Icon.Touch />} title="Re-touched after a closed stage" value={fmtInt(k.stage_react)} sub={`of ${fmtInt(k.stage_react_total)} leads in Not Willing Now / Disqualified / Not Connected / P2 Completed · touched again after entering the stage`} def={def.stage_react}
+          <Kpi tone="tone-violet" icon={<Icon.Touch />} title="Re-touched after a closed stage" value={fmtInt(k.stage_react)} sub={`of ${fmtInt(k.stage_react_total)} leads in a closed stage · touched after entering it`} def={def.stage_react}
             onClick={() => open('stage_react', 'Re-touched after a closed stage')}
             split={(k.stage_react_by ?? []).map((s) => ({ label: s.stage, value: fmtInt(s.reactivated), title: `${fmtInt(s.reactivated)} of ${fmtInt(s.total)} leads in ${s.stage}`, onClick: () => open('stage_react', `Re-touched · ${s.stage}`, 'lead_stage', s.stage) }))} />
           <Kpi tone="tone-amber" icon={<Icon.Calendar />} title={`Still Not Connected after ${k.stale_days} days`} value={fmtInt(k.stale_nc)} sub={`of ${fmtInt(k.nc_total)} leads in stage Not Connected · ${fmtInt(k.stale_nc_untouched)} never touched after creation`} def={def.stale_nc}
