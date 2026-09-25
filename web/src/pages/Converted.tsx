@@ -5,7 +5,7 @@ import { fmtINR, fmtInt, fmtPct, fmtDateTime } from '../lib/format';
 import { ChartCard } from '../components/ChartCard';
 import { DataTable, type Col } from '../components/DataTable';
 import { DailyLines, Donut, HBars } from '../charts';
-import { CardSearch, Icon, Note, PageHeader, Skeleton } from '../components/ui';
+import { CardSearch, Icon, Note, PageHeader, Segmented, Skeleton } from '../components/ui';
 import { KpiTile } from '../components/KpiTile';
 import { DrillDrawer, type Drill } from '../components/DrillDrawer';
 
@@ -63,13 +63,15 @@ function ConvCard({ title, rows, tone, opts, cols, loading, error, onRetry, help
 export default function Converted() {
   const { f, params, toggleValue, setList } = useFilters();
   const [grade, setGrade] = useState<string>('');
-  const q = useApi<Resp>('/converted', { ...params, grade });
+  const [pm, setPm] = useState<'all' | 'm0' | 'm1'>(() => { try { return (localStorage.getItem('lt-pm') as 'all' | 'm0' | 'm1') || 'all'; } catch { return 'all'; } });
+  const changePm = (v: 'all' | 'm0' | 'm1') => { setPm(v); try { localStorage.setItem('lt-pm', v); } catch { /* ignore */ } };
+  const q = useApi<Resp>('/converted', { ...params, grade, pm });
   const d = q.data?.data;
   const k = d?.kpis;
   const def = d?.definitions ?? {};
   const [drill, setDrill] = useState<Drill | null>(null);
   const open = (title: string, dim?: string, value?: string, subtitle?: string) =>
-    setDrill({ metric: 'leads', title, dim, value, subtitle: subtitle ?? 'paying users with a valid payment in the window · click a row for the lead record', path: '/converted/users', csvPath: '/converted/users.csv', columns: USER_COLS, sortOptions: USER_SORTS, defaultSort: 'last_payment_date', extra: grade ? { grade } : undefined, noun: 'users' });
+    setDrill({ metric: 'leads', title, dim, value, subtitle: subtitle ?? 'paying users with a valid payment in the window · click a row for the lead record', path: '/converted/users', csvPath: '/converted/users.csv', columns: USER_COLS, sortOptions: USER_SORTS, defaultSort: 'last_payment_date', extra: { pm, ...(grade ? { grade } : {}) }, noun: 'users' });
 
   const dimCols: Col<Dim>[] = [
     { key: 'key', header: '' }, { key: 'users', header: 'Converted (users)', bar: true }, { key: 'share_pct', header: 'Share', render: (v) => fmtPct(v as number) },
@@ -89,13 +91,16 @@ export default function Converted() {
   return (
     <div className="space-y-4">
       <PageHeader title="Converted" subtitle={`payment date ${f.from} → ${f.to} · same definitions as the Tableau "Lead Touch - Converted" dashboard (paying users, credited to the last touch before payment)`}
-        right={
+        right={<div className="flex flex-wrap items-center gap-3">
+          <label className="flex items-center gap-1.5 text-xs text-ink-2" title={def.pm}>Payment method
+            <Segmented size="xs" value={pm} onChange={changePm} options={[{ value: 'all', label: 'All', title: 'Every successful payment (Metabase sales rule)' }, { value: 'm0', label: 'Method 0', title: 'payment_method = 0: the Tableau / Overview rule' }, { value: 'm1', label: 'Method 1', title: 'payment_method = 1: gateway EMI instalments' }]} />
+          </label>
           <label className="flex items-center gap-1.5 text-xs text-ink-2">Purchased grade
             <select className="input !py-1" value={grade} onChange={(e) => setGrade(e.target.value)}>
               <option value="">All grades</option>
               {(d?.grades ?? []).map((g) => <option key={g} value={g}>{g}</option>)}
             </select>
-          </label>} />
+          </label></div>} />
       {q.error && <Note>⚠ {q.error.message}</Note>}
 
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 xl:grid-cols-6">

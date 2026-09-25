@@ -18,7 +18,10 @@ import { getSql, release } from '../db';
 export const converted = new Hono<AppEnv>();
 
 type Rec = Record<string, unknown>;
-const VALID = (sql: Sql) => sql`hp.payment_method = 0 AND hp.deleted = false AND hp.is_success = true AND hp.payment_success = true`;
+/** pm = all | m0 (Tableau rule, payment_method 0) | m1 (payment_method 1 = gateway EMI instalments) */
+export type PayMethod = 'all' | 'm0' | 'm1';
+export const payMethod = (q: Record<string, string>): PayMethod => (q.pm === 'm0' || q.pm === 'm1' ? q.pm : 'all');
+const VALID = (sql: Sql, pm: PayMethod = 'all') => sql`hp.deleted = false AND hp.is_success = true AND hp.payment_success = true ${pm === 'm0' ? sql`AND hp.payment_method = 0` : pm === 'm1' ? sql`AND hp.payment_method <> 0` : sql``}`;
 
 /** global filter chips that make sense on the payer grain */
 const PAYER_COLS: Partial<Record<(typeof LIST_KEYS)[number], string>> = {
@@ -31,17 +34,18 @@ const DIMS: Record<string, string> = {
 };
 
 /** payments-in-window semi-join (+ optional grade / course restriction) */
-function payWindow(sql: Sql, p: Period, grades: string[], courses: string[]): Frag {
+function payWindow(sql: Sql, p: Period, grades: string[], courses: string[], pm: PayMethod = 'all'): Frag {
   const gradeCond = grades.length ? sql`AND COALESCE(b.grade_title, 'No Grade On Batch') IN ${sql(grades)}` : sql``;
   const courseCond = courses.length ? sql`AND COALESCE(b.course_title, 'batch ' || hp.batch_id::text) IN ${sql(courses)}` : sql``;
   return sql`EXISTS (SELECT 1 FROM app.home_payment hp LEFT JOIN app.core_batch b ON b.id = hp.batch_id
-                     WHERE hp.user_id = m.user_id AND ${VALID(sql)} AND hp.payment_date BETWEEN ${p.from} AND ${p.to} ${gradeCond} ${courseCond})`;
+                     WHERE hp.user_id = m.user_id AND ${VALID(sql, pm)} AND hp.payment_date BETWEEN ${p.from} AND ${p.to} ${gradeCond} ${courseCond})`;
 }
 
 function payerWhere(sql: Sql, f: Filters, p: Period, q: Record<string, string>): Frag {
   const grades = (q.grade ?? '').split('|').map((s) => s.trim()).filter(Boolean);
   const courses = (q.course ?? '').split('|').map((s) => s.trim()).filter(Boolean);
-  const c: Frag[] = [payWindow(sql, p, grades, courses)];
+  const pm = payMethod(q);
+  const c: Frag[] = [payWindow(sql, p, grades, courses, pm)];
   if (f.dups !== '1') c.push(sql`true`);
   for (const k of LIST_KEYS) {
     const col = PAYER_COLS[k]; const vals = f[k];
@@ -54,8 +58,8 @@ function payerWhere(sql: Sql, f: Filters, p: Period, q: Record<string, string>):
   }
   // drill-down dimension
   if (q.dim && q.value !== undefined) {
-    if (q.dim === 'grade') c.push(payWindow(sql, p, [q.value], []));
-    else if (q.dim === 'course') c.push(payWindow(sql, p, [], [q.value]));
+    if (q.dim === 'grade') c.push(payWindow(sql, p, [q.value], [], pm));
+    else if (q.dim === 'course') c.push(payWindow(sql, p, [], [q.value], pm));
     else {
       const col = DIMS[q.dim];
       if (!col) throw Object.assign(new Error(`unknown dim ${q.dim}`), { status: 400 });
@@ -79,15 +83,17 @@ converted.get('/converted', (c) =>
   handle(c, async ({ sql, f, periods, q }) => {
     const p = periods.current;
     const w = payerWhere(sql, f, p, q);
+    const pm = payMethod(q);
+    const V = VALID(sql, pm);
     const [[k], [pk], byStage, byPoint, bySource, byMedium, byCampaign, byStaff, byCourse, byGrade, daily, grades, [touchRule]] = await Promise.all([
       sql<{ users: number; new_users: number; no_touch: number; no_lead: number; revenue: number; touches: number }[]>`
-        SELECT count(*)::int AS users, count(*) FILTER (WHERE m.first_payment_date BETWEEN ${p.from} AND ${p.to})::int AS new_users,
+        SELECT count(*)::int AS users, count(*) FILTER (WHERE ${pm === 'm0' ? sql`m.first_payment_date_m0` : sql`m.first_payment_date`} BETWEEN ${p.from} AND ${p.to})::int AS new_users,
                count(*) FILTER (WHERE m.last_touch_id IS NULL)::int AS no_touch, count(*) FILTER (WHERE m.no_lead)::int AS no_lead,
                COALESCE(sum(m.revenue), 0)::float8 AS revenue, COALESCE(sum(m.touches_before_payment), 0)::int AS touches
         FROM analytics.mv_payer m WHERE ${w}`,
       sql<{ payments_all: number; revenue_all: number }[]>`
         SELECT count(*)::int AS payments_all, COALESCE(sum(hp.amount), 0)::float8 AS revenue_all
-        FROM app.home_payment hp WHERE ${VALID(sql)} AND hp.payment_date BETWEEN ${p.from} AND ${p.to}
+        FROM app.home_payment hp WHERE ${V} AND hp.payment_date BETWEEN ${p.from} AND ${p.to}
           AND hp.user_id IN (SELECT m.user_id FROM analytics.mv_payer m WHERE ${w})`,
       byDim(sql, w, 'lead_stage', p), byDim(sql, w, 'last_touch_point', p), byDim(sql, w, 'last_touch_source', p), byDim(sql, w, 'last_touch_medium', p),
       byDim(sql, w, 'last_touch_campaign', p), byDim(sql, w, 'last_touch_staff', p),
@@ -95,28 +101,32 @@ converted.get('/converted', (c) =>
         SELECT COALESCE(b.course_title, 'batch ' || hp.batch_id::text) AS key, count(DISTINCT hp.user_id)::int AS users, count(*)::int AS touches,
                COALESCE(sum(hp.amount), 0)::float8 AS revenue, 0::int AS new_users, NULL::float8 AS share_pct
         FROM app.home_payment hp LEFT JOIN app.core_batch b ON b.id = hp.batch_id
-        WHERE ${VALID(sql)} AND hp.payment_date BETWEEN ${p.from} AND ${p.to} AND hp.user_id IN (SELECT m.user_id FROM analytics.mv_payer m WHERE ${w})
+        WHERE ${V} AND hp.payment_date BETWEEN ${p.from} AND ${p.to} AND hp.user_id IN (SELECT m.user_id FROM analytics.mv_payer m WHERE ${w})
         GROUP BY 1 ORDER BY users DESC LIMIT 60`,
       sql<PayerDim[]>`
         SELECT COALESCE(b.grade_title, 'No Grade On Batch') AS key, count(DISTINCT hp.user_id)::int AS users, count(*)::int AS touches,
                COALESCE(sum(hp.amount), 0)::float8 AS revenue, 0::int AS new_users, NULL::float8 AS share_pct
         FROM app.home_payment hp LEFT JOIN app.core_batch b ON b.id = hp.batch_id
-        WHERE ${VALID(sql)} AND hp.payment_date BETWEEN ${p.from} AND ${p.to} AND hp.user_id IN (SELECT m.user_id FROM analytics.mv_payer m WHERE ${w})
+        WHERE ${V} AND hp.payment_date BETWEEN ${p.from} AND ${p.to} AND hp.user_id IN (SELECT m.user_id FROM analytics.mv_payer m WHERE ${w})
         GROUP BY 1 ORDER BY users DESC`,
       sql<{ d: string; users: number; payments: number; revenue: number }[]>`
         SELECT hp.payment_date::text AS d, count(DISTINCT hp.user_id)::int AS users, count(*)::int AS payments, COALESCE(sum(hp.amount), 0)::float8 AS revenue
-        FROM app.home_payment hp WHERE ${VALID(sql)} AND hp.payment_date BETWEEN ${p.from} AND ${p.to} AND hp.user_id IN (SELECT m.user_id FROM analytics.mv_payer m WHERE ${w})
+        FROM app.home_payment hp WHERE ${V} AND hp.payment_date BETWEEN ${p.from} AND ${p.to} AND hp.user_id IN (SELECT m.user_id FROM analytics.mv_payer m WHERE ${w})
         GROUP BY 1 ORDER BY 1`,
       sql<{ key: string }[]>`SELECT DISTINCT COALESCE(grade_title, 'No Grade On Batch') AS key FROM app.core_batch ORDER BY 1`,
       sql<{ n: number }[]>`SELECT count(DISTINCT t.lead_id)::int AS n FROM analytics.mv_touch_flat t WHERE t.touch_date BETWEEN ${p.from} AND ${p.to} AND t.tab_converted AND NOT t.is_duplicate`,
     ]);
     return {
-      period: p,
+      period: p, pm,
       kpis: { ...k, ...pk, no_touch_pct: pct(k.no_touch, k.users), no_lead_pct: pct(k.no_lead, k.users), converted_leads_touch_rule: touchRule.n },
       by_stage: byStage, by_last_touch_point: byPoint, by_last_source: bySource, by_last_medium: byMedium, by_last_campaign: byCampaign, by_last_staff: byStaff,
       by_course: byCourse, by_grade: byGrade, daily, grades: grades.map((g) => g.key),
       definitions: {
-        users: 'Tableau "CONVERTED" = COUNTD(user_id) with a valid payment (payment_method 0, not deleted, is_success, payment_success) whose payment date is in the window. This is a count of paying app accounts, including people with no Salesforce lead.',
+        users: pm === 'm0'
+          ? 'Tableau "CONVERTED" = COUNTD(user_id) with a valid payment (payment_method 0, not deleted, is_success, payment_success) whose payment date is in the window. This is a count of paying app accounts, including people with no Salesforce lead.'
+          : pm === 'm1'
+            ? 'Paying users with a valid payment of payment_method 1 (gateway EMI instalments; every such row carries an emi_id) dated in the window.'
+            : 'Metabase-style count: distinct paying users with ANY valid payment (any payment_method; not deleted, is_success, payment_success) dated in the window. Switch to "Method 0" for the Tableau rule.',
         new_users: 'Paying users whose FIRST ever valid payment is inside the window (new customers).',
         no_touch: 'Users with no lead touch on/before their payment: no Salesforce lead on that phone, or all touches came after the payment. Shown as "No Touch Before Payment" in the tables, like the workbook.',
         no_lead: 'Paying users whose phone matches no Salesforce lead ("No Salesforce Lead" in the workbook).',
@@ -126,7 +136,8 @@ converted.get('/converted', (c) =>
         grade: 'Tableau "Class Group" on this dashboard = grade of the purchased course (core_grade title), not the lead\'s class.',
         stage: 'Lead stage of the user\'s most recently created Salesforce lead; the workbook counts a user under every lead on the phone.',
         converted_leads_touch_rule: 'For comparison: the Overview\'s "Total converted" (lead grain, touch-date window) for the same dates.',
-        revenue: 'Sum of payment amounts of the users in the row (all their valid payments, any date).',
+        revenue: 'Sum of payment amounts of the users in the row (all their valid payments, any method, any date).',
+        pm: 'Payment method: "All" counts every successful payment like the Metabase sales queries; "Method 0" is the Tableau / Overview rule; "Method 1" is the rest (gateway EMI instalments). The per-user columns payments / revenue / courses always cover every method.',
       },
     };
   }),
