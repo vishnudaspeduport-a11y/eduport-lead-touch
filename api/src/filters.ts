@@ -174,14 +174,16 @@ function andAll(sql: Sql, conds: Frag[]): Frag {
   return conds.reduce((acc, c) => sql`${acc} AND ${c}`, sql`true`);
 }
 
-export interface BuildOpts { skip?: string; }
+export interface BuildOpts {
+  /** ignore the date window (Lead explorer lists every lead) */
+  noPeriod?: boolean; skip?: string; }
 
 /** WHERE for analytics.v_lead_base AS l */
 export function leadWhere(sql: Sql, f: Filters, p: Period, opts: BuildOpts = {}): Frag {
   const c: Frag[] = [];
   if (f.dups !== '1') c.push(sql`l.is_duplicate = false`);
 
-  switch (f.basis) {
+  if (!opts.noPeriod) switch (f.basis) {
     case 'created': c.push(sql`l.created_date BETWEEN ${p.from} AND ${p.to}`); break;
     case 'payment': c.push(sql`l.converted AND l.converted_at BETWEEN ${p.from} AND ${p.to}`); break;
     case 'touch':   c.push(sql`EXISTS (SELECT 1 FROM analytics.v_touch_base tx WHERE tx.lead_id = l.lead_id AND tx.touch_date BETWEEN ${p.from} AND ${p.to})`); break;

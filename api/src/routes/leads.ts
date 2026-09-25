@@ -2,7 +2,7 @@ import { Hono } from 'hono';
 import type { Sql } from 'postgres';
 import type { AppEnv, Role } from '../env';
 import { handle, intParam, maskEmail, maskName, maskPhone } from '../http';
-import { leadWhere, parseFilters, resolvePeriods, type Frag } from '../filters';
+import { activeDimKeys, leadWhere, parseFilters, resolvePeriods, type Frag } from '../filters';
 import { getSql, release } from '../db';
 
 export const leads = new Hono<AppEnv>();
@@ -53,13 +53,18 @@ leads.get('/leads', (c) =>
     const page = intParam(q, 'page', 1, 1, 100000);
     const sortCol = SORTABLE[q.sort ?? ''] ?? 'created_at';
     const dir = q.dir === 'asc' ? sql`ASC NULLS FIRST` : sql`DESC NULLS LAST`;
-    // a search (phone / LM-id / name) looks across EVERY lead in the replica: the date window and the duplicate flag no longer apply
-    const where = (q.q ?? '').trim() ? searchCond(sql, q.q ?? '') : leadWhere(sql, f, periods.current);
+    // the explorer is not limited by the date window: every lead in the replica, narrowed by the filter pickers and the search box
+    const where = sql`${leadWhere(sql, f, periods.current, { noPeriod: true })} AND ${searchCond(sql, q.q ?? '')}`;
+    // no filter, no search: count on the base table (the full view takes ~6 s to count)
+    const plain = !(q.q ?? '').trim() && activeDimKeys(f).length === 0 && !f.converted && !f.paid && !f.paid_touch;
+    const countQ = plain
+      ? sql<{ n: number }[]>`SELECT count(*)::int AS n FROM salesforce.lead_master__c l WHERE COALESCE(l.is_deleted__c, false) = false AND COALESCE(l.isdeleted, false) = false ${f.dups !== '1' ? sql`AND COALESCE(l.is_duplicate__c, false) = false` : sql``}`
+      : sql<{ n: number }[]>`SELECT count(*)::int AS n FROM analytics.v_lead_base l WHERE ${where}`;
     const [rows, [tot]] = await Promise.all([
       sql<Rec[]>`
         SELECT ${sql(LIST_COLS)} FROM analytics.v_lead_base l WHERE ${where}
         ORDER BY ${sql(sortCol)} ${dir}, l.lead_id LIMIT ${limit} OFFSET ${(page - 1) * limit}`,
-      sql<{ n: number }[]>`SELECT count(*)::int AS n FROM analytics.v_lead_base l WHERE ${where}`,
+      countQ,
     ]);
     return { page, limit, total: tot.n, rows: rows.map((r) => maskRow(r, role)), masked: role === 'viewer' };
   }, 0),
@@ -112,7 +117,7 @@ leads.get('/leads/export.csv', async (c) => {
   const sql = getSql(c.env);
   const sortCol = SORTABLE[q.sort ?? ''] ?? 'created_at';
   const dir = q.dir === 'asc' ? sql`ASC NULLS FIRST` : sql`DESC NULLS LAST`;
-  const where = (q.q ?? '').trim() ? searchCond(sql, q.q ?? '') : leadWhere(sql, f, periods.current);
+  const where = sql`${leadWhere(sql, f, periods.current, { noPeriod: true })} AND ${searchCond(sql, q.q ?? '')}`;
   const cols = LIST_COLS;
   const enc = new TextEncoder();
   const esc = (v: unknown) => {
