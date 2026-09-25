@@ -9,7 +9,7 @@ export type Basis = 'created' | 'touch' | 'payment';
 
 export const LIST_DIMS = [
   'lead_source', 'lead_stage', 'class_group', 'class_raw', 'district', 'city', 'priority', 'lead_type', 'owner',
-  'ic_status', 'ad_platform', 'first_touch_point', 'last_touch_point', 'touch_bucket', 'lm_reason',
+  'ic_status', 'ad_platform', 'first_touch_point', 'last_touch_point', 'touch_bucket', 'lm_reason', 'call_reason',
   'source', 'medium', 'touch_point', 'campaign', 'ad_set', 'ad_name', 'staff', 'platform_id', 'gap_bucket',
 ] as const;
 export type ListDim = (typeof LIST_DIMS)[number];
@@ -26,6 +26,7 @@ export const FILTER_MENU: { key: ListDim; label: string; group: string }[] = [
   { key: 'owner', label: 'Owner (sales staff)', group: 'Lead' },
   { key: 'ic_status', label: 'IC Status', group: 'Lead' },
   { key: 'lm_reason', label: 'LM Reason', group: 'Lead' },
+  { key: 'call_reason', label: 'Last call reason', group: 'Lead' },
   { key: 'class_raw', label: 'Class (raw)', group: 'Lead' },
   { key: 'touch_point', label: 'Touch Point', group: 'Touch' },
   { key: 'source', label: 'Lead source (touch)', group: 'Touch' },

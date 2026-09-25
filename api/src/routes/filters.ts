@@ -22,6 +22,14 @@ filters.get('/filters', (c) =>
     const p = periods.current;
     const d = dim as Dim;
 
+    if (d === 'call_reason') {
+      const rows = await sql<{ value: string; leads: number; converted: number }[]>`
+        SELECT COALESCE(c.last_reason, '(no call)') AS value, count(DISTINCT t.lead_id)::int AS leads, count(DISTINCT t.lead_id) FILTER (WHERE t.tab_converted)::int AS converted
+        FROM analytics.mv_touch_flat t LEFT JOIN salesforce.lead_calls c ON c.lead_id = t.lead_id
+        WHERE ${flatWhere(sql, f, p, d)} ${search ? sql`AND lower(COALESCE(c.last_reason, '(no call)')) LIKE ${'%' + search + '%'}` : sql``}
+        GROUP BY 1 ORDER BY 2 DESC, 1 LIMIT ${limit}`;
+      return { dim: d, options: rows };
+    }
     // Fast path: dims that live on the precomputed touch table are answered from it (same filters as the Overview cards)
     const flatCol = FLAT_COLS[d as keyof typeof FLAT_COLS];
     if (flatCol) {

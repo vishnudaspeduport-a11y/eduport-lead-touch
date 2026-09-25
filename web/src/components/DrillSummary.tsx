@@ -4,7 +4,7 @@ import { ErrorNote, Skeleton } from './ui';
 
 interface SplitRow { key: string; leads: number; revenue: number | null }
 interface Split { dim: string; label: string; kind: 'lead' | 'touch' | 'pay'; rows: SplitRow[]; distinct: number }
-interface Summary { mode: 'after_stage' | 'window'; paid_after: number; paid_after_revenue: number; retouched: number; avg_days_to_retouch: number | null; leads: number; revenue: number; touches: number; payers: number; payment_window: { from: string; to: string } | null; splits: Split[] }
+interface Summary { mode: 'after_stage' | 'window'; called_after: number; paid_after: number; paid_after_revenue: number; retouched: number; avg_days_to_retouch: number | null; leads: number; revenue: number; touches: number; payers: number; payment_window: { from: string; to: string } | null; splits: Split[] }
 
 /**
  * Overview of the leads behind a drill: headline figures + one small "split" card per dimension
@@ -18,8 +18,9 @@ export function DrillSummary({ params, onPick }: { params: Params; onPick: (dim:
   return (
     <div className={`h-full overflow-y-auto pr-1 ${r.isFetching ? 'opacity-70' : ''}`}>
       {d.mode === 'after_stage' ? (
-      <div className="mb-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
+      <div className="mb-3 grid grid-cols-2 gap-3 sm:grid-cols-5">
         <Head label="Leads re-touched" value={fmtInt(d.leads)} sub="in a closed stage, touched after entering it" />
+        <Head label="Called after the stage change" value={fmtInt(d.called_after)} sub="last call is later than the stage change" />
         <Head label="Touches after the stage change" value={fmtInt(d.touches)} sub={d.leads ? `${fmt1(d.touches / d.leads)} per lead` : undefined} />
         <Head label="Days to the first re-touch" value={d.avg_days_to_retouch == null ? '–' : fmt1(d.avg_days_to_retouch)} sub="average, from the stage change" />
         <Head label="Paid after the stage change" value={fmtInt(d.paid_after)} sub={fmtINR(d.paid_after_revenue)} />

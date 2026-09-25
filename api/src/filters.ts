@@ -35,6 +35,7 @@ const LEAD_DIMS_RAW = {
   last_touch_point:   { col: 'last_touch_point',     label: 'Last Touch Point' },
   touch_bucket:       { col: 'touch_bucket',         label: 'Touches (bucket)' },
   lm_reason:          { col: 'lm_reason',            label: 'LM Reason' },
+  call_reason:        { col: 'call_reason',          label: 'Last call reason' },
   paid:               { col: 'is_paid_lead',         label: 'Paid / Organic', kind: 'bool', boolLabels: ['Paid', 'Organic'] },
   repeat:             { col: 'is_repeat',            label: 'Repeat lead',    kind: 'bool', boolLabels: ['Repeat', 'First'] },
   pre_existing:       { col: 'pre_existing_customer', label: 'Pre-existing customer', kind: 'bool', boolLabels: ['Pre-existing', 'New customer'] },
@@ -71,7 +72,7 @@ export const LEAD_DIMS_ON_TOUCH = new Set<LeadDim>([
 /** Multi-select (list) filter keys - every non-boolean dimension. */
 export const LIST_KEYS = [
   'lead_source', 'lead_stage', 'class_group', 'class_raw', 'district', 'city', 'priority', 'lead_type', 'owner',
-  'ic_status', 'ad_platform', 'first_touch_point', 'last_touch_point', 'touch_bucket', 'lm_reason',
+  'ic_status', 'ad_platform', 'first_touch_point', 'last_touch_point', 'touch_bucket', 'lm_reason', 'call_reason',
   'source', 'medium', 'touch_point', 'campaign', 'ad_set', 'ad_name', 'staff', 'platform_id', 'gap_bucket',
 ] as const satisfies readonly Dim[];
 export type ListKey = (typeof LIST_KEYS)[number];

@@ -34,7 +34,7 @@ const COLS = [
   'class_raw', 'class_group', 'district', 'city', 'owner_name', 'best_ic_status', 'lm_reason', 'is_duplicate',
   'touches_in_window', 'n_touches_all', 'first_touch_in_window', 'last_touch_in_window', 'last_touch_any', 'days_since_last_touch', 'touch_points', 'sources', 'staff',
   'tab_converted', 'first_touch_point', 'last_touch_point', 'converted_first', 'converted', 'converted_at', 'last_payment_date', 'revenue', 'courses', 'sf_is_converted', 'sf_touch_count',
-  'stage_since', 'touches_after_stage',
+  'stage_since', 'touches_after_stage', 'calls', 'first_call_at', 'last_call_at', 'last_call_reason', 'last_call_status',
 ];
 
 const VALID_PAY = (sql: Sql) => sql`hp.payment_method = 0 AND hp.deleted = false AND hp.is_success = true AND hp.payment_success = true`;
@@ -42,6 +42,11 @@ const VALID_PAY = (sql: Sql) => sql`hp.payment_method = 0 AND hp.deleted = false
 function dimCond(sql: Sql, q: Record<string, string>): Frag {
   const dim = q.dim; const value = q.value;
   if (!dim || value === undefined) return sql`true`;
+  if (dim === 'call_reason') {
+    return value === '(no call)' || value === '(null)'
+      ? sql`NOT EXISTS (SELECT 1 FROM salesforce.lead_calls c WHERE c.lead_id = t.lead_id AND c.last_reason IS NOT NULL)`
+      : sql`t.lead_id IN (SELECT c.lead_id FROM salesforce.lead_calls c WHERE c.last_reason = ${value})`;
+  }
   if (dim === 'ic_status') {
     return sql`t.lead_id IN (SELECT ic.lead_master__c FROM salesforce.interested_course__c ic WHERE NOT ic.isdeleted AND btrim(ic.status__c) = ${value})`;
   }
@@ -142,8 +147,10 @@ function leadQuery(sql: Sql, f: Filters, periods: { current: Period }, q: Record
            x.sf_is_converted, x.sf_touch_count,
            ss.stage_since::text AS stage_since,
            (SELECT count(*)::int FROM analytics.mv_touch_flat t3 WHERE t3.lead_id = pg.lead_id AND t3.touch_at > ss.stage_since) AS touches_after_stage,
+           lc.calls, lc.first_call_at::text AS first_call_at, lc.last_call_at::text AS last_call_at, lc.last_reason AS last_call_reason, lc.last_call_status,
            pg.total_rows
     FROM pg
+    LEFT JOIN salesforce.lead_calls lc ON lc.lead_id = pg.lead_id
     JOIN LATERAL (SELECT analytics.stage_since(pg.lead_id, pg.lead_stage, pg.lead_created_date::timestamptz) AS stage_since) ss ON true
     JOIN salesforce.lead_master__c l ON l.id = pg.lead_id
     JOIN LATERAL (SELECT max(t2.touch_at) AS last_touch_any FROM analytics.mv_touch_flat t2 WHERE t2.lead_id = pg.lead_id) la ON true
@@ -177,6 +184,7 @@ const SPLITS: { dim: string; label: string; kind: 'lead' | 'touch' | 'pay' }[] =
   { dim: 'grade', label: 'Purchased grade', kind: 'pay' }, { dim: 'course', label: 'Purchased course', kind: 'pay' },
   { dim: 'lead_stage', label: 'Lead stage', kind: 'lead' }, { dim: 'class_group', label: 'Lead class', kind: 'lead' }, { dim: 'lead_source', label: 'Lead source', kind: 'lead' },
   { dim: 'touch_point', label: 'Touch point', kind: 'touch' }, { dim: 'source', label: 'Source', kind: 'touch' }, { dim: 'medium', label: 'Medium', kind: 'touch' },
+  { dim: 'call_reason', label: 'Last call reason', kind: 'lead' },
   { dim: 'owner', label: 'Owner', kind: 'lead' }, { dim: 'district', label: 'District', kind: 'lead' }, { dim: 'ic_status', label: 'IC status', kind: 'lead' }, { dim: 'lm_reason', label: 'LM reason', kind: 'lead' },
 ];
 
@@ -205,6 +213,9 @@ overviewLeads.get('/overview/leads/summary', (c) =>
              (SELECT sum(hp.amount) FROM sel s2 JOIN app.home_payment hp ON hp.user_id = s2.app_user_id WHERE ${VALID_PAY(sql)} AND hp.payment_date >= s2.since::date)::float8 AS revenue
       FROM sel s WHERE EXISTS (SELECT 1 FROM app.home_payment hp WHERE hp.user_id = s.app_user_id AND ${VALID_PAY(sql)} AND hp.payment_date >= s.since::date)
       UNION ALL
+      SELECT '_called_after' AS dim, NULL AS key, count(*)::int AS leads, NULL::float8 AS revenue
+      FROM sel s WHERE EXISTS (SELECT 1 FROM salesforce.lead_calls c WHERE c.lead_id = s.lead_id AND c.last_call_at > s.since)
+      UNION ALL
       SELECT '_days_to_retouch' AS dim, NULL AS key, count(*)::int AS leads,
              avg(EXTRACT(epoch FROM x.first_after - x.since) / 86400)::float8 AS revenue
       FROM (SELECT s.since, (SELECT min(t.touch_at) FROM analytics.mv_touch_flat t WHERE t.lead_id = s.lead_id AND t.touch_at > s.since) AS first_after FROM sel s) x
@@ -214,11 +225,11 @@ overviewLeads.get('/overview/leads/summary', (c) =>
       WHERE EXISTS (SELECT 1 FROM app.home_payment hp WHERE hp.user_id = s.app_user_id AND ${VALID_PAY(sql)} ${payWin})
       UNION ALL
       SELECT d.dim, d.key, count(DISTINCT t.lead_id)::int AS leads, NULL::float8 AS revenue
-      FROM analytics.mv_touch_flat t JOIN sel s ON ${touchJoin}
+      FROM analytics.mv_touch_flat t JOIN sel s ON ${touchJoin} LEFT JOIN salesforce.lead_calls c ON c.lead_id = t.lead_id
       CROSS JOIN LATERAL (VALUES ('lead_stage', t.lead_stage), ('class_group', t.class_group), ('lead_source', t.lead_source),
                                  ('touch_point', t.touch_point), ('source', t.source), ('medium', t.medium),
                                  ('owner', t.owner_name), ('district', t.district), ('ic_status', t.best_ic_status), ('lm_reason', t.lm_reason),
-                                 ('campaign', t.campaign), ('staff', t.staff)) AS d(dim, key)
+                                 ('campaign', t.campaign), ('staff', t.staff), ('call_reason', COALESCE(c.last_reason, '(no call)'))) AS d(dim, key)
       GROUP BY d.dim, d.key
       UNION ALL
       SELECT p.dim, p.key, count(DISTINCT p.lead_id)::int AS leads, sum(p.amount)::float8 AS revenue
@@ -237,7 +248,8 @@ overviewLeads.get('/overview/leads/summary', (c) =>
     const payers = rows.find((r) => r.dim === '_payers');
     const paidAfter = rows.find((r) => r.dim === '_paid_after');
     const retouch = rows.find((r) => r.dim === '_days_to_retouch');
-    const order = afterStage ? ['lead_stage', 'touch_point', 'source', 'medium', 'campaign', 'staff', 'class_group', 'grade', 'course', 'lead_source', 'owner', 'district', 'ic_status', 'lm_reason'] : SPLITS.map((s) => s.dim);
+    const calledAfter = rows.find((r) => r.dim === '_called_after');
+    const order = afterStage ? ['lead_stage', 'call_reason', 'touch_point', 'source', 'medium', 'campaign', 'staff', 'class_group', 'grade', 'course', 'lead_source', 'owner', 'district', 'ic_status', 'lm_reason'] : SPLITS.map((s) => s.dim);
     const splits = order.map((dim) => {
       const s = SPLITS.find((x) => x.dim === dim) ?? { dim, label: dim === 'campaign' ? 'Campaign' : 'Staff', kind: 'touch' as const };
       const list = rows.filter((r) => r.dim === s.dim).map((r) => ({ key: r.key ?? '(blank)', leads: r.leads, revenue: r.revenue })).sort((a, b) => b.leads - a.leads);
@@ -246,7 +258,7 @@ overviewLeads.get('/overview/leads/summary', (c) =>
     });
     return {
       mode: afterStage ? 'after_stage' : 'window', leads: total?.leads ?? 0, revenue: total?.revenue ?? 0, touches: touches?.leads ?? 0, payers: payers?.leads ?? 0, payment_window: pp, splits,
-      paid_after: paidAfter?.leads ?? 0, paid_after_revenue: paidAfter?.revenue ?? 0, retouched: retouch?.leads ?? 0, avg_days_to_retouch: retouch?.revenue ?? null,
+      paid_after: paidAfter?.leads ?? 0, paid_after_revenue: paidAfter?.revenue ?? 0, retouched: retouch?.leads ?? 0, avg_days_to_retouch: retouch?.revenue ?? null, called_after: calledAfter?.leads ?? 0,
     };
   }, 0),
 );

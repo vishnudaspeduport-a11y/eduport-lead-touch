@@ -16,7 +16,7 @@ export interface Drill {
   summary?: boolean;
 }
 
-const EXTRA_LABEL: Record<string, string> = { grade: 'Purchased grade', course: 'Purchased course', owner: 'Owner', ic_status: 'IC status', lm_reason: 'LM reason', class_group: 'Lead class', lead_stage: 'Lead stage', lead_source: 'Lead source', touch_point: 'Touch point', source: 'Source', medium: 'Medium', district: 'District' };
+const EXTRA_LABEL: Record<string, string> = { call_reason: 'Last call reason', grade: 'Purchased grade', course: 'Purchased course', owner: 'Owner', ic_status: 'IC status', lm_reason: 'LM reason', class_group: 'Lead class', lead_stage: 'Lead stage', lead_source: 'Lead source', touch_point: 'Touch point', source: 'Source', medium: 'Medium', district: 'District' };
 
 const METRIC_LABEL: Record<DrillMetric, string> = {
   leads: 'leads touched in the window', touches: 'leads touched in the window (with their touch counts)', converted: 'converted leads (valid payment on/after a touch)', first_touch: 'converted leads whose selected first touch is in the selection', stale_new: 'leads still in stage New, created more than 5 days ago and not touched in the last 5 days', stale_not_connected: 'leads still in stage Not Connected, created more than 5 days ago and not touched in the last 5 days', last_touch: 'leads whose last valid touch (latest touch on/before their last payment) is in the selection',
@@ -47,6 +47,10 @@ const COLS: Col<Row>[] = [
   { key: 'days_since_last_touch', header: 'Days since last touch', align: 'right' },
   { key: 'stage_since', header: 'In stage since', render: (v) => fmtDateTime(v as string) },
   { key: 'touches_after_stage', header: 'Touches after stage', align: 'right' },
+  { key: 'calls', header: 'Calls', align: 'right' },
+  { key: 'last_call_at', header: 'Last call', render: (v) => fmtDateTime(v as string) },
+  { key: 'last_call_reason', header: 'Last call reason' },
+  { key: 'last_call_status', header: 'Last call status' },
   { key: 'tab_converted', header: 'Converted', render: yesNo },
   { key: 'converted_at', header: 'First payment' },
   { key: 'last_payment_date', header: 'Last payment' },

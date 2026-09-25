@@ -50,13 +50,24 @@ export function flatWhere(sql: Sql, f: Filters, p: Period | null, skip?: string)
   if (f.paid_touch) c.push(f.paid_touch === 'paid' ? sql`t.is_paid_touch = true` : sql`t.is_paid_touch IS NOT TRUE`);
   for (const k of LIST_KEYS) {
     const col = FLAT_COLS[k]; const vals = f[k];
-    if (!col || !vals?.length || k === skip) continue;
+    if (!vals?.length || k === skip) continue;
+    if (!col && k !== 'call_reason') continue;
+    if (k === 'call_reason') {
+      // reason recorded on the lead's LAST call (salesforce.lead_calls); '(no call)' = no call logged since March 2026
+      const real = vals.filter((v) => v !== '(no call)' && v !== '(null)'); const noCall = vals.length !== real.length;
+      const parts: Frag[] = [];
+      if (real.length) parts.push(sql`t.lead_id IN (SELECT c.lead_id FROM salesforce.lead_calls c WHERE c.last_reason IN ${sql(real)})`);
+      if (noCall) parts.push(sql`NOT EXISTS (SELECT 1 FROM salesforce.lead_calls c WHERE c.lead_id = t.lead_id AND c.last_reason IS NOT NULL)`);
+      c.push(parts.length === 2 ? sql`(${parts[0]} OR ${parts[1]})` : parts[0]!);
+      continue;
+    }
     if (k === 'ic_status') {
       // same source as the IC-status funnel: any interested course of the lead in one of these statuses
       const real = vals.filter((v) => v !== '(null)');
       if (real.length) c.push(sql`t.lead_id IN (SELECT ic.lead_master__c FROM salesforce.interested_course__c ic WHERE NOT ic.isdeleted AND btrim(ic.status__c) IN ${sql(real)})`);
       continue;
     }
+    if (!col) continue;
     const hasNull = vals.includes('(null)'); const real = vals.filter((v) => v !== '(null)');
     const ref = sql`t.${sql(col)}`;
     if (hasNull && real.length) c.push(sql`(${ref} IN ${sql(real)} OR ${ref} IS NULL)`);
@@ -128,7 +139,11 @@ overview.get('/overview', (c) =>
         WHERE NOT ic.isdeleted AND NULLIF(btrim(ic.status__c),'') IS NOT NULL
           AND ic.lead_master__c IN (SELECT DISTINCT t.lead_id FROM analytics.mv_touch_flat t WHERE ${wx('ic_status')})
         GROUP BY 1 ORDER BY leads DESC`,
-      byDim(sql, wx('touch_point'), 'touch_point', conv, convFirst), byDim(sql, wx('source'), 'source', conv, convFirst), byDim(sql, wx('class_raw'), 'class_raw', conv, convFirst), byDim(sql, wx('lm_reason'), 'lm_reason', conv, convFirst),
+      byDim(sql, wx('touch_point'), 'touch_point', conv, convFirst), byDim(sql, wx('source'), 'source', conv, convFirst), byDim(sql, wx('class_raw'), 'class_raw', conv, convFirst), sql<DimRow[]>`
+        SELECT COALESCE(c.last_reason, '(no call)') AS key, count(*)::int AS touches, count(DISTINCT t.lead_id)::int AS leads,
+               count(DISTINCT t.lead_id) FILTER (WHERE ${conv})::int AS converted, count(DISTINCT t.lead_id) FILTER (WHERE ${convFirst})::int AS converted_first
+        FROM analytics.mv_touch_flat t LEFT JOIN salesforce.lead_calls c ON c.lead_id = t.lead_id
+        WHERE ${wx('call_reason')} GROUP BY 1 ORDER BY leads DESC LIMIT 40`,
       byDim(sql, wx('medium'), 'medium', conv, convFirst), byDim(sql, wx('campaign'), 'campaign', conv, convFirst), byDim(sql, wx('staff'), 'staff', conv, convFirst),
       sql<{ d: string; touches: number; leads: number; converted: number }[]>`
         SELECT t.touch_date::text AS d, count(*)::int AS touches, count(DISTINCT t.lead_id)::int AS leads,
@@ -178,7 +193,7 @@ overview.get('/overview', (c) =>
         avg_touches_alltime: 'Tableau "Avg Touches Before Conversion" (no date filter): average, over every touch row of leads with a valid payment, of the lead\'s all-time touch count. Row-weighted like the workbook; the workbook figure is additionally inflated by its Task / Interested-Course / payment joins, which duplicate rows.',
         avg_touches_window: 'Tableau "Avg Touches Before Conversion - Date wise": same as above restricted to touches in the window.',
         avg_per_lead: 'Per-lead variant (each converted lead counted once): the honest average number of touches a paying lead received.',
-        reason: 'Tableau "Last Reason" reads Task.Reason__c (activities), which are not replicated (2.4 M rows). Shown instead: Lead_Master__c.LM_Reason__c of the touched leads.',
+        reason: 'Tableau "Last Reason": the Reason recorded on the lead\'s LAST call (Salesforce Task.Reason__c, calls since March 2026, summarised per lead by the sync). "(no call)" = no call logged. The lead\'s LM Reason field is still available under Add filter.',
         stale_new: `Leads in the selection whose Lead Stage is still "New" although they were created more than ${staleDays} days ago and have had no touch in the last ${staleDays} days (any touch, in any month). "Never touched after creation" = their only touches are from the creation day itself. Only leads with at least one touch exist on this page.`,
         stale_nc: `Same rule for Lead Stage "Not Connected": created more than ${staleDays} days ago and no touch in the last ${staleDays} days.`,
         dim_converted: 'Per row: distinct converted leads (Tableau definition) having a touch of that value in the window. A lead can appear under several rows.',
