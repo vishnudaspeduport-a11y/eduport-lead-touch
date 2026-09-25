@@ -84,14 +84,15 @@ overview.get('/overview', (c) =>
     const pp = paymentPeriod(f);
     const staleDays = Math.max(1, Math.min(365, Number.parseInt(q.stale_days ?? '5', 10) || 5));
     const [[k], [stale], [avgWin], [avgAll], stages, icStatus, touchPoint, source, classRaw, reason, medium, campaign, staff, daily] = await Promise.all([
-      sql<{ touches: number; leads: number; converted: number; converted_first: number; sf_converted: number; sf_flag_no_pay: number; paid_no_flag: number; touches_of_converted: number }[]>`
+      sql<{ touches: number; leads: number; converted: number; converted_first: number; sf_converted: number; stage_conv_total: number; stage_conv_unpaid: number; paid_other_stage: number; touches_of_converted: number }[]>`
         SELECT count(*)::int AS touches,
                count(DISTINCT t.lead_id)::int AS leads,
                count(DISTINCT t.lead_id) FILTER (WHERE ${conv})::int AS converted,
                count(DISTINCT t.lead_id) FILTER (WHERE ${convFirst})::int AS converted_first,
                count(DISTINCT t.lead_id) FILTER (WHERE t.lead_sf_is_converted)::int AS sf_converted,
-               count(DISTINCT t.lead_id) FILTER (WHERE t.lead_sf_is_converted AND NOT t.converted)::int AS sf_flag_no_pay,
-               count(DISTINCT t.lead_id) FILTER (WHERE t.converted AND NOT t.lead_sf_is_converted)::int AS paid_no_flag,
+               count(DISTINCT t.lead_id) FILTER (WHERE t.lead_stage = 'Converted')::int AS stage_conv_total,
+               count(DISTINCT t.lead_id) FILTER (WHERE t.lead_stage = 'Converted' AND NOT t.converted)::int AS stage_conv_unpaid,
+               count(DISTINCT t.lead_id) FILTER (WHERE ${conv} AND t.lead_stage IS DISTINCT FROM 'Converted')::int AS paid_other_stage,
                count(*) FILTER (WHERE ${conv})::int AS touches_of_converted
         FROM analytics.mv_touch_flat t WHERE ${w}`,
       // leads in the selection still in stage New, created more than N days ago and not touched in the last N days
@@ -157,8 +158,8 @@ overview.get('/overview', (c) =>
         leads_basis: f.basis === 'created' ? 'Main window = LEAD CREATED date: leads created in the range, with all their touches.' : 'Main window = TOUCH date: touches dated in the range.',
         converted_first: 'Brief definition: touched leads whose FIRST valid payment is on/after one of their touches in the window.',
         sf_converted: 'Touched leads with Salesforce Lead_Master__c.Is_Converted__c = true (reference).',
-        sf_flag_no_pay: 'Flagged Is_Converted__c in Salesforce but NO valid payment exists on the lead phone (any date): marked converted without a purchase.',
-        paid_no_flag: 'Has a valid payment (any date) but Is_Converted__c is false in Salesforce: converted in reality, flag not updated.',
+        stage_conv_unpaid: 'Leads whose Salesforce Lead Stage is "Converted" but with NO valid payment on their phone (any date): marked converted without a purchase.',
+        paid_other_stage: 'Leads counted in Total converted (valid payment on/after a touch, inside the payment window when it is on) whose Lead Stage is NOT "Converted": paid, but the stage was never updated.',
         avg_touches_alltime: 'Tableau "Avg Touches Before Conversion" (no date filter): average, over every touch row of leads with a valid payment, of the lead\'s all-time touch count. Row-weighted like the workbook; the workbook figure is additionally inflated by its Task / Interested-Course / payment joins, which duplicate rows.',
         avg_touches_window: 'Tableau "Avg Touches Before Conversion - Date wise": same as above restricted to touches in the window.',
         avg_per_lead: 'Per-lead variant (each converted lead counted once): the honest average number of touches a paying lead received.',

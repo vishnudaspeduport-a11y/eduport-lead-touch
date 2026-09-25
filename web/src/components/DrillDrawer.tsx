@@ -7,7 +7,7 @@ import { LeadDrawer } from './LeadDrawer';
 import { DrillSummary } from './DrillSummary';
 import { ErrorNote, Icon, Skeleton, useDebounce } from './ui';
 
-export type DrillMetric = 'leads' | 'touches' | 'converted' | 'first_touch' | 'last_touch' | 'stale_new' | 'stale_not_connected' | 'converted_first' | 'sf_converted' | 'sf_flag_no_pay' | 'paid_no_flag' | 'avg_alltime' | 'avg_window';
+export type DrillMetric = 'leads' | 'touches' | 'converted' | 'first_touch' | 'last_touch' | 'stale_new' | 'stale_not_connected' | 'converted_first' | 'sf_converted' | 'stage_conv_unpaid' | 'paid_other_stage' | 'avg_alltime' | 'avg_window';
 export interface Drill {
   metric: DrillMetric; title: string; subtitle?: string; dim?: string; value?: string;
   /** alternative list endpoint (default /overview/leads) */
@@ -21,7 +21,7 @@ const EXTRA_LABEL: Record<string, string> = { grade: 'Purchased grade', course: 
 const METRIC_LABEL: Record<DrillMetric, string> = {
   leads: 'leads touched in the window', touches: 'leads touched in the window (with their touch counts)', converted: 'converted leads (valid payment on/after a touch)', first_touch: 'converted leads whose selected first touch is in the selection', stale_new: 'leads still in stage New, created more than 5 days ago and not touched in the last 5 days', stale_not_connected: 'leads still in stage Not Connected, created more than 5 days ago and not touched in the last 5 days', last_touch: 'leads whose last valid touch (latest touch on/before their last payment) is in the selection',
   converted_first: 'leads whose first payment came after a touch',
-  sf_converted: 'leads flagged Is_Converted__c in Salesforce', sf_flag_no_pay: 'leads flagged converted in Salesforce but with no valid payment on their phone', paid_no_flag: 'leads with a valid payment whose Salesforce Is_Converted__c flag is still false', avg_alltime: 'leads with a valid payment (all touches, no date filter)', avg_window: 'leads with a valid payment touched in the window',
+  sf_converted: 'leads flagged Is_Converted__c in Salesforce', stage_conv_unpaid: 'leads in stage Converted with no valid payment on their phone (any date)', paid_other_stage: 'leads with a valid payment (Total converted rule) whose stage is not Converted', avg_alltime: 'leads with a valid payment (all touches, no date filter)', avg_window: 'leads with a valid payment touched in the window',
 };
 
 type Row = Record<string, unknown>;

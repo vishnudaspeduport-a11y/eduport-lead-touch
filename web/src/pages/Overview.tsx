@@ -13,7 +13,7 @@ interface DimRow { key: string; touches: number; leads: number; converted: numbe
 interface OverviewResponse {
   period: { from: string; to: string }; payment_period: { from: string; to: string } | null; basis: 'created' | 'touch';
   kpis: {
-    touches: number; leads: number; converted: number; converted_first: number; sf_converted: number; sf_flag_no_pay: number; paid_no_flag: number; touches_of_converted: number; revenue: number;
+    touches: number; leads: number; converted: number; converted_first: number; sf_converted: number; stage_conv_total: number; stage_conv_unpaid: number; paid_other_stage: number; touches_of_converted: number; revenue: number;
     conv_rate: number | null; touches_per_lead: number | null;
     avg_touches_alltime: number | null; avg_touches_alltime_per_lead: number | null; avg_touches_alltime_n: number;
     avg_touches_window: number | null; avg_touches_window_per_lead: number | null; avg_touches_window_n: number;
@@ -97,10 +97,9 @@ export default function Overview() {
             ]} />
           <Kpi tone="tone-violet" icon={<Icon.Avg />} title="Avg touches before conversion" value={fmt2(k.avg_touches_alltime)} sub={`all time · ${fmt2(k.avg_touches_alltime_per_lead)} per lead (${fmtInt(k.avg_touches_alltime_n)} leads)`} def={`${def.avg_touches_alltime} ${def.avg_per_lead}`} onClick={() => open('avg_alltime', 'Avg touches before conversion', undefined, undefined, 'converted leads with their all-time touch counts (no date filter)')} />
           <Kpi tone="tone-green" icon={<Icon.Calendar />} title="Avg touches before conversion (date-wise)" value={fmt2(k.avg_touches_window)} sub={`in window · ${fmt2(k.avg_touches_window_per_lead)} per lead (${fmtInt(k.avg_touches_window_n)} leads)`} def={`${def.avg_touches_window} ${def.avg_per_lead}`} onClick={() => open('avg_window', 'Avg touches before conversion (date-wise)', undefined, undefined, 'converted leads touched in the window, with their all-time touch counts')} />
-          <Kpi tone="tone-slate" icon={<Icon.Spark />} title="Salesforce Is_Converted flag" value={fmtInt(k.sf_converted)} sub="reference only" def={`${def.sf_converted} — ${def.sf_flag_no_pay} — ${def.paid_no_flag}`} onClick={() => open('sf_converted', 'Salesforce Is_Converted flag')}
+          <Kpi tone="tone-slate" icon={<Icon.Spark />} title="Stage Converted · not paid" value={fmtInt(k.stage_conv_unpaid)} sub={`of ${fmtInt(k.stage_conv_total)} leads in stage Converted · no payment on record`} def={`${def.stage_conv_unpaid} — ${def.paid_other_stage}`} onClick={() => open('stage_conv_unpaid', 'Stage Converted · not paid')}
             split={[
-              { label: 'flagged, no payment', value: fmtInt(k.sf_flag_no_pay), title: def.sf_flag_no_pay, onClick: () => open('sf_flag_no_pay', 'Flagged converted in Salesforce · no payment') },
-              { label: 'paid, no flag', value: fmtInt(k.paid_no_flag), title: def.paid_no_flag, onClick: () => open('paid_no_flag', 'Paid · Salesforce flag not set') },
+              { label: 'paid, other stage', value: fmtInt(k.paid_other_stage), title: def.paid_other_stage, onClick: () => open('paid_other_stage', 'Paid · stage not Converted') },
             ]} />
           <Kpi tone="tone-red" icon={<Icon.Calendar />} title={`Still New after ${k.stale_days} days`} value={fmtInt(k.stale_new)} sub={`of ${fmtInt(k.new_total)} leads in stage New · ${fmtInt(k.stale_new_untouched)} never touched after creation`} def={def.stale_new}
             onClick={() => open('stale_new', `Still New after ${k.stale_days} days`, undefined, undefined, 'leads still in stage New, created more than 5 days ago and not touched in the last 5 days · sorted by last touch')} />
