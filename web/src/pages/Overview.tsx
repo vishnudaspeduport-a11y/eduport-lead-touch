@@ -19,6 +19,7 @@ interface OverviewResponse {
     avg_touches_window: number | null; avg_touches_window_per_lead: number | null; avg_touches_window_n: number;
     stale_new: number; stale_new_untouched: number; new_total: number; stale_days: number;
     stale_nc: number; stale_nc_untouched: number; nc_total: number;
+    stage_react: number; stage_react_total: number; stage_react_by: { stage: string; total: number; reactivated: number }[];
   };
   stages: { key: string; leads: number; converted: number }[];
   ic_status: { key: string; leads: number; ics: number }[];
@@ -86,7 +87,7 @@ export default function Overview() {
       <PageHeader title="Overview" subtitle={`${f.basis === 'created' ? 'lead created' : 'touch date'} ${f.from} → ${f.to}${f.pay ? ` · payment date ${f.pfrom} → ${f.pto}` : ''} · same definitions as the Tableau "Lead Touch - Overview" dashboard`} />
       {q.error && <Note>⚠ {q.error.message}</Note>}
 
-      <div className="grid grid-cols-2 gap-4 sm:grid-cols-4 xl:grid-cols-8">
+      <div className="grid grid-cols-2 gap-4 sm:grid-cols-4 xl:grid-cols-9">
         {q.isLoading && Array.from({ length: 8 }).map((_, i) => <Skeleton key={i} className="h-[92px]" />)}
         {k && <>
           <Kpi tone="tone-brand" icon={<Icon.Users />} title="Total leads" value={fmtInt(k.leads)} sub={f.basis === 'created' ? 'distinct leads created in the window' : 'distinct leads touched in the window'} def={`${def.leads_basis ?? ''} ${def.leads ?? ''}`} onClick={() => open('leads', 'Total leads')} />
@@ -103,6 +104,9 @@ export default function Overview() {
             ]} />
           <Kpi tone="tone-red" icon={<Icon.Calendar />} title={`Still New after ${k.stale_days} days`} value={fmtInt(k.stale_new)} sub={`of ${fmtInt(k.new_total)} leads in stage New · ${fmtInt(k.stale_new_untouched)} never touched after creation`} def={def.stale_new}
             onClick={() => open('stale_new', `Still New after ${k.stale_days} days`, undefined, undefined, 'leads still in stage New, created more than 5 days ago and not touched in the last 5 days · sorted by last touch')} />
+          <Kpi tone="tone-violet" icon={<Icon.Touch />} title="Re-touched after a closed stage" value={fmtInt(k.stage_react)} sub={`of ${fmtInt(k.stage_react_total)} leads in Not Willing Now / Disqualified / Not Connected / P2 Completed · touched again after entering the stage`} def={def.stage_react}
+            onClick={() => open('stage_react', 'Re-touched after a closed stage')}
+            split={(k.stage_react_by ?? []).map((s) => ({ label: s.stage, value: fmtInt(s.reactivated), title: `${fmtInt(s.reactivated)} of ${fmtInt(s.total)} leads in ${s.stage}`, onClick: () => open('stage_react', `Re-touched · ${s.stage}`, 'lead_stage', s.stage) }))} />
           <Kpi tone="tone-amber" icon={<Icon.Calendar />} title={`Still Not Connected after ${k.stale_days} days`} value={fmtInt(k.stale_nc)} sub={`of ${fmtInt(k.nc_total)} leads in stage Not Connected · ${fmtInt(k.stale_nc_untouched)} never touched after creation`} def={def.stale_nc}
             onClick={() => open('stale_not_connected', `Still Not Connected after ${k.stale_days} days`, undefined, undefined, 'leads still in stage Not Connected, created more than 5 days ago and not touched in the last 5 days · sorted by last touch')} />
         </>}

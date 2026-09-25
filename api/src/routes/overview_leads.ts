@@ -20,7 +20,7 @@ import { paymentPeriod } from '../filters';
 export const overviewLeads = new Hono<AppEnv>();
 
 type Rec = Record<string, unknown>;
-const METRICS = ['leads', 'touches', 'converted', 'first_touch', 'last_touch', 'stale_new', 'stale_not_connected', 'converted_first', 'sf_converted', 'stage_conv_unpaid', 'paid_other_stage', 'avg_alltime', 'avg_window'] as const;
+const METRICS = ['leads', 'touches', 'converted', 'first_touch', 'last_touch', 'stale_new', 'stale_not_connected', 'converted_first', 'sf_converted', 'stage_conv_unpaid', 'paid_other_stage', 'stage_react', 'avg_alltime', 'avg_window'] as const;
 type Metric = (typeof METRICS)[number];
 
 const SORTABLE: Record<string, string> = {
@@ -34,6 +34,7 @@ const COLS = [
   'class_raw', 'class_group', 'district', 'city', 'owner_name', 'best_ic_status', 'lm_reason', 'is_duplicate',
   'touches_in_window', 'n_touches_all', 'first_touch_in_window', 'last_touch_in_window', 'last_touch_any', 'days_since_last_touch', 'touch_points', 'sources', 'staff',
   'tab_converted', 'first_touch_point', 'last_touch_point', 'converted_first', 'converted', 'converted_at', 'last_payment_date', 'revenue', 'courses', 'sf_is_converted', 'sf_touch_count',
+  'stage_since', 'touches_after_stage',
 ];
 
 const VALID_PAY = (sql: Sql) => sql`hp.payment_method = 0 AND hp.deleted = false AND hp.is_success = true AND hp.payment_success = true`;
@@ -71,6 +72,8 @@ function metricHaving(sql: Sql, metric: Metric, p: Period, f?: Filters, q: Recor
     case 'converted_first': return sql`bool_or(${f ? convFirstCond(sql, f) : sql`(t.converted AND t.is_pre_conversion)`})`;
     case 'sf_converted': return sql`bool_or(t.lead_sf_is_converted)`;
     case 'stage_conv_unpaid': return sql`max(t.lead_stage) = 'Converted' AND NOT bool_or(t.converted)`;
+    case 'stage_react': return sql`max(t.lead_stage) IN ('Not Willing Now', 'Disqualified', 'Not Connected', 'P2 Completed')
+        AND (SELECT max(t2.touch_at) FROM analytics.mv_touch_flat t2 WHERE t2.lead_id = t.lead_id) > analytics.stage_since(t.lead_id, max(t.lead_stage), max(t.lead_created_date)::timestamptz)`;
     case 'paid_other_stage': return sql`bool_or(${conv}) AND max(t.lead_stage) IS DISTINCT FROM 'Converted'`;
     case 'avg_alltime': case 'avg_window': return sql`bool_or(t.converted)`;
     default: return sql`true`;
@@ -131,8 +134,12 @@ function leadQuery(sql: Sql, f: Filters, periods: { current: Period }, q: Record
            la.last_touch_any::text AS last_touch_any, floor(EXTRACT(epoch FROM now() - la.last_touch_any) / 86400)::int AS days_since_last_touch,
            x.touch_points, x.sources, x.staff, x.tab_converted, x.first_touch_point, x.last_touch_point, x.converted_first, x.converted,
            pg.converted_at::text AS converted_at, pg.last_payment_date::text AS last_payment_date, pg.revenue::float8 AS revenue, x.courses,
-           x.sf_is_converted, x.sf_touch_count, pg.total_rows
+           x.sf_is_converted, x.sf_touch_count,
+           ss.stage_since::text AS stage_since,
+           (SELECT count(*)::int FROM analytics.mv_touch_flat t3 WHERE t3.lead_id = pg.lead_id AND t3.touch_at > ss.stage_since) AS touches_after_stage,
+           pg.total_rows
     FROM pg
+    JOIN LATERAL (SELECT analytics.stage_since(pg.lead_id, pg.lead_stage, pg.lead_created_date::timestamptz) AS stage_since) ss ON true
     JOIN salesforce.lead_master__c l ON l.id = pg.lead_id
     JOIN LATERAL (SELECT max(t2.touch_at) AS last_touch_any FROM analytics.mv_touch_flat t2 WHERE t2.lead_id = pg.lead_id) la ON true
     JOIN LATERAL (

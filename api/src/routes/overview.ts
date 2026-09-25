@@ -86,7 +86,7 @@ overview.get('/overview', (c) =>
     const conv = convCond(sql, f); const convFirst = convFirstCond(sql, f);
     const pp = paymentPeriod(f);
     const staleDays = Math.max(1, Math.min(365, Number.parseInt(q.stale_days ?? '5', 10) || 5));
-    const [[k], [stale], [avgWin], [avgAll], stages, icStatus, touchPoint, source, classRaw, reason, medium, campaign, staff, daily] = await Promise.all([
+    const [[k], [stale], [avgWin], [avgAll], stages, icStatus, touchPoint, source, classRaw, reason, medium, campaign, staff, daily, reactRows] = await Promise.all([
       sql<{ touches: number; leads: number; converted: number; converted_first: number; sf_converted: number; stage_conv_total: number; stage_conv_unpaid: number; paid_other_stage: number; touches_of_converted: number }[]>`
         SELECT count(*)::int AS touches,
                count(DISTINCT t.lead_id)::int AS leads,
@@ -134,11 +134,22 @@ overview.get('/overview', (c) =>
         SELECT t.touch_date::text AS d, count(*)::int AS touches, count(DISTINCT t.lead_id)::int AS leads,
                count(DISTINCT t.lead_id) FILTER (WHERE ${conv})::int AS converted
         FROM analytics.mv_touch_flat t WHERE ${w} GROUP BY 1 ORDER BY 1`,
+      // leads parked in a closed stage that were touched AGAIN after entering it (stage moment from the Salesforce history log)
+      sql<{ stage: string; total: number; reactivated: number }[]>`
+        WITH r AS (
+          SELECT t.lead_id, max(t.lead_stage) AS stage, max(t.lead_created_date)::timestamptz AS created,
+                 (SELECT max(t2.touch_at) FROM analytics.mv_touch_flat t2 WHERE t2.lead_id = t.lead_id) AS last_touch
+          FROM analytics.mv_touch_flat t WHERE ${w} AND t.lead_stage IN ('Not Willing Now', 'Disqualified', 'Not Connected', 'P2 Completed') GROUP BY t.lead_id)
+        SELECT stage, count(*)::int AS total, count(*) FILTER (WHERE last_touch > analytics.stage_since(lead_id, stage, created))::int AS reactivated
+        FROM r GROUP BY stage ORDER BY reactivated DESC`,
     ]);
     return {
       period: periods.current, payment_period: pp, basis: f.basis === 'created' ? 'created' : 'touch',
       kpis: {
         ...k,
+        stage_react: reactRows.reduce((a, r) => a + r.reactivated, 0),
+        stage_react_total: reactRows.reduce((a, r) => a + r.total, 0),
+        stage_react_by: reactRows,
         conv_rate: pct(k.converted, k.leads),
         touches_per_lead: k.leads ? Math.round((k.touches / k.leads) * 1000) / 1000 : null,
         avg_touches_alltime: avgAll?.avg_rows ?? null,
@@ -161,6 +172,7 @@ overview.get('/overview', (c) =>
         leads_basis: f.basis === 'created' ? 'Main window = LEAD CREATED date: leads created in the range, with all their touches.' : 'Main window = TOUCH date: touches dated in the range.',
         converted_first: 'Brief definition: touched leads whose FIRST valid payment is on/after one of their touches in the window.',
         sf_converted: 'Touched leads with Salesforce Lead_Master__c.Is_Converted__c = true (reference).',
+        stage_react: 'Leads in the selection whose current stage is Not Willing Now, Disqualified, Not Connected or P2 Completed AND that received at least one lead touch AFTER entering that stage. The stage moment comes from the Salesforce field-history log (latest change into the current stage); leads with no logged change since 1 March 2026 use their creation date, or 1 March 2026 if older.',
         stage_conv_unpaid: 'Leads whose Salesforce Lead Stage is "Converted" but with NO valid payment on their phone (any date): marked converted without a purchase.',
         paid_other_stage: 'Leads counted in Total converted (valid payment on/after a touch, inside the payment window when it is on) whose Lead Stage is NOT "Converted": paid, but the stage was never updated.',
         avg_touches_alltime: 'Tableau "Avg Touches Before Conversion" (no date filter): average, over every touch row of leads with a valid payment, of the lead\'s all-time touch count. Row-weighted like the workbook; the workbook figure is additionally inflated by its Task / Interested-Course / payment joins, which duplicate rows.',
