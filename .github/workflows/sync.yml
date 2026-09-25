@@ -6,6 +6,7 @@ name: sync
 on:
   schedule:
     - cron: '15 */4 * * *'   # every 4 hours UTC = 05:45, 09:45, 13:45, 17:45, 21:45, 01:45 IST
+    - cron: '30 17 25 9 *'   # one-off 2026-09-25 23:00 IST: full reload of the call summary (Lead_Calls) at a quiet hour; remove after it has run
   workflow_dispatch:
     inputs:
       full:
@@ -64,4 +65,5 @@ jobs:
       - name: Sync
         if: inputs.sql == ''
         run: |
-          if [ "${{ inputs.full }}" = "true" ]; then npm run sync:full; else npm run sync; fi
+          if [ "${{ github.event.schedule }}" = "30 17 25 9 *" ]; then SYNC_OBJECTS=Lead_Calls npm run sync:full;
+          elif [ "${{ inputs.full }}" = "true" ]; then npm run sync:full; else npm run sync; fi
