@@ -45,6 +45,8 @@ jobs:
       DATABASE_URL: ${{ secrets.DATABASE_URL }}
       SOURCE_DATABASE_URL: ${{ secrets.SOURCE_DATABASE_URL }}
       LEAD_SINCE: ${{ vars.LEAD_SINCE || '2025-04-01T00:00:00Z' }}
+      CALLS_SINCE: ${{ vars.CALLS_SINCE || '' }}
+      STAGE_HISTORY_SINCE: ${{ vars.STAGE_HISTORY_SINCE || '' }}
       TASK_SINCE: ${{ vars.TASK_SINCE || '2026-01-01T00:00:00Z' }}
       SYNC_OBJECTS: ${{ inputs.objects }}
       SKIP_OBJECTS: ${{ vars.SKIP_OBJECTS }}

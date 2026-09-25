@@ -167,7 +167,7 @@ async function syncSalesforceObject(s: SfSession, spec: ObjectSpec): Promise<voi
 const STAGE_HISTORY_KEY = 'Lead_Master__History';
 async function syncStageHistory(s: SfSession): Promise<void> {
   const since = await getState(STAGE_HISTORY_KEY);
-  const floor = process.env.STAGE_HISTORY_SINCE ?? process.env.LEAD_SINCE ?? '2026-03-01T00:00:00Z';
+  const floor = process.env.STAGE_HISTORY_SINCE || process.env.LEAD_SINCE || '2026-03-01T00:00:00Z';
   const where = [`Field = 'Lead_Stage__c'`, since ? `CreatedDate > ${since.toISOString()}` : `CreatedDate >= ${floor}`];
   const q = `SELECT Id, ParentId, OldValue, NewValue, CreatedDate FROM Lead_Master__History WHERE ${where.join(' AND ')} ORDER BY CreatedDate ASC`;
   console.log(`[${STAGE_HISTORY_KEY}] ${since ? `incremental since ${since.toISOString()}` : `FULL load (since ${floor})`}`);
@@ -210,7 +210,7 @@ const CALLS_KEY = 'Lead_Calls';
 interface CallAgg { lead_id: string; calls: number; first_call_at: string; last_call_at: string; last_reason: string | null; last_call_status: string | null; last_owner_id: string | null; last_subject: string | null; _synced_at: Date }
 async function syncCallSummary(s: SfSession): Promise<void> {
   const since = await getState(CALLS_KEY);
-  const floor = process.env.CALLS_SINCE ?? process.env.LEAD_SINCE ?? '2026-03-01T00:00:00Z';
+  const floor = process.env.CALLS_SINCE || process.env.LEAD_SINCE || '2026-03-01T00:00:00Z';   // repo variable CALLS_SINCE (2026-05-01)
   if (!since) await sql`TRUNCATE salesforce.lead_calls`;
   const q = `SELECT Id, WhatId, CreatedDate, Reason__c, Call_Status__c, OwnerId, Subject FROM Task WHERE What.Type = 'Lead_Master__c' AND ${since ? `CreatedDate > ${since.toISOString()}` : `CreatedDate >= ${floor}`} ORDER BY CreatedDate ASC`;
   console.log(`[${CALLS_KEY}] ${since ? `incremental since ${since.toISOString()}` : `FULL load (since ${floor})`}`);
