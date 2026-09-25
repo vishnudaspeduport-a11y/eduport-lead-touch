@@ -53,6 +53,11 @@ function dimCond(sql: Sql, q: Record<string, string>): Frag {
   }
   const col = FLAT_COLS[dim as keyof typeof FLAT_COLS] ?? (dim === 'touch_date' ? 'touch_date' : undefined);
   if (!col) throw Object.assign(new Error(`unknown dim ${dim}`), { status: 400 });
+  if (q.metric === 'stage_react' && ['touch_point', 'source', 'medium', 'campaign', 'staff'].includes(dim)) {
+    const r3 = sql`t3.${sql(col)}`;
+    return sql`EXISTS (SELECT 1 FROM analytics.mv_touch_flat t3 WHERE t3.lead_id = t.lead_id AND t3.touch_at > analytics.stage_since(t.lead_id, t.lead_stage, t.lead_created_date::timestamptz)
+                       AND ${value === '(null)' ? sql`${r3} IS NULL` : sql`${r3}::text = ${value}`})`;
+  }
   const ref = sql`t.${sql(col)}`;
   return value === '(null)' ? sql`${ref} IS NULL` : sql`${ref}::text = ${value}`;
 }
@@ -181,24 +186,39 @@ overviewLeads.get('/overview/leads/summary', (c) =>
     const { sel, having } = selection(sql, f, periods, q);
     const pp = paymentPeriod(f);
     const payWin = pp ? sql`AND hp.payment_date BETWEEN ${pp.from} AND ${pp.to}` : sql``;
+    // after-stage mode (re-touched KPI): every touch-level figure counts only touches AFTER the lead entered its current stage
+    const afterStage = q.metric === 'stage_react';
+    const touchJoin = afterStage ? sql`t.lead_id = s.lead_id AND t.touch_at > s.since` : sql`t.lead_id = s.lead_id AND ${sel}`;
     const rows = await sql<{ dim: string; key: string | null; leads: number; revenue: number | null }[]>`
       WITH sel AS (
-        SELECT t.lead_id, max(t.app_user_id) AS app_user_id, max(t.revenue) AS revenue, count(*)::int AS touches_in_window
+        SELECT t.lead_id, max(t.app_user_id) AS app_user_id, max(t.revenue) AS revenue, count(*)::int AS touches_in_window,
+               analytics.stage_since(t.lead_id, max(t.lead_stage), max(t.lead_created_date)::timestamptz) AS since
         FROM analytics.mv_touch_flat t WHERE ${sel} GROUP BY t.lead_id HAVING ${having}
       )
       SELECT '_total' AS dim, NULL AS key, count(*)::int AS leads, sum(revenue)::float8 AS revenue FROM sel
       UNION ALL
-      SELECT '_touches' AS dim, NULL AS key, sum(touches_in_window)::int AS leads, NULL::float8 AS revenue FROM sel
+      SELECT '_touches' AS dim, NULL AS key, ${afterStage
+        ? sql`(SELECT count(*) FROM analytics.mv_touch_flat t JOIN sel s ON t.lead_id = s.lead_id AND t.touch_at > s.since)::int`
+        : sql`sum(touches_in_window)::int`} AS leads, NULL::float8 AS revenue FROM sel
+      UNION ALL
+      SELECT '_paid_after' AS dim, NULL AS key, count(*)::int AS leads,
+             (SELECT sum(hp.amount) FROM sel s2 JOIN app.home_payment hp ON hp.user_id = s2.app_user_id WHERE ${VALID_PAY(sql)} AND hp.payment_date >= s2.since::date)::float8 AS revenue
+      FROM sel s WHERE EXISTS (SELECT 1 FROM app.home_payment hp WHERE hp.user_id = s.app_user_id AND ${VALID_PAY(sql)} AND hp.payment_date >= s.since::date)
+      UNION ALL
+      SELECT '_days_to_retouch' AS dim, NULL AS key, count(*)::int AS leads,
+             avg(EXTRACT(epoch FROM x.first_after - x.since) / 86400)::float8 AS revenue
+      FROM (SELECT s.since, (SELECT min(t.touch_at) FROM analytics.mv_touch_flat t WHERE t.lead_id = s.lead_id AND t.touch_at > s.since) AS first_after FROM sel s) x
+      WHERE x.first_after IS NOT NULL
       UNION ALL
       SELECT '_payers' AS dim, NULL AS key, count(*)::int AS leads, NULL::float8 AS revenue FROM sel s
       WHERE EXISTS (SELECT 1 FROM app.home_payment hp WHERE hp.user_id = s.app_user_id AND ${VALID_PAY(sql)} ${payWin})
       UNION ALL
       SELECT d.dim, d.key, count(DISTINCT t.lead_id)::int AS leads, NULL::float8 AS revenue
-      FROM analytics.mv_touch_flat t JOIN sel s ON s.lead_id = t.lead_id
+      FROM analytics.mv_touch_flat t JOIN sel s ON ${touchJoin}
       CROSS JOIN LATERAL (VALUES ('lead_stage', t.lead_stage), ('class_group', t.class_group), ('lead_source', t.lead_source),
                                  ('touch_point', t.touch_point), ('source', t.source), ('medium', t.medium),
-                                 ('owner', t.owner_name), ('district', t.district), ('ic_status', t.best_ic_status), ('lm_reason', t.lm_reason)) AS d(dim, key)
-      WHERE ${sel}
+                                 ('owner', t.owner_name), ('district', t.district), ('ic_status', t.best_ic_status), ('lm_reason', t.lm_reason),
+                                 ('campaign', t.campaign), ('staff', t.staff)) AS d(dim, key)
       GROUP BY d.dim, d.key
       UNION ALL
       SELECT p.dim, p.key, count(DISTINCT p.lead_id)::int AS leads, sum(p.amount)::float8 AS revenue
@@ -215,11 +235,19 @@ overviewLeads.get('/overview/leads/summary', (c) =>
     const total = rows.find((r) => r.dim === '_total');
     const touches = rows.find((r) => r.dim === '_touches');
     const payers = rows.find((r) => r.dim === '_payers');
-    const splits = SPLITS.map((s) => {
+    const paidAfter = rows.find((r) => r.dim === '_paid_after');
+    const retouch = rows.find((r) => r.dim === '_days_to_retouch');
+    const order = afterStage ? ['lead_stage', 'touch_point', 'source', 'medium', 'campaign', 'staff', 'class_group', 'grade', 'course', 'lead_source', 'owner', 'district', 'ic_status', 'lm_reason'] : SPLITS.map((s) => s.dim);
+    const splits = order.map((dim) => {
+      const s = SPLITS.find((x) => x.dim === dim) ?? { dim, label: dim === 'campaign' ? 'Campaign' : 'Staff', kind: 'touch' as const };
       const list = rows.filter((r) => r.dim === s.dim).map((r) => ({ key: r.key ?? '(blank)', leads: r.leads, revenue: r.revenue })).sort((a, b) => b.leads - a.leads);
-      return { ...s, rows: list.slice(0, 40), distinct: list.length };
+      const label = afterStage && s.kind === 'touch' ? `${s.label} · after the stage change` : afterStage && s.dim === 'lead_stage' ? 'Closed stage the lead sits in' : s.label;
+      return { ...s, label, rows: list.slice(0, 40), distinct: list.length };
     });
-    return { leads: total?.leads ?? 0, revenue: total?.revenue ?? 0, touches: touches?.leads ?? 0, payers: payers?.leads ?? 0, payment_window: pp, splits };
+    return {
+      mode: afterStage ? 'after_stage' : 'window', leads: total?.leads ?? 0, revenue: total?.revenue ?? 0, touches: touches?.leads ?? 0, payers: payers?.leads ?? 0, payment_window: pp, splits,
+      paid_after: paidAfter?.leads ?? 0, paid_after_revenue: paidAfter?.revenue ?? 0, retouched: retouch?.leads ?? 0, avg_days_to_retouch: retouch?.revenue ?? null,
+    };
   }, 0),
 );
 

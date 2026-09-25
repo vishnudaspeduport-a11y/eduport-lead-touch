@@ -4,7 +4,7 @@ import { ErrorNote, Skeleton } from './ui';
 
 interface SplitRow { key: string; leads: number; revenue: number | null }
 interface Split { dim: string; label: string; kind: 'lead' | 'touch' | 'pay'; rows: SplitRow[]; distinct: number }
-interface Summary { leads: number; revenue: number; touches: number; payers: number; payment_window: { from: string; to: string } | null; splits: Split[] }
+interface Summary { mode: 'after_stage' | 'window'; paid_after: number; paid_after_revenue: number; retouched: number; avg_days_to_retouch: number | null; leads: number; revenue: number; touches: number; payers: number; payment_window: { from: string; to: string } | null; splits: Split[] }
 
 /**
  * Overview of the leads behind a drill: headline figures + one small "split" card per dimension
@@ -17,12 +17,21 @@ export function DrillSummary({ params, onPick }: { params: Params; onPick: (dim:
   if (!d) return <div className="grid gap-3 md:grid-cols-3">{Array.from({ length: 6 }).map((_, i) => <Skeleton key={i} className="h-44" />)}</div>;
   return (
     <div className={`h-full overflow-y-auto pr-1 ${r.isFetching ? 'opacity-70' : ''}`}>
+      {d.mode === 'after_stage' ? (
+      <div className="mb-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <Head label="Leads re-touched" value={fmtInt(d.leads)} sub="in a closed stage, touched after entering it" />
+        <Head label="Touches after the stage change" value={fmtInt(d.touches)} sub={d.leads ? `${fmt1(d.touches / d.leads)} per lead` : undefined} />
+        <Head label="Days to the first re-touch" value={d.avg_days_to_retouch == null ? '–' : fmt1(d.avg_days_to_retouch)} sub="average, from the stage change" />
+        <Head label="Paid after the stage change" value={fmtInt(d.paid_after)} sub={fmtINR(d.paid_after_revenue)} />
+      </div>
+      ) : (
       <div className="mb-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
         <Head label="Leads" value={fmtInt(d.leads)} />
         <Head label="Touches in window" value={fmtInt(d.touches)} sub={d.leads ? `${fmt1(d.touches / d.leads)} per lead` : undefined} />
         <Head label="Revenue" value={fmtINR(d.revenue)} sub="all valid payments of these leads" />
         <Head label="With a purchase" value={fmtInt(d.payers)} sub={d.payment_window ? `paid ${d.payment_window.from} → ${d.payment_window.to}` : 'any valid payment, any date'} />
       </div>
+      )}
       <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
         {d.splits.map((s) => <SplitCard key={s.dim} split={s} total={d.leads} onPick={onPick} />)}
       </div>
@@ -36,7 +45,7 @@ function Head({ label, value, sub }: { label: string; value: string; sub?: strin
 
 function SplitCard({ split, total, onPick }: { split: Split; total: number; onPick: (dim: string, value: string) => void }) {
   const max = split.rows[0]?.leads ?? 0;
-  const hint = split.kind === 'pay' ? 'a lead buying two counts in both' : split.kind === 'touch' ? 'leads touched there in the window' : undefined;
+  const hint = split.kind === 'pay' ? 'a lead buying two counts in both' : split.kind === 'touch' ? (split.label.includes('after') ? 'leads with such a touch after the stage change' : 'leads touched there in the window') : undefined;
   return (
     <div className="rounded-lg border border-line bg-surface p-3">
       <div className="mb-2 flex items-baseline justify-between gap-2">
