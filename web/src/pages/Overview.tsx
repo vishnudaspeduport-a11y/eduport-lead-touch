@@ -23,7 +23,7 @@ interface OverviewResponse {
   };
   stages: { key: string; leads: number; converted: number }[];
   ic_status: { key: string; leads: number; ics: number }[];
-  touch_point: DimRow[]; source: DimRow[]; class_raw: DimRow[]; reason: DimRow[]; medium: DimRow[]; campaign: DimRow[]; staff: DimRow[];
+  touch_point: DimRow[]; source: DimRow[]; class_raw: DimRow[]; reason: DimRow[]; lm_reason: DimRow[]; medium: DimRow[]; campaign: DimRow[]; staff: DimRow[];
   daily: { d: string; touches: number; leads: number; converted: number }[];
   definitions: Record<string, string>;
 }
@@ -126,6 +126,7 @@ export default function Overview() {
         {dimCard('Touch point analysis (converted leads)', d?.touch_point, 'touch_point', ['touches', 'converted'], 'tone-teal', { colorful: true, height: 270 })}
         {dimCard('Lead source distribution', d?.source, 'source', ['touches', 'converted'], 'tone-orange', { asTable: true, height: 270, help: 'Touch Source__c: total lead touches, converted leads and total leads (Tableau sheet "Lead source distribution").' })}
         {dimCard('Class (converted lead touches)', d?.class_raw, 'class_raw', ['touches', 'converted'], 'tone-violet', { limit: 14, height: 300, colorful: true })}
+        {dimCard('LM Reason', d?.lm_reason, 'lm_reason', ['leads'], 'tone-amber', { limit: 14, height: 300, help: def.lm_reason, subtitle: 'Total leads by the LM Reason field on the lead · click a row to filter every card' })}
         {dimCard('Last call reason', d?.reason, 'call_reason', ['leads', 'converted'], 'tone-amber', { limit: 14, height: 300, help: def.reason, subtitle: 'Total leads by the reason on their last call · see the help icon for the deviation from Tableau' })}
         {dimCard('Medium', d?.medium, 'medium', ['leads', 'converted'], 'tone-green', { asTable: true, height: 260 })}
         {dimCard('Campaign name', d?.campaign, 'campaign', ['leads', 'touches'], 'tone-brand', { asTable: true, height: 260 })}

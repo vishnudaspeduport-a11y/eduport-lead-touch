@@ -97,7 +97,7 @@ overview.get('/overview', (c) =>
     const conv = convCond(sql, f); const convFirst = convFirstCond(sql, f);
     const pp = paymentPeriod(f);
     const staleDays = Math.max(1, Math.min(365, Number.parseInt(q.stale_days ?? '5', 10) || 5));
-    const [[k], [stale], [avgWin], [avgAll], stages, icStatus, touchPoint, source, classRaw, reason, medium, campaign, staff, daily, reactRows] = await Promise.all([
+    const [[k], [stale], [avgWin], [avgAll], stages, icStatus, touchPoint, source, classRaw, reason, medium, campaign, staff, daily, reactRows, lmReason] = await Promise.all([
       sql<{ touches: number; leads: number; converted: number; converted_first: number; sf_converted: number; stage_conv_total: number; stage_conv_unpaid: number; paid_other_stage: number; touches_of_converted: number }[]>`
         SELECT count(*)::int AS touches,
                count(DISTINCT t.lead_id)::int AS leads,
@@ -157,6 +157,7 @@ overview.get('/overview', (c) =>
           FROM analytics.mv_touch_flat t WHERE ${w} AND t.lead_stage IN ('Not Willing Now', 'Disqualified', 'Not Connected', 'P2 Completed') GROUP BY t.lead_id)
         SELECT stage, count(*)::int AS total, count(*) FILTER (WHERE last_touch > analytics.stage_since(lead_id, stage, created))::int AS reactivated
         FROM r GROUP BY stage ORDER BY reactivated DESC`,
+      byDim(sql, wx('lm_reason'), 'lm_reason', conv, convFirst),
     ]);
     return {
       period: periods.current, payment_period: pp, basis: f.basis === 'created' ? 'created' : 'touch',
@@ -177,7 +178,7 @@ overview.get('/overview', (c) =>
         stale_nc: stale?.stale_nc ?? 0, stale_nc_untouched: stale?.stale_nc_untouched ?? 0, nc_total: stale?.nc_total ?? 0,
       },
       stages, ic_status: icStatus,
-      touch_point: touchPoint, source, class_raw: classRaw, reason, medium, campaign, staff, daily,
+      touch_point: touchPoint, source, class_raw: classRaw, reason, lm_reason: lmReason, medium, campaign, staff, daily,
       definitions: {
         leads: 'Tableau "Total leads" = COUNTD(Lead Master) over touches whose touch date (IST) is in the window. Deleted leads excluded; duplicates excluded unless toggled.',
         touches: 'Tableau "total lead touches" = COUNTD(Lead Touch) over touches in the window (IsDeleted = false).',
@@ -193,6 +194,7 @@ overview.get('/overview', (c) =>
         avg_touches_alltime: 'Tableau "Avg Touches Before Conversion" (no date filter): average, over every touch row of leads with a valid payment, of the lead\'s all-time touch count. Row-weighted like the workbook; the workbook figure is additionally inflated by its Task / Interested-Course / payment joins, which duplicate rows.',
         avg_touches_window: 'Tableau "Avg Touches Before Conversion - Date wise": same as above restricted to touches in the window.',
         avg_per_lead: 'Per-lead variant (each converted lead counted once): the honest average number of touches a paying lead received.',
+        lm_reason: 'Lead_Master__c.LM_Reason__c: the reason stored on the lead record itself (set by the salesperson on the lead), one value per lead.',
         reason: 'Tableau "Last Reason": the Reason recorded on the lead\'s LAST call (Salesforce Task.Reason__c, calls since March 2026, summarised per lead by the sync). "(no call)" = no call logged. The lead\'s LM Reason field is still available under Add filter.',
         stale_new: `Leads in the selection whose Lead Stage is still "New" although they were created more than ${staleDays} days ago and have had no touch in the last ${staleDays} days (any touch, in any month). "Never touched after creation" = their only touches are from the creation day itself. Only leads with at least one touch exist on this page.`,
         stale_nc: `Same rule for Lead Stage "Not Connected": created more than ${staleDays} days ago and no touch in the last ${staleDays} days.`,
