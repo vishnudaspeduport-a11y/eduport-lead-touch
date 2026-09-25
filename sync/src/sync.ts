@@ -203,6 +203,61 @@ async function syncStageHistory(s: SfSession): Promise<void> {
   }
 }
 
+// ---------------------------------------------------------------- Salesforce call log (Task) -> one row per lead
+// Task is ~2 M rows since March 2026; we keep per lead: calls, first / last call, and the reason / status / owner of the LAST call.
+// Watermark = Task CreatedDate (new calls only; later edits of an old call's reason are not picked up). A full load truncates first.
+const CALLS_KEY = 'Lead_Calls';
+interface CallAgg { lead_id: string; calls: number; first_call_at: string; last_call_at: string; last_reason: string | null; last_call_status: string | null; last_owner_id: string | null; last_subject: string | null; _synced_at: Date }
+async function syncCallSummary(s: SfSession): Promise<void> {
+  const since = await getState(CALLS_KEY);
+  const floor = process.env.CALLS_SINCE ?? process.env.LEAD_SINCE ?? '2026-03-01T00:00:00Z';
+  if (!since) await sql`TRUNCATE salesforce.lead_calls`;
+  const q = `SELECT Id, WhatId, CreatedDate, Reason__c, Call_Status__c, OwnerId, Subject FROM Task WHERE What.Type = 'Lead_Master__c' AND ${since ? `CreatedDate > ${since.toISOString()}` : `CreatedDate >= ${floor}`} ORDER BY CreatedDate ASC`;
+  console.log(`[${CALLS_KEY}] ${since ? `incremental since ${since.toISOString()}` : `FULL load (since ${floor})`}`);
+  let n = 0; let maxStamp: string | null = since?.toISOString() ?? null; const t0 = Date.now();
+  const flush = async (buf: Map<string, CallAgg>) => {
+    if (!buf.size) return;
+    const rows = [...buf.values()];
+    await sql`
+      INSERT INTO salesforce.lead_calls ${sql(rows as unknown as Record<string, unknown>[], 'lead_id', 'calls', 'first_call_at', 'last_call_at', 'last_reason', 'last_call_status', 'last_owner_id', 'last_subject', '_synced_at')}
+      ON CONFLICT (lead_id) DO UPDATE SET
+        calls = salesforce.lead_calls.calls + EXCLUDED.calls,
+        first_call_at = LEAST(salesforce.lead_calls.first_call_at, EXCLUDED.first_call_at),
+        last_reason = CASE WHEN EXCLUDED.last_call_at >= salesforce.lead_calls.last_call_at THEN EXCLUDED.last_reason ELSE salesforce.lead_calls.last_reason END,
+        last_call_status = CASE WHEN EXCLUDED.last_call_at >= salesforce.lead_calls.last_call_at THEN EXCLUDED.last_call_status ELSE salesforce.lead_calls.last_call_status END,
+        last_owner_id = CASE WHEN EXCLUDED.last_call_at >= salesforce.lead_calls.last_call_at THEN EXCLUDED.last_owner_id ELSE salesforce.lead_calls.last_owner_id END,
+        last_subject = CASE WHEN EXCLUDED.last_call_at >= salesforce.lead_calls.last_call_at THEN EXCLUDED.last_subject ELSE salesforce.lead_calls.last_subject END,
+        last_call_at = GREATEST(salesforce.lead_calls.last_call_at, EXCLUDED.last_call_at),
+        _synced_at = EXCLUDED._synced_at`;
+  };
+  try {
+    let buf = new Map<string, CallAgg>();
+    for await (const page of soql(s, q, false)) {
+      for (const rec of page) {
+        const lead = String(rec.WhatId); const at = String(rec.CreatedDate);
+        const cur = buf.get(lead);
+        const reason = rec.Reason__c == null ? null : String(rec.Reason__c).replace(/^[\s\u2060\u00a0]+/, '').trim();   // some picklist values carry invisible leading chars
+        if (!cur) buf.set(lead, { lead_id: lead, calls: 1, first_call_at: at, last_call_at: at, last_reason: reason, last_call_status: rec.Call_Status__c == null ? null : String(rec.Call_Status__c), last_owner_id: rec.OwnerId == null ? null : String(rec.OwnerId), last_subject: rec.Subject == null ? null : String(rec.Subject), _synced_at: new Date() });
+        else {
+          cur.calls++;
+          if (at < cur.first_call_at) cur.first_call_at = at;
+          if (at >= cur.last_call_at) { cur.last_call_at = at; cur.last_reason = reason; cur.last_call_status = rec.Call_Status__c == null ? null : String(rec.Call_Status__c); cur.last_owner_id = rec.OwnerId == null ? null : String(rec.OwnerId); cur.last_subject = rec.Subject == null ? null : String(rec.Subject); }
+        }
+        if (!maxStamp || at > maxStamp) maxStamp = at;
+        n++;
+        if (buf.size >= BATCH) { await flush(buf); buf = new Map(); }
+      }
+      if (n % 50000 < 2000) console.log(`[${CALLS_KEY}] ${n} calls...`);
+    }
+    await flush(buf);
+    await setState(CALLS_KEY, maxStamp, n, null);
+    console.log(`[${CALLS_KEY}] done: ${n} calls in ${((Date.now() - t0) / 1000).toFixed(1)}s (watermark ${maxStamp})`);
+  } catch (e) {
+    await setState(CALLS_KEY, null, n, e instanceof Error ? e.message : String(e));
+    throw e;
+  }
+}
+
 // ---------------------------------------------------------------- production app DB -> app.*
 interface AppTableSpec { name: string; select: (src: Sql, since: Date | null) => AsyncIterable<Record<string, unknown>[]>; stampCol: string; }
 
@@ -292,7 +347,9 @@ async function cleanup(): Promise<void> {
   const r3 = await sql`DELETE FROM salesforce.lead_touch__c WHERE isdeleted`;
   const r4 = await sql`DELETE FROM salesforce.task WHERE isdeleted`;
   const r5 = await sql`DELETE FROM salesforce.lead_stage s WHERE NOT EXISTS (SELECT 1 FROM salesforce.lead_master__c l WHERE l.id = s.lead_id)`;
-  console.log(`[cleanup] removed leads=${r1.count} ics=${r2.count} touches=${r3.count} tasks=${r4.count} stage_rows=${r5.count} (window >= ${leadSince}, deleted rows purged)`);
+  // call summaries only for leads with touches (the Overview population)
+  const r6 = await sql`DELETE FROM salesforce.lead_calls c WHERE NOT EXISTS (SELECT 1 FROM salesforce.lead_touch__c t WHERE t.lead_master__c = c.lead_id AND NOT t.isdeleted)`;
+  console.log(`[cleanup] removed leads=${r1.count} ics=${r2.count} touches=${r3.count} tasks=${r4.count} stage_rows=${r5.count} call_rows=${r6.count} (window >= ${leadSince}, deleted rows purged)`);
   });
 }
 
@@ -346,6 +403,10 @@ async function main(): Promise<void> {
     if (wanted(STAGE_HISTORY_KEY)) {
       const s = await login();
       await syncStageHistory(s);
+    }
+    if (wanted(CALLS_KEY)) {
+      const s = await login();
+      await syncCallSummary(s);
     }
     await syncAppTables();
     await cleanup();
