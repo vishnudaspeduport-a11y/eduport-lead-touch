@@ -34,6 +34,7 @@ touchAttribution.get('/touch-attribution', (c) =>
   handle(c, async ({ sql, f, periods, q }) => {
     const mode = q.mode === 'last' ? 'last' : 'first';
     const w = flatWhere(sql, f, periods.current);
+    const wx = (skip: string) => flatWhere(sql, f, periods.current, skip);   // a card never filters itself
     const conv = convCond(sql, f);
     const flag = mode === 'first' ? sql`t.tab_is_first_touch AND ${conv}` : sql`t.tab_is_last_touch AND ${conv}`;
     const [[k], touchPoint, classRaw, source, medium, campaign, daily] = await Promise.all([
@@ -43,7 +44,7 @@ touchAttribution.get('/touch-attribution', (c) =>
                count(DISTINCT t.lead_id) FILTER (WHERE ${flag})::int AS attributed,
                count(*) FILTER (WHERE ${mode === 'first' ? sql`t.tab_is_first_touch` : sql`t.tab_is_last_touch`})::int AS attributed_touches
         FROM analytics.mv_touch_flat t WHERE ${w}`,
-      byDim(sql, w, 'touch_point', flag, conv), byDim(sql, w, 'class_raw', flag, conv), byDim(sql, w, 'source', flag, conv), byDim(sql, w, 'medium', flag, conv), byDim(sql, w, 'campaign', flag, conv),
+      byDim(sql, wx('touch_point'), 'touch_point', flag, conv), byDim(sql, wx('class_raw'), 'class_raw', flag, conv), byDim(sql, wx('source'), 'source', flag, conv), byDim(sql, wx('medium'), 'medium', flag, conv), byDim(sql, wx('campaign'), 'campaign', flag, conv),
       sql<{ d: string; leads: number; attributed: number }[]>`
         SELECT t.touch_date::text AS d, count(DISTINCT t.lead_id)::int AS leads, count(DISTINCT t.lead_id) FILTER (WHERE ${flag})::int AS attributed
         FROM analytics.mv_touch_flat t WHERE ${w} GROUP BY 1 ORDER BY 1`,

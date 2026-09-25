@@ -34,7 +34,7 @@ function AttrCard({ title, rows, dim, tone, opts, cols, label, mode, loading, er
       loading={loading} error={error} onRetry={onRetry} rows={filtered} columns={cols} height={opts.height ?? 280} help={help}
       actions={<CardSearch value={search} onChange={setSearch} count={filtered.length} onApply={() => setList(dim, filtered.map((r) => r.key))} />}>
       {opts.asTable
-        ? <DataTable rows={filtered} compact maxHeight="100%" initialSort={{ id: 'attributed', desc: true }} onRowClick={(r) => toggleValue(dim, r.key)} columns={cols} />
+        ? <DataTable rows={filtered} compact maxHeight="100%" initialSort={{ id: 'attributed', desc: true }} onRowClick={(r) => toggleValue(dim, r.key)} columns={cols} highlight={(r) => selected.includes(r.key)} />
         : <HBars colorful data={data.map((r) => ({ key: r.key, value: r.attributed, secondary: r.share_pct, selected: selected.includes(r.key), extra: { 'Total leads': fmtInt(r.leads), Converted: fmtInt(r.converted), [mode === 'first' ? 'Percentage' : 'Last-touch %']: fmtPct(r.attr_pct) } }))}
             valueLabel={label} secondaryLabel="Share" onClick={(key) => toggleValue(dim, key)} />}
     </ChartCard>

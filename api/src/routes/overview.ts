@@ -81,6 +81,8 @@ overview.get('/overview', (c) =>
   handle(c, async ({ sql, f, periods, q }) => {
     const w = flatWhere(sql, f, periods.current);
     const wAll = flatWhere(sql, f, null);
+    // a card never filters itself: its rows stay visible (highlighted) so more of them can be selected
+    const wx = (skip: string) => flatWhere(sql, f, periods.current, skip);
     const conv = convCond(sql, f); const convFirst = convFirstCond(sql, f);
     const pp = paymentPeriod(f);
     const staleDays = Math.max(1, Math.min(365, Number.parseInt(q.stale_days ?? '5', 10) || 5));
@@ -119,15 +121,15 @@ overview.get('/overview', (c) =>
         FROM analytics.mv_touch_flat t WHERE ${wAll} AND t.converted`,
       sql<{ key: string; leads: number; converted: number }[]>`
         SELECT t.lead_stage AS key, count(DISTINCT t.lead_id)::int AS leads, count(DISTINCT t.lead_id) FILTER (WHERE ${conv})::int AS converted
-        FROM analytics.mv_touch_flat t WHERE ${w} GROUP BY 1 ORDER BY leads DESC`,
+        FROM analytics.mv_touch_flat t WHERE ${wx('lead_stage')} GROUP BY 1 ORDER BY leads DESC`,
       sql<{ key: string; leads: number; ics: number }[]>`
         SELECT btrim(ic.status__c) AS key, count(DISTINCT ic.lead_master__c)::int AS leads, count(*)::int AS ics
         FROM salesforce.interested_course__c ic
         WHERE NOT ic.isdeleted AND NULLIF(btrim(ic.status__c),'') IS NOT NULL
-          AND ic.lead_master__c IN (SELECT DISTINCT t.lead_id FROM analytics.mv_touch_flat t WHERE ${w})
+          AND ic.lead_master__c IN (SELECT DISTINCT t.lead_id FROM analytics.mv_touch_flat t WHERE ${wx('ic_status')})
         GROUP BY 1 ORDER BY leads DESC`,
-      byDim(sql, w, 'touch_point', conv, convFirst), byDim(sql, w, 'source', conv, convFirst), byDim(sql, w, 'class_raw', conv, convFirst), byDim(sql, w, 'lm_reason', conv, convFirst),
-      byDim(sql, w, 'medium', conv, convFirst), byDim(sql, w, 'campaign', conv, convFirst), byDim(sql, w, 'staff', conv, convFirst),
+      byDim(sql, wx('touch_point'), 'touch_point', conv, convFirst), byDim(sql, wx('source'), 'source', conv, convFirst), byDim(sql, wx('class_raw'), 'class_raw', conv, convFirst), byDim(sql, wx('lm_reason'), 'lm_reason', conv, convFirst),
+      byDim(sql, wx('medium'), 'medium', conv, convFirst), byDim(sql, wx('campaign'), 'campaign', conv, convFirst), byDim(sql, wx('staff'), 'staff', conv, convFirst),
       sql<{ d: string; touches: number; leads: number; converted: number }[]>`
         SELECT t.touch_date::text AS d, count(*)::int AS touches, count(DISTINCT t.lead_id)::int AS leads,
                count(DISTINCT t.lead_id) FILTER (WHERE ${conv})::int AS converted

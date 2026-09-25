@@ -53,7 +53,7 @@ function payRestrict(sql: Sql, q: Record<string, string>): Frag {
   return c.reduce((a, x) => sql`${a} AND ${x}`, sql`true`);
 }
 
-function payerWhere(sql: Sql, f: Filters, p: Period, q: Record<string, string>): Frag {
+function payerWhere(sql: Sql, f: Filters, p: Period, q: Record<string, string>, skip?: string): Frag {
   const grades = (q.grade ?? '').split('|').map((s) => s.trim()).filter(Boolean);
   const courses = (q.course ?? '').split('|').map((s) => s.trim()).filter(Boolean);
   const pm = payMethod(q);
@@ -61,7 +61,7 @@ function payerWhere(sql: Sql, f: Filters, p: Period, q: Record<string, string>):
   if (f.dups !== '1') c.push(sql`true`);
   for (const k of LIST_KEYS) {
     const col = PAYER_COLS[k]; const vals = f[k];
-    if (!col || !vals?.length) continue;
+    if (!col || !vals?.length || k === skip) continue;
     const hasNull = vals.includes('(null)'); const real = vals.filter((v) => v !== '(null)');
     const ref = sql`m.${sql(col)}`;
     if (hasNull && real.length) c.push(sql`(${ref} IN ${sql(real)} OR ${ref} IS NULL)`);
@@ -95,6 +95,7 @@ converted.get('/converted', (c) =>
   handle(c, async ({ sql, f, periods, q }) => {
     const p = periods.current;
     const w = payerWhere(sql, f, p, q);
+    const wx = (skip: string) => payerWhere(sql, f, p, q, skip);   // a card never filters itself
     const pm = payMethod(q);
     const V = VALID(sql, pm);
     const R = payRestrict(sql, q);   // payments / revenue / course / grade / daily count only payments matching the grade or course selection
@@ -108,8 +109,8 @@ converted.get('/converted', (c) =>
         SELECT count(*)::int AS payments_all, COALESCE(sum(hp.amount), 0)::float8 AS revenue_all
         FROM app.home_payment hp LEFT JOIN app.core_batch b ON b.id = hp.batch_id WHERE ${V} AND ${R} AND hp.payment_date BETWEEN ${p.from} AND ${p.to}
           AND hp.user_id IN (SELECT m.user_id FROM analytics.mv_payer m WHERE ${w})`,
-      byDim(sql, w, 'lead_stage', p), byDim(sql, w, 'last_touch_point', p), byDim(sql, w, 'last_touch_source', p), byDim(sql, w, 'last_touch_medium', p),
-      byDim(sql, w, 'last_touch_campaign', p), byDim(sql, w, 'last_touch_staff', p),
+      byDim(sql, wx('lead_stage'), 'lead_stage', p), byDim(sql, wx('touch_point'), 'last_touch_point', p), byDim(sql, wx('source'), 'last_touch_source', p), byDim(sql, wx('medium'), 'last_touch_medium', p),
+      byDim(sql, wx('campaign'), 'last_touch_campaign', p), byDim(sql, wx('staff'), 'last_touch_staff', p),
       sql<PayerDim[]>`
         SELECT COALESCE(b.course_title, 'batch ' || hp.batch_id::text) AS key, count(DISTINCT hp.user_id)::int AS users, count(*)::int AS touches,
                COALESCE(sum(hp.amount), 0)::float8 AS revenue, 0::int AS new_users, NULL::float8 AS share_pct

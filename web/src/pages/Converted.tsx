@@ -52,7 +52,7 @@ function ConvCard({ title, rows, tone, opts, cols, loading, error, onRetry, help
       loading={loading} error={error} onRetry={onRetry} rows={filtered} columns={cols} height={opts.height ?? 280} help={help}
       actions={<CardSearch value={search} onChange={setSearch} count={filtered.length} onApply={onApply ? () => onApply(filtered.map((r) => r.key)) : undefined} />}>
       {opts.asTable
-        ? <DataTable rows={filtered} compact maxHeight="100%" initialSort={{ id: 'users', desc: true }} onRowClick={(r) => onRow(r.key)} columns={cols} />
+        ? <DataTable rows={filtered} compact maxHeight="100%" initialSort={{ id: 'users', desc: true }} onRowClick={(r) => onRow(r.key)} columns={cols} highlight={(r) => selected.includes(r.key)} />
         : <HBars colorful data={data.map((r) => ({ key: r.key, value: r.users, secondary: r.share_pct, selected: selected.includes(r.key), extra: { Revenue: fmtINR(r.revenue), 'Touches before payment': fmtInt(r.touches) } }))}
             valueLabel="Converted (users)" secondaryLabel="Share" onClick={onRow} />}
     </ChartCard>
