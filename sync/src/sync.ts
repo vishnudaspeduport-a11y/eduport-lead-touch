@@ -161,6 +161,48 @@ async function syncSalesforceObject(s: SfSession, spec: ObjectSpec): Promise<voi
   }
 }
 
+// ---------------------------------------------------------------- Salesforce stage history -> one row per lead
+// Lead_Master__History (Field = Lead_Stage__c) is 1.5 M rows since March 2026; we keep only each lead's LATEST change:
+// salesforce.lead_stage (lead_id, stage, prev_stage, changed_at). Watermark = history CreatedDate (the object has no SystemModstamp).
+const STAGE_HISTORY_KEY = 'Lead_Master__History';
+async function syncStageHistory(s: SfSession): Promise<void> {
+  const since = await getState(STAGE_HISTORY_KEY);
+  const floor = process.env.STAGE_HISTORY_SINCE ?? process.env.LEAD_SINCE ?? '2026-03-01T00:00:00Z';
+  const where = [`Field = 'Lead_Stage__c'`, since ? `CreatedDate > ${since.toISOString()}` : `CreatedDate >= ${floor}`];
+  const q = `SELECT Id, ParentId, OldValue, NewValue, CreatedDate FROM Lead_Master__History WHERE ${where.join(' AND ')} ORDER BY CreatedDate ASC`;
+  console.log(`[${STAGE_HISTORY_KEY}] ${since ? `incremental since ${since.toISOString()}` : `FULL load (since ${floor})`}`);
+  let n = 0; let maxStamp: string | null = since?.toISOString() ?? null; const t0 = Date.now();
+  const flush = async (buf: Map<string, Record<string, unknown>>) => {
+    if (!buf.size) return;
+    const rows = [...buf.values()];
+    await sql`
+      INSERT INTO salesforce.lead_stage ${sql(rows, 'lead_id', 'stage', 'prev_stage', 'changed_at', 'history_id', '_synced_at')}
+      ON CONFLICT (lead_id) DO UPDATE SET stage = EXCLUDED.stage, prev_stage = EXCLUDED.prev_stage, changed_at = EXCLUDED.changed_at,
+        history_id = EXCLUDED.history_id, _synced_at = EXCLUDED._synced_at
+      WHERE EXCLUDED.changed_at >= salesforce.lead_stage.changed_at`;
+  };
+  try {
+    let buf = new Map<string, Record<string, unknown>>();   // lead_id -> latest row in this batch (ON CONFLICT cannot hit a row twice)
+    for await (const page of soql(s, q, false)) {
+      for (const rec of page) {
+        const lead = String(rec.ParentId); const at = String(rec.CreatedDate);
+        const prev = buf.get(lead);
+        if (!prev || String(prev.changed_at) <= at) buf.set(lead, { lead_id: lead, stage: rec.NewValue == null ? '' : String(rec.NewValue), prev_stage: rec.OldValue == null ? null : String(rec.OldValue), changed_at: at, history_id: String(rec.Id), _synced_at: new Date() });
+        if (!maxStamp || at > maxStamp) maxStamp = at;
+        n++;
+        if (buf.size >= BATCH) { await flush(buf); buf = new Map(); }
+      }
+      if (n % 20000 < 2000) console.log(`[${STAGE_HISTORY_KEY}] ${n} history rows...`);
+    }
+    await flush(buf);
+    await setState(STAGE_HISTORY_KEY, maxStamp, n, null);
+    console.log(`[${STAGE_HISTORY_KEY}] done: ${n} history rows in ${((Date.now() - t0) / 1000).toFixed(1)}s (watermark ${maxStamp})`);
+  } catch (e) {
+    await setState(STAGE_HISTORY_KEY, null, n, e instanceof Error ? e.message : String(e));
+    throw e;
+  }
+}
+
 // ---------------------------------------------------------------- production app DB -> app.*
 interface AppTableSpec { name: string; select: (src: Sql, since: Date | null) => AsyncIterable<Record<string, unknown>[]>; stampCol: string; }
 
@@ -249,7 +291,8 @@ async function cleanup(): Promise<void> {
   const r2 = await sql`DELETE FROM salesforce.interested_course__c ic WHERE ic.isdeleted OR NOT EXISTS (SELECT 1 FROM salesforce.lead_master__c l WHERE l.id = ic.lead_master__c)`;
   const r3 = await sql`DELETE FROM salesforce.lead_touch__c WHERE isdeleted`;
   const r4 = await sql`DELETE FROM salesforce.task WHERE isdeleted`;
-  console.log(`[cleanup] removed leads=${r1.count} ics=${r2.count} touches=${r3.count} tasks=${r4.count} (window >= ${leadSince}, deleted rows purged)`);
+  const r5 = await sql`DELETE FROM salesforce.lead_stage s WHERE NOT EXISTS (SELECT 1 FROM salesforce.lead_master__c l WHERE l.id = s.lead_id)`;
+  console.log(`[cleanup] removed leads=${r1.count} ics=${r2.count} touches=${r3.count} tasks=${r4.count} stage_rows=${r5.count} (window >= ${leadSince}, deleted rows purged)`);
   });
 }
 
@@ -299,6 +342,10 @@ async function main(): Promise<void> {
     if (specs.length) {
       const s = await login();
       for (const spec of specs) await syncSalesforceObject(s, spec);
+    }
+    if (wanted(STAGE_HISTORY_KEY)) {
+      const s = await login();
+      await syncStageHistory(s);
     }
     await syncAppTables();
     await cleanup();
