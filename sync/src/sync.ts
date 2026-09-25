@@ -353,7 +353,8 @@ async function cleanup(): Promise<void> {
   const r2 = await sql`DELETE FROM salesforce.interested_course__c ic WHERE ic.isdeleted OR NOT EXISTS (SELECT 1 FROM salesforce.lead_master__c l WHERE l.id = ic.lead_master__c)`;
   const r3 = await sql`DELETE FROM salesforce.lead_touch__c WHERE isdeleted`;
   const r4 = await sql`DELETE FROM salesforce.task WHERE isdeleted`;
-  const r5 = await sql`DELETE FROM salesforce.lead_stage s WHERE NOT EXISTS (SELECT 1 FROM salesforce.lead_master__c l WHERE l.id = s.lead_id)`;
+  // stage rows only for leads with touches (the Overview population): keeps the table at ~65k rows
+  const r5 = await sql`DELETE FROM salesforce.lead_stage s WHERE NOT EXISTS (SELECT 1 FROM salesforce.lead_touch__c t WHERE t.lead_master__c = s.lead_id AND NOT t.isdeleted)`;
   // call summaries only for leads with touches (the Overview population)
   const r6 = await sql`DELETE FROM salesforce.lead_calls c WHERE NOT EXISTS (SELECT 1 FROM salesforce.lead_touch__c t WHERE t.lead_master__c = c.lead_id AND NOT t.isdeleted)`;
   console.log(`[cleanup] removed leads=${r1.count} ics=${r2.count} touches=${r3.count} tasks=${r4.count} stage_rows=${r5.count} call_rows=${r6.count} (window >= ${leadSince}, deleted rows purged)`);
