@@ -176,9 +176,9 @@ async function syncStageHistory(s: SfSession): Promise<void> {
     if (!buf.size) return;
     const rows = [...buf.values()];
     await sql`
-      INSERT INTO salesforce.lead_stage ${sql(rows, 'lead_id', 'stage', 'prev_stage', 'changed_at', 'history_id', '_synced_at')}
+      INSERT INTO salesforce.lead_stage ${sql(rows, 'lead_id', 'stage', 'prev_stage', 'changed_at', '_synced_at')}
       ON CONFLICT (lead_id) DO UPDATE SET stage = EXCLUDED.stage, prev_stage = EXCLUDED.prev_stage, changed_at = EXCLUDED.changed_at,
-        history_id = EXCLUDED.history_id, _synced_at = EXCLUDED._synced_at
+        _synced_at = EXCLUDED._synced_at
       WHERE EXCLUDED.changed_at >= salesforce.lead_stage.changed_at`;
   };
   try {
@@ -187,7 +187,7 @@ async function syncStageHistory(s: SfSession): Promise<void> {
       for (const rec of page) {
         const lead = String(rec.ParentId); const at = String(rec.CreatedDate);
         const prev = buf.get(lead);
-        if (!prev || String(prev.changed_at) <= at) buf.set(lead, { lead_id: lead, stage: rec.NewValue == null ? '' : String(rec.NewValue), prev_stage: rec.OldValue == null ? null : String(rec.OldValue), changed_at: at, history_id: String(rec.Id), _synced_at: new Date() });
+        if (!prev || String(prev.changed_at) <= at) buf.set(lead, { lead_id: lead, stage: rec.NewValue == null ? '' : String(rec.NewValue), prev_stage: rec.OldValue == null ? null : String(rec.OldValue), changed_at: at, _synced_at: new Date() });
         if (!maxStamp || at > maxStamp) maxStamp = at;
         n++;
         if (buf.size >= BATCH) { await flush(buf); buf = new Map(); }
