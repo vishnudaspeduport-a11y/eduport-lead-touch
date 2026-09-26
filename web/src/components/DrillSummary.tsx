@@ -1,6 +1,13 @@
+import { useState } from 'react';
 import { useApi, type Params } from '../lib/api';
 import { fmt1, fmtInt, fmtINR, fmtPct } from '../lib/format';
-import { ErrorNote, Skeleton } from './ui';
+import { ErrorNote, Icon, Popover, Skeleton } from './ui';
+
+/** which split tables the drawer shows; remembered per browser */
+const TABLES_KEY = 'lt-summary-tables';
+const DEFAULT_TABLES = ['lead_stage', 'grade', 'touch_point', 'call_reason'];
+function loadTables(): string[] { try { const v = JSON.parse(localStorage.getItem(TABLES_KEY) ?? 'null'); return Array.isArray(v) && v.length ? v : DEFAULT_TABLES; } catch { return DEFAULT_TABLES; } }
+function saveTables(v: string[]) { try { localStorage.setItem(TABLES_KEY, JSON.stringify(v)); } catch { /* ignore */ } }
 
 interface SplitRow { key: string; leads: number; revenue: number | null }
 interface Split { dim: string; label: string; kind: 'lead' | 'touch' | 'pay'; rows: SplitRow[]; distinct: number }
@@ -13,6 +20,8 @@ interface Summary { mode: 'after_stage' | 'window'; called_after: number; paid_a
 export function DrillSummary({ params, onPick }: { params: Params; onPick: (dim: string, value: string) => void }) {
   const r = useApi<Summary>('/overview/leads/summary', params, { placeholderData: (prev) => prev });
   const d = r.data?.data;
+  const [tables, setTables] = useState<string[]>(loadTables);
+  const choose = (v: string[]) => { setTables(v); saveTables(v); };
   if (r.error) return <ErrorNote error={r.error} onRetry={r.refetch} />;
   if (!d) return <div className="grid gap-3 md:grid-cols-3">{Array.from({ length: 6 }).map((_, i) => <Skeleton key={i} className="h-44" />)}</div>;
   return (
@@ -33,9 +42,39 @@ export function DrillSummary({ params, onPick }: { params: Params; onPick: (dim:
         <Head label="With a purchase" value={fmtInt(d.payers)} sub={d.payment_window ? `paid ${d.payment_window.from} → ${d.payment_window.to}` : 'any valid payment, any date'} />
       </div>
       )}
-      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-        {d.splits.map((s) => <SplitCard key={s.dim} split={s} total={d.leads} onPick={onPick} />)}
-      </div>
+      {(() => {
+        const shown = d.splits.filter((s) => tables.includes(s.dim));
+        const all = d.splits.map((s) => s.dim);
+        return (
+          <>
+            <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+              <div className="text-[11px] text-ink-3">{shown.length} of {d.splits.length} tables shown · click a value in a table to see those leads</div>
+              <Popover align="right" width="w-64" trigger={<button className="btn"><Icon.Table /> Tables · {shown.length} <Icon.Chevron open /></button>}>
+                {(close) => (
+                  <div className="text-xs">
+                    <div className="mb-1 flex items-center justify-between">
+                      <span className="font-semibold">Tables to show</span>
+                      <div className="flex gap-2 text-ink-3"><button className="hover:text-ink" onClick={() => choose(all)}>All</button><button className="hover:text-ink" onClick={() => choose(DEFAULT_TABLES)}>Default</button></div>
+                    </div>
+                    <div className="max-h-80 space-y-0.5 overflow-y-auto">
+                      {d.splits.map((s) => (
+                        <label key={s.dim} className="flex cursor-pointer items-center gap-2 rounded px-1.5 py-1 hover:bg-surface-2">
+                          <input type="checkbox" checked={tables.includes(s.dim)} onChange={() => choose(tables.includes(s.dim) ? tables.filter((x) => x !== s.dim) : [...tables, s.dim])} />
+                          <span className="truncate">{s.label}</span>
+                        </label>
+                      ))}
+                    </div>
+                    <div className="mt-2 flex justify-end"><button className="btn btn-primary" onClick={close}>Done</button></div>
+                  </div>
+                )}
+              </Popover>
+            </div>
+            {shown.length === 0
+              ? <div className="rounded-lg border border-dashed border-line p-6 text-center text-xs text-ink-3">No tables selected. Use the Tables button to pick the splits you want to see.</div>
+              : <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">{shown.map((s) => <SplitCard key={s.dim} split={s} total={d.leads} onPick={onPick} />)}</div>}
+          </>
+        );
+      })()}
     </div>
   );
 }

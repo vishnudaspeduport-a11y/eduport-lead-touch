@@ -83,8 +83,7 @@ authRoutes.post('/auth/setup', async (c) => {
 authRoutes.post('/auth/login', async (c) => {
   if (c.env.AUTH_MODE === 'none') return bad(c, 'login is not enabled');
   const b = await body(c, Login);
-  const sql = getSql(c.env);
-  try {
+  return withSql(c.env, c.executionCtx, async (sql) => {
     const rows = await sql<(Account & { password_hash: string; failed_attempts: number; locked_until: string | null })[]>`
       SELECT id::int AS id, email, name, role, is_active, password_hash, failed_attempts, locked_until::text FROM app_auth.users WHERE lower(email) = ${b.email} AND created_at <= now()`;
     const u = rows[0];
@@ -104,7 +103,7 @@ authRoutes.post('/auth/login', async (c) => {
     await sql`UPDATE app_auth.users SET failed_attempts = 0, locked_until = NULL, last_login_at = now() WHERE id = ${u.id}`;
     await startSession(c, sql, u.id);
     return c.json({ data: { user: publicUser(u) } });
-  } finally { release(sql, c.executionCtx); }
+  });
 });
 
 /** POST /auth/logout */

@@ -25,9 +25,9 @@
     },
     {
       "name": "api",
-      "runtimeExecutable": "npx",
+      "runtimeExecutable": "node",
       "runtimeArgs": [
-        "wrangler",
+        "api/node_modules/wrangler/bin/wrangler.js",
         "dev",
         "--remote",
         "-c",
