@@ -95,7 +95,7 @@ export default function TouchAttribution({ mode }: { mode: 'first' | 'last' }) {
       <Note>
         {mode === 'first'
           ? <>Each converted lead is credited to <b>one</b> touch: its selected first touch (earliest touch on/after 1 March 2026, or its latest touch if none after that date). </>
-          : <>Each lead is credited to <b>one</b> touch: its last valid touch, the latest touch made <b>before the moment of its last valid payment</b>. A touch on the payment day counts when it happened before the payment. </>}
+          : <>Each lead is credited to <b>one</b> touch: its last valid touch, the latest touch made <b>before the moment of its last valid payment</b>. A touch on the payment day counts when it happened before the payment. If that last touch is an Eduport App touch made less than 2 hours before the payment, the credit goes to the touch before it; when the app touch is the only touch, it keeps the credit. </>}
         So the {label.toLowerCase()} column adds up across rows, unlike Total leads and Converted, where a lead can appear under several values. Clicking a KPI lists the leads; clicking a bar or row filters every card.
       </Note>
     </div>

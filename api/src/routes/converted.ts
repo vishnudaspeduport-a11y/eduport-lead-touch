@@ -143,7 +143,7 @@ converted.get('/converted', (c) =>
         new_users: 'Paying users whose FIRST ever valid payment is inside the window (new customers).',
         no_touch: 'Users with no lead touch on/before their payment: no Salesforce lead on that phone, or all touches came after the payment. Shown as "No Touch Before Payment" in the tables.',
         no_lead: 'Paying users whose phone matches no Salesforce lead.',
-        credit: 'Every user is credited to ONE touch: the latest touch dated on/before its last valid payment day, across all Salesforce leads with the same phone. Touch point, source, medium, campaign and staff come from that touch.',
+        credit: 'Every user is credited to ONE touch: the latest touch dated on/before its last valid payment day, across all Salesforce leads with the same phone. If that last touch is an Eduport App touch made less than 2 hours before the payment, the credit goes to the touch before it; when the app touch is the only touch, it keeps the credit. Touch point, source, medium, campaign and staff come from that touch.',
         touches: 'Number of touches on/before the payment for the users in the row.',
         course: 'Users by the course they bought; a user buying two courses appears under both.',
         grade: 'Grade of the course that was bought, not the class recorded on the lead.',
