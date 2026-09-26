@@ -7,11 +7,11 @@ export interface KpiSplit { label: string; value: string; onClick?: () => void; 
  * KPI tile: label on top, big number, caption below, icon at the right — one consistent layout everywhere.
  * `split` shows one or two secondary figures under the caption.
  */
-export function KpiTile({ title, value, sub, def, tone, icon, onClick, split, small }: {
-  title: string; value: string; sub?: string; def?: string; tone: string; icon: ReactNode; onClick?: () => void; split?: KpiSplit[]; small?: boolean;
+export function KpiTile({ title, value, sub, def, tone, icon, onClick, split, small, className }: {
+  title: string; value: string; sub?: string; def?: string; tone: string; icon: ReactNode; onClick?: () => void; split?: KpiSplit[]; small?: boolean; className?: string;
 }) {
   return (
-    <div className={`card ${tone} flex h-full flex-col ${onClick ? 'cursor-pointer transition hover:border-accent/40 hover:shadow-pop' : ''}`} onClick={onClick} title={onClick ? 'Click to see the leads' : undefined}>
+    <div className={`card ${tone} flex h-full flex-col ${className ?? ''} ${onClick ? 'cursor-pointer transition hover:border-accent/40 hover:shadow-pop' : ''}`} onClick={onClick} title={onClick ? 'Click to see the leads' : undefined}>
       <div className="flex items-start justify-between gap-2">
         <div className="line-clamp-2 text-[11px] font-medium leading-tight text-ink-3" title={title}>{title}</div>
         {def && <span onClick={(e) => e.stopPropagation()}><Popover align="right" width="w-80" trigger={<button className="rounded p-0.5 text-ink-3 hover:text-ink"><Icon.Help /></button>}><div className="text-xs leading-relaxed text-ink-2">{def}</div></Popover></span>}

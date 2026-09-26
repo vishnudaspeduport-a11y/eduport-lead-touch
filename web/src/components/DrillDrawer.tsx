@@ -7,21 +7,22 @@ import { LeadDrawer } from './LeadDrawer';
 import { DrillSummary } from './DrillSummary';
 import { ErrorNote, Icon, Skeleton, useDebounce } from './ui';
 
-export type DrillMetric = 'leads' | 'touches' | 'converted' | 'first_touch' | 'last_touch' | 'stale_new' | 'stale_not_connected' | 'converted_first' | 'sf_converted' | 'stage_conv_unpaid' | 'paid_other_stage' | 'stage_react' | 'avg_alltime' | 'avg_window';
+export type DrillMetric = 'leads' | 'touches' | 'converted' | 'first_touch' | 'last_touch' | 'stale_new' | 'stale_not_connected' | 'converted_first' | 'sf_converted' | 'stage_conv_unpaid' | 'paid_other_stage' | 'stage_react' | 'avg_alltime' | 'avg_window' | 'new_leads';
 export interface Drill {
   metric: DrillMetric; title: string; subtitle?: string; dim?: string; value?: string;
   /** alternative list endpoint (default /overview/leads) */
-  path?: string; csvPath?: string; columns?: Col<Row>[]; sortOptions?: [string, string][]; defaultSort?: string; extra?: Record<string, string | number>; noun?: string;
+  path?: string; csvPath?: string; summaryPath?: string; columns?: Col<Row>[]; sortOptions?: [string, string][]; defaultSort?: string; extra?: Record<string, string | number>; noun?: string;
   /** open on the split-by-dimension overview instead of the lead list (Overview KPIs) */
   summary?: boolean;
 }
 
-const EXTRA_LABEL: Record<string, string> = { call_reason: 'Last call reason', grade: 'Purchased grade', course: 'Purchased course', owner: 'Owner', ic_status: 'IC status', lm_reason: 'LM reason', class_group: 'Lead class', lead_stage: 'Lead stage', lead_source: 'Lead source', touch_point: 'Touch point', source: 'Source', medium: 'Medium', district: 'District' };
+const EXTRA_LABEL: Record<string, string> = { touched: 'Touched yet?', call_reason: 'Last call reason', grade: 'Purchased grade', course: 'Purchased course', owner: 'Owner', ic_status: 'IC status', lm_reason: 'LM reason', class_group: 'Lead class', lead_stage: 'Lead stage', lead_source: 'Lead source', touch_point: 'Touch point', source: 'Source', medium: 'Medium', district: 'District' };
 
 const METRIC_LABEL: Record<DrillMetric, string> = {
   leads: 'leads touched in the window', touches: 'leads touched in the window (with their touch counts)', converted: 'converted leads (valid payment on/after a touch)', first_touch: 'converted leads whose selected first touch is in the selection', stale_new: 'leads still in stage New, created more than 5 days ago and not touched in the last 5 days', stale_not_connected: 'leads still in stage Not Connected, created more than 5 days ago and not touched in the last 5 days', last_touch: 'leads whose last valid touch (latest touch on/before their last payment) is in the selection',
   converted_first: 'leads whose first payment came after a touch',
   sf_converted: 'leads flagged Is_Converted__c in Salesforce', stage_conv_unpaid: 'leads in stage Converted with no valid payment on their phone (any date)', paid_other_stage: 'leads with a valid payment (Total converted rule) whose stage is not Converted', stage_react: 'leads in Not Willing Now / Disqualified / Not Connected / P2 Completed that received a new touch after that stage was set', avg_alltime: 'leads with a valid payment (all touches, no date filter)', avg_window: 'leads with a valid payment touched in the window',
+  new_leads: 'Salesforce leads created inside the date range, touched or not',
 };
 
 type Row = Record<string, unknown>;
@@ -66,6 +67,41 @@ const COLS: Col<Row>[] = [
   { key: 'lead_id', header: 'Salesforce Id' },
 ];
 
+/** columns of the New leads list (lead grain; touches and purchases are all-time) */
+export const NEW_LEAD_COLS: Col<Row>[] = [
+  { key: 'lead_name', header: 'Lead ID' },
+  { key: 'eps_id', header: 'EPS ID', render: (v) => (v == null ? '–' : String(v)) },
+  { key: 'first_name', header: 'Name', render: (v, r) => `${v ?? ''} ${r.last_name ?? ''}`.trim() || '–' },
+  { key: 'mobile', header: 'Phone' },
+  { key: 'lead_created_date', header: 'Created' },
+  { key: 'lead_stage', header: 'Stage' },
+  { key: 'class_raw', header: 'Class' },
+  { key: 'lead_source', header: 'Lead source' },
+  { key: 'n_touches_all', header: 'Touches (all)', align: 'right' },
+  { key: 'touch_points', header: 'Touch points' },
+  { key: 'first_touch_any', header: 'First touch', render: (v) => fmtDateTime(v as string) },
+  { key: 'last_touch_any', header: 'Last touch', render: (v) => fmtDateTime(v as string) },
+  { key: 'days_since_last_touch', header: 'Days since last touch', align: 'right' },
+  { key: 'calls', header: 'Calls', align: 'right' },
+  { key: 'last_call_at', header: 'Last call', render: (v) => fmtDateTime(v as string) },
+  { key: 'last_call_reason', header: 'Last call reason' },
+  { key: 'last_call_status', header: 'Last call status' },
+  { key: 'converted', header: 'Purchased', render: yesNo },
+  { key: 'converted_at', header: 'First payment' },
+  { key: 'last_payment_date', header: 'Last payment' },
+  { key: 'revenue', header: 'Revenue', render: (v) => fmtINR(v as number) },
+  { key: 'courses', header: 'Course / batch' },
+  { key: 'owner_name', header: 'Owner' },
+  { key: 'district', header: 'District' },
+  { key: 'lm_reason', header: 'LM reason' },
+  { key: 'best_ic_status', header: 'IC status' },
+  { key: 'sf_is_converted', header: 'SF converted', render: yesNo },
+  { key: 'is_duplicate', header: 'Duplicate', render: yesNo },
+  { key: 'email', header: 'Email' },
+  { key: 'lead_id', header: 'Salesforce Id' },
+];
+export const NEW_LEAD_SORTS: [string, string][] = [['created_date', 'Created'], ['n_touches_all', 'Touches (all)'], ['last_touch_any', 'Last touch'], ['converted_at', 'First payment'], ['last_payment_date', 'Last payment'], ['revenue', 'Revenue'], ['lead_name', 'Lead ID'], ['lead_stage', 'Stage'], ['class_raw', 'Class'], ['owner_name', 'Owner']];
+
 /** Slide-over listing every lead behind a KPI / bar / slice / table row of the Overview. Click a row for the full lead record. */
 export function DrillDrawer({ drill, onClose }: { drill: Drill; onClose: () => void }) {
   const { params, toggleValue } = useFilters();
@@ -107,7 +143,7 @@ export function DrillDrawer({ drill, onClose }: { drill: Drill; onClose: () => v
             <div className="text-[11px] text-ink-3">{drill.subtitle ?? METRIC_LABEL[drill.metric]} · {view === 'summary' ? 'click a value to see those leads' : 'click a row for the full lead record'}{d?.masked ? ' · phone and email are masked on this public site' : ''}</div>
           </div>
           <div className="flex items-center gap-1.5">
-            {!drill.path && (
+            {(!drill.path || drill.summaryPath) && (
               <div className="inline-flex rounded-lg border border-line bg-surface-2 p-0.5 text-[11px] font-medium">
                 <button className={`rounded-md px-2.5 py-1 ${view === 'summary' ? 'bg-surface text-accent shadow-sm' : 'text-ink-2 hover:text-ink'}`} onClick={() => setView('summary')}>Summary</button>
                 <button className={`rounded-md px-2.5 py-1 ${view === 'list' ? 'bg-surface text-accent shadow-sm' : 'text-ink-2 hover:text-ink'}`} onClick={() => setView('list')}>All leads</button>
@@ -125,7 +161,7 @@ export function DrillDrawer({ drill, onClose }: { drill: Drill; onClose: () => v
         </div>
 
         <div className="min-h-0 flex-1 overflow-hidden p-3">
-          {view === 'summary' && <DrillSummary params={base} onPick={(pd, pv) => { setPick({ dim: pd, value: pv }); setView('list'); }} />}
+          {view === 'summary' && <DrillSummary params={base} path={drill.summaryPath} onPick={(pd, pv) => { setPick({ dim: pd, value: pv }); setView('list'); }} />}
           {view === 'list' && r.error && <ErrorNote error={r.error} onRetry={r.refetch} />}
           {view === 'list' && !d && r.isLoading && <div className="space-y-2"><Skeleton /><Skeleton /><Skeleton className="h-64" /></div>}
           {view === 'list' && d && (

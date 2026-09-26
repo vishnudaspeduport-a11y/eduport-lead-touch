@@ -6,24 +6,29 @@ import { ErrorNote, Icon, Popover, Skeleton } from './ui';
 /** which split tables the drawer shows; remembered per browser */
 const TABLES_KEY = 'lt-summary-tables';
 const DEFAULT_TABLES = ['lead_stage', 'grade', 'touch_point', 'call_reason'];
-function loadTables(): string[] { try { const v = JSON.parse(localStorage.getItem(TABLES_KEY) ?? 'null'); return Array.isArray(v) && v.length ? v : DEFAULT_TABLES; } catch { return DEFAULT_TABLES; } }
-function saveTables(v: string[]) { try { localStorage.setItem(TABLES_KEY, JSON.stringify(v)); } catch { /* ignore */ } }
+const DEFAULT_TABLES_CREATED = ['touched', 'lead_stage', 'class_group', 'lead_source'];
+function loadTables(key: string, fallback: string[]): string[] { try { const v = JSON.parse(localStorage.getItem(key) ?? 'null'); return Array.isArray(v) && v.length ? v : fallback; } catch { return fallback; } }
+function saveTables(key: string, v: string[]) { try { localStorage.setItem(key, JSON.stringify(v)); } catch { /* ignore */ } }
 
 interface SplitRow { key: string; leads: number; revenue: number | null }
 interface Split { dim: string; label: string; kind: 'lead' | 'touch' | 'pay'; rows: SplitRow[]; distinct: number }
-interface Summary { mode: 'after_stage' | 'window'; called_after: number; paid_after: number; paid_after_revenue: number; retouched: number; avg_days_to_retouch: number | null; leads: number; revenue: number; touches: number; payers: number; payment_window: { from: string; to: string } | null; splits: Split[] }
+interface Summary { mode: 'after_stage' | 'window' | 'created'; touched?: number; called_after: number; paid_after: number; paid_after_revenue: number; retouched: number; avg_days_to_retouch: number | null; leads: number; revenue: number; touches: number; payers: number; payment_window: { from: string; to: string } | null; splits: Split[] }
 
 /**
  * Overview of the leads behind a drill: headline figures + one small "split" card per dimension
  * (purchased grade / course, stage, class, source, touch point ...). Clicking a row narrows the drawer to that value.
  */
-export function DrillSummary({ params, onPick }: { params: Params; onPick: (dim: string, value: string) => void }) {
-  const r = useApi<Summary>('/overview/leads/summary', params, { placeholderData: (prev) => prev });
+export function DrillSummary({ params, onPick, path }: { params: Params; onPick: (dim: string, value: string) => void; path?: string }) {
+  const r = useApi<Summary>(path ?? '/overview/leads/summary', params, { placeholderData: (prev) => prev });
   const d = r.data?.data;
-  const [tables, setTables] = useState<string[]>(loadTables);
-  const choose = (v: string[]) => { setTables(v); saveTables(v); };
+  const [store, setStore] = useState<Record<string, string[]>>({});
   if (r.error) return <ErrorNote error={r.error} onRetry={r.refetch} />;
   if (!d) return <div className="grid gap-3 md:grid-cols-3">{Array.from({ length: 6 }).map((_, i) => <Skeleton key={i} className="h-44" />)}</div>;
+  // the New leads drawer (mode created) remembers its own table choice
+  const tablesKey = d.mode === 'created' ? `${TABLES_KEY}-created` : TABLES_KEY;
+  const defaults = d.mode === 'created' ? DEFAULT_TABLES_CREATED : DEFAULT_TABLES;
+  const tables = store[tablesKey] ?? loadTables(tablesKey, defaults);
+  const choose = (v: string[]) => { setStore({ ...store, [tablesKey]: v }); saveTables(tablesKey, v); };
   return (
     <div className={`h-full overflow-y-auto pr-1 ${r.isFetching ? 'opacity-70' : ''}`}>
       {d.mode === 'after_stage' ? (
@@ -33,6 +38,14 @@ export function DrillSummary({ params, onPick }: { params: Params; onPick: (dim:
         <Head label="Touches after the stage change" value={fmtInt(d.touches)} sub={d.leads ? `${fmt1(d.touches / d.leads)} per lead` : undefined} />
         <Head label="Days to the first re-touch" value={d.avg_days_to_retouch == null ? '–' : fmt1(d.avg_days_to_retouch)} sub="average, from the stage change" />
         <Head label="Paid after the stage change" value={fmtInt(d.paid_after)} sub={fmtINR(d.paid_after_revenue)} />
+      </div>
+      ) : d.mode === 'created' ? (
+      <div className="mb-3 grid grid-cols-2 gap-3 sm:grid-cols-5">
+        <Head label="Leads created" value={fmtInt(d.leads)} sub="in the date range, touched or not" />
+        <Head label="With a touch" value={fmtInt(d.touched ?? 0)} sub={d.leads ? `${fmtPct(((d.touched ?? 0) / d.leads) * 100)} · ${fmtInt(d.leads - (d.touched ?? 0))} no touch yet` : undefined} />
+        <Head label="Touches (all dates)" value={fmtInt(d.touches)} sub={d.touched ? `${fmt1(d.touches / d.touched)} per touched lead` : undefined} />
+        <Head label="With a purchase" value={fmtInt(d.payers)} sub={d.payment_window ? `paid ${d.payment_window.from} → ${d.payment_window.to}` : 'any successful payment, any date'} />
+        <Head label="Revenue" value={fmtINR(d.revenue)} sub="all payments of the buyers" />
       </div>
       ) : (
       <div className="mb-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
@@ -54,7 +67,7 @@ export function DrillSummary({ params, onPick }: { params: Params; onPick: (dim:
                   <div className="text-xs">
                     <div className="mb-1 flex items-center justify-between">
                       <span className="font-semibold">Tables to show</span>
-                      <div className="flex gap-2 text-ink-3"><button className="hover:text-ink" onClick={() => choose(all)}>All</button><button className="hover:text-ink" onClick={() => choose(DEFAULT_TABLES)}>Default</button></div>
+                      <div className="flex gap-2 text-ink-3"><button className="hover:text-ink" onClick={() => choose(all)}>All</button><button className="hover:text-ink" onClick={() => choose(defaults)}>Default</button></div>
                     </div>
                     <div className="max-h-80 space-y-0.5 overflow-y-auto">
                       {d.splits.map((s) => (

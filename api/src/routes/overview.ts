@@ -3,6 +3,7 @@ import type { Sql } from 'postgres';
 import type { AppEnv } from '../env';
 import { handle, pct } from '../http';
 import { LIST_KEYS, paymentPeriod, type Filters, type Frag, type Period } from '../filters';
+import { newLeadWhere } from './new_leads';
 
 /**
  * GET /api/overview  - everything on the Tableau "Lead Touch - Overview" dashboard in one call.
@@ -97,7 +98,7 @@ overview.get('/overview', (c) =>
     const conv = convCond(sql, f); const convFirst = convFirstCond(sql, f);
     const pp = paymentPeriod(f);
     const staleDays = Math.max(1, Math.min(365, Number.parseInt(q.stale_days ?? '5', 10) || 5));
-    const [[k], [stale], [avgWin], [avgAll], stages, icStatus, touchPoint, source, classRaw, reason, medium, campaign, staff, daily, reactRows, lmReason] = await Promise.all([
+    const [[k], [stale], [avgWin], [avgAll], stages, icStatus, touchPoint, source, classRaw, reason, medium, campaign, staff, daily, reactRows, lmReason, [newLeads]] = await Promise.all([
       sql<{ touches: number; leads: number; converted: number; converted_first: number; sf_converted: number; stage_conv_total: number; stage_conv_unpaid: number; paid_other_stage: number; touches_of_converted: number }[]>`
         SELECT count(*)::int AS touches,
                count(DISTINCT t.lead_id)::int AS leads,
@@ -158,6 +159,11 @@ overview.get('/overview', (c) =>
         SELECT stage, count(*)::int AS total, count(*) FILTER (WHERE last_touch > analytics.stage_since(lead_id, stage, created))::int AS reactivated
         FROM r GROUP BY stage ORDER BY reactivated DESC`,
       byDim(sql, wx('lm_reason'), 'lm_reason', conv, convFirst),
+      // New leads: every Salesforce lead created inside the window (most have no touch yet, so this reads the lead view, not the touch table)
+      sql<{ new_leads: number; new_leads_touched: number }[]>`
+        SELECT count(*)::int AS new_leads,
+               count(*) FILTER (WHERE l.lead_id IN (SELECT t.lead_id FROM analytics.mv_touch_flat t))::int AS new_leads_touched
+        FROM analytics.v_lead_conv l WHERE ${newLeadWhere(sql, f, periods.current)}`,
     ]);
     return {
       period: periods.current, payment_period: pp, basis: f.basis === 'created' ? 'created' : 'touch',
@@ -176,6 +182,7 @@ overview.get('/overview', (c) =>
         avg_touches_window_n: avgWin?.n_leads ?? 0,
         stale_new: stale?.stale_new ?? 0, stale_new_untouched: stale?.stale_new_untouched ?? 0, new_total: stale?.new_total ?? 0, stale_days: staleDays,
         stale_nc: stale?.stale_nc ?? 0, stale_nc_untouched: stale?.stale_nc_untouched ?? 0, nc_total: stale?.nc_total ?? 0,
+        new_leads: newLeads?.new_leads ?? 0, new_leads_touched: newLeads?.new_leads_touched ?? 0,
       },
       stages, ic_status: icStatus,
       touch_point: touchPoint, source, class_raw: classRaw, reason, lm_reason: lmReason, medium, campaign, staff, daily,
@@ -185,6 +192,7 @@ overview.get('/overview', (c) =>
         converted: pp
           ? `Payment-date filter ON: leads in the selection that have a valid payment (payment_method 0, not deleted, is_success, payment_success) dated between ${pp.from} and ${pp.to}.`
           : 'Distinct leads in the selection that have ANY valid payment (payment_method 0, not deleted, is_success, payment_success) dated on/after one of their touch days. Payments are matched to leads on the phone number (last 10 digits).',
+        new_leads: 'Salesforce leads created (IST) inside the date range, whether or not they have a touch yet - the only figure on this page that includes leads without a touch. Deleted leads are excluded; duplicates are excluded unless toggled on. Lead filters (class, lead source, stage, LM reason, owner …) apply to the lead itself; touch filters (touch point, source, campaign, medium, staff) keep only leads with at least one such touch on any date. "With a touch" = at least one lead touch on record, any date.',
         leads_basis: f.basis === 'created' ? 'Main window = LEAD CREATED date: leads created in the range, with all their touches.' : 'Main window = TOUCH date: touches dated in the range.',
         converted_first: 'Brief definition: touched leads whose FIRST valid payment is on/after one of their touches in the window.',
         sf_converted: 'Touched leads with Salesforce Lead_Master__c.Is_Converted__c = true (reference).',

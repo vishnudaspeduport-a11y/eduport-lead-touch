@@ -7,7 +7,7 @@ import { DataTable, type Col } from '../components/DataTable';
 import { DailyLines, Donut, HBars } from '../charts';
 import { CardSearch, Icon, Note, PageHeader, Skeleton } from '../components/ui';
 import { KpiTile, type KpiSplit } from '../components/KpiTile';
-import { DrillDrawer, type Drill, type DrillMetric } from '../components/DrillDrawer';
+import { DrillDrawer, NEW_LEAD_COLS, NEW_LEAD_SORTS, type Drill, type DrillMetric } from '../components/DrillDrawer';
 
 interface DimRow { key: string; touches: number; leads: number; converted: number; converted_first: number; conv_rate?: number | null }
 interface OverviewResponse {
@@ -20,6 +20,7 @@ interface OverviewResponse {
     stale_new: number; stale_new_untouched: number; new_total: number; stale_days: number;
     stale_nc: number; stale_nc_untouched: number; nc_total: number;
     stage_react: number; stage_react_total: number; stage_react_by: { stage: string; total: number; reactivated: number }[];
+    new_leads: number; new_leads_touched: number;
   };
   stages: { key: string; leads: number; converted: number }[];
   ic_status: { key: string; leads: number; ics: number }[];
@@ -38,7 +39,7 @@ const ALL_COLS: Col<DimRow>[] = [
 ];
 
 /** Colourful KPI tile: tinted card, solid icon disc, big number */
-function Kpi(p: { title: string; value: string; sub?: string; def?: string; tone: string; icon: ReactNode; small?: boolean; onClick?: () => void; split?: KpiSplit[] }) { return <KpiTile {...p} />; }
+function Kpi(p: { title: string; value: string; sub?: string; def?: string; tone: string; icon: ReactNode; small?: boolean; onClick?: () => void; split?: KpiSplit[]; className?: string }) { return <KpiTile {...p} />; }
 
 type DimCardOpts = { asTable?: boolean; height?: number; limit?: number; help?: string; subtitle?: string; colorful?: boolean };
 
@@ -76,6 +77,12 @@ export default function Overview() {
   const def = d?.definitions ?? {};
   const [drill, setDrill] = useState<Drill | null>(null);
   const open = (metric: DrillMetric, title: string, dim?: string, value?: string, subtitle?: string) => setDrill({ metric, title, dim, value, subtitle, summary: !dim });
+  // New leads live on the lead table (not the touch table): own list / CSV / summary endpoints
+  const openNew = (touched?: 'Touched' | 'No touch yet') => setDrill({
+    metric: 'new_leads', title: 'New leads', subtitle: `Salesforce leads created ${f.from} → ${f.to}, touched or not`,
+    path: '/overview/new_leads', csvPath: '/overview/new_leads.csv', summaryPath: '/overview/new_leads/summary', columns: NEW_LEAD_COLS, sortOptions: NEW_LEAD_SORTS, defaultSort: 'created_date',
+    dim: touched ? 'touched' : undefined, value: touched, summary: !touched,
+  });
 
   const dimCard = (title: string, rows: DimRow[] | undefined, dim: ListDim, measures: [Measure, Measure?], tone: string, opts: DimCardOpts = {}) => (
     <DimCard key={title} title={title} rows={rows} dim={dim} measures={measures} tone={tone} opts={opts} loading={q.isLoading} error={q.error} onRetry={q.refetch}
@@ -87,9 +94,14 @@ export default function Overview() {
       <PageHeader title="Overview" subtitle={`${f.basis === 'created' ? 'lead created' : 'touch date'} ${f.from} → ${f.to}${f.pay ? ` · payment date ${f.pfrom} → ${f.pto}` : ''} · touch-level view of every lead touched in the range`} />
       {q.error && <Note>⚠ {q.error.message}</Note>}
 
-      <div className="grid grid-cols-2 gap-4 sm:grid-cols-4 xl:grid-cols-5">
-        {q.isLoading && Array.from({ length: 8 }).map((_, i) => <Skeleton key={i} className="h-[92px]" />)}
+      <div className="grid grid-cols-2 gap-4 sm:grid-cols-4 xl:grid-cols-6">
+        {q.isLoading && Array.from({ length: 12 }).map((_, i) => <Skeleton key={i} className="h-[92px]" />)}
         {k && <>
+          <Kpi className="col-span-2" tone="tone-green" icon={<Icon.Plus />} title="New leads" value={fmtInt(k.new_leads)} sub={`Salesforce leads created ${f.from} → ${f.to} · touched or not`} def={def.new_leads} onClick={() => openNew()}
+            split={[
+              { label: 'with a touch', value: fmtInt(k.new_leads_touched), title: 'at least one lead touch on record (any date) · click for the list', onClick: () => openNew('Touched') },
+              { label: 'no touch yet', value: fmtInt(k.new_leads - k.new_leads_touched), title: 'no lead touch on record · click for the list', onClick: () => openNew('No touch yet') },
+            ]} />
           <Kpi tone="tone-brand" icon={<Icon.Users />} title="Total leads" value={fmtInt(k.leads)} sub={f.basis === 'created' ? 'distinct leads created in the window' : 'distinct leads touched in the window'} def={`${def.leads_basis ?? ''} ${def.leads ?? ''}`} onClick={() => open('leads', 'Total leads')} />
           <Kpi tone="tone-teal" icon={<Icon.Touch />} title="Total lead touches" value={fmtInt(k.touches)} sub={`${fmt2(k.touches_per_lead)} touches per lead`} def={def.touches} onClick={() => open('touches', 'Total lead touches')} />
           <Kpi tone="tone-orange" icon={<Icon.Check />} title="Total converted" value={fmtInt(k.converted)} sub={f.pay ? `${fmtPct(k.conv_rate)} of leads · paid ${f.pfrom} → ${f.pto}` : `${fmtPct(k.conv_rate)} of leads · paid on/after a touch`} def={`${def.converted} — ${def.converted_first}`} onClick={() => open('converted', 'Total converted')}

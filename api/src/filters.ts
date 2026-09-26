@@ -158,7 +158,7 @@ export function resolvePeriods(f: Filters): Periods {
 // ---------------------------------------------------------------- SQL builders
 const NULL_TOKEN = '(null)';
 
-function inList(sql: Sql, alias: 'l' | 't', col: string, vals: string[]): Frag {
+export function inList(sql: Sql, alias: 'l' | 't', col: string, vals: string[]): Frag {
   const hasNull = vals.includes(NULL_TOKEN);
   const real = vals.filter((v) => v !== NULL_TOKEN);
   const colRef = sql`${sql(alias)}.${sql(col)}`;
@@ -171,7 +171,7 @@ function boolCond(sql: Sql, alias: 'l' | 't', col: string, truthy: boolean): Fra
   return truthy ? sql`${sql(alias)}.${sql(col)} = true` : sql`${sql(alias)}.${sql(col)} IS NOT TRUE`;
 }
 
-function andAll(sql: Sql, conds: Frag[]): Frag {
+export function andAll(sql: Sql, conds: Frag[]): Frag {
   return conds.reduce((acc, c) => sql`${acc} AND ${c}`, sql`true`);
 }
 
