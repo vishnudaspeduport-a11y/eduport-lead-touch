@@ -80,7 +80,8 @@ const BOOL_LEAD_KEYS = ['repeat', 'pre_existing'] as const;
 
 // ---------------------------------------------------------------- schema
 const list = z.preprocess(
-  (v) => (typeof v === 'string' && v.length ? v.split(',').map((s) => s.trim()).filter(Boolean).slice(0, 200) : []),
+  // values arrive percent-encoded and comma-joined (web/src/lib/filters.ts encodeListValue): decode each one after splitting
+  (v) => (typeof v === 'string' && v.length ? v.split(',').map((s) => { try { return decodeURIComponent(s).trim(); } catch { return s.trim(); } }).filter(Boolean).slice(0, 200) : []),
   z.array(z.string().max(300)),
 );
 const day = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'YYYY-MM-DD');

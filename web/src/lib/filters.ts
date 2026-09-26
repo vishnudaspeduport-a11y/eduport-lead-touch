@@ -7,6 +7,10 @@ import { useSearchParams } from 'react-router-dom';
 
 export type Basis = 'created' | 'touch' | 'payment';
 
+/** list values travel comma-separated in the URL / query string, so each value is percent-encoded first (a campaign named "class 5,6 super" must stay one value) */
+export const encodeListValue = (v: string) => encodeURIComponent(v);
+export const decodeListValue = (v: string) => { try { return decodeURIComponent(v); } catch { return v; } };
+
 export const LIST_DIMS = [
   'lead_source', 'lead_stage', 'class_group', 'class_raw', 'district', 'city', 'priority', 'lead_type', 'owner',
   'ic_status', 'ad_platform', 'first_touch_point', 'last_touch_point', 'touch_bucket', 'lm_reason', 'call_reason',
@@ -75,7 +79,7 @@ function parse(sp: URLSearchParams): FilterState {
   const p = PRESETS.find((x) => x.key === preset) ?? PRESETS[3];
   const [df, dt] = p.range();
   const lists: FilterState['lists'] = {};
-  for (const k of LIST_DIMS) { const v = sp.get(k); if (v) lists[k] = v.split(',').filter(Boolean); }
+  for (const k of LIST_DIMS) { const v = sp.get(k); if (v) lists[k] = v.split(',').filter(Boolean).map(decodeListValue); }
   const flags: FilterState['flags'] = {};
   for (const k of ['hot', 'supreme_hot', 'relogged', 'repeat', 'pre_existing'] as const) { const v = sp.get(k); if (v === '1' || v === '0') flags[k] = v; }
   const paid = sp.get('paid');
@@ -99,7 +103,7 @@ function serialize(f: FilterState): URLSearchParams {
   if (f.converted) sp.set('converted', '1');
   if (f.dups) sp.set('dups', '1');
   if (f.paid) sp.set('paid', f.paid);
-  for (const [k, v] of Object.entries(f.lists)) if (v?.length) sp.set(k, v.join(','));
+  for (const [k, v] of Object.entries(f.lists)) if (v?.length) sp.set(k, v.map(encodeListValue).join(','));
   for (const [k, v] of Object.entries(f.flags)) if (v) sp.set(k, v);
   return sp;
 }
@@ -111,7 +115,7 @@ export function toApiParams(f: FilterState): Record<string, string> {
   if (f.converted) o.converted = '1';
   if (f.dups) o.dups = '1';
   if (f.paid) o.paid = f.paid;
-  for (const [k, v] of Object.entries(f.lists)) if (v?.length) o[k] = v.join(',');
+  for (const [k, v] of Object.entries(f.lists)) if (v?.length) o[k] = v.map(encodeListValue).join(',');
   for (const [k, v] of Object.entries(f.flags)) if (v) o[k] = v;
   return o;
 }
