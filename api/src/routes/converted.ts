@@ -136,20 +136,20 @@ converted.get('/converted', (c) =>
       by_course: byCourse, by_grade: byGrade, daily, grades: grades.map((g) => g.key),
       definitions: {
         users: pm === 'm0'
-          ? 'Tableau "CONVERTED" = COUNTD(user_id) with a valid payment (payment_method 0, not deleted, is_success, payment_success) whose payment date is in the window. This is a count of paying app accounts, including people with no Salesforce lead.'
+          ? 'Distinct paying app users with a valid payment (payment_method 0, not deleted, is_success, payment_success) whose payment date is in the window. This counts paying app accounts, including people with no Salesforce lead.'
           : pm === 'm1'
             ? 'Paying users with a valid payment of payment_method 1 (gateway EMI instalments; every such row carries an emi_id) dated in the window.'
-            : 'Metabase-style count: distinct paying users with ANY valid payment (any payment_method; not deleted, is_success, payment_success) dated in the window. Switch to "Method 0" for the Tableau rule.',
+            : 'Distinct paying app users with ANY valid payment (any payment_method; not deleted, is_success, payment_success) dated in the window. Switch to "Method 0" to count payment_method 0 only, as the Overview does.',
         new_users: 'Paying users whose FIRST ever valid payment is inside the window (new customers).',
-        no_touch: 'Users with no lead touch on/before their payment: no Salesforce lead on that phone, or all touches came after the payment. Shown as "No Touch Before Payment" in the tables, like the workbook.',
-        no_lead: 'Paying users whose phone matches no Salesforce lead ("No Salesforce Lead" in the workbook).',
-        credit: 'Every user is credited to ONE touch: the latest touch dated on/before its last valid payment day, across all Salesforce leads with the same phone (workbook "Last Touch Date Before Payment"). Touch point, source, medium, campaign and staff come from that touch.',
-        touches: 'Tableau "total lead touches" on this sheet: number of touches on/before the payment for the users in the row.',
-        course: 'Tableau "Class wise conversion": users by the course they bought (core_syllabusstructure title); a user buying two courses appears under both.',
-        grade: 'Tableau "Class Group" on this dashboard = grade of the purchased course (core_grade title), not the lead\'s class.',
-        stage: 'Lead stage of the user\'s most recently created Salesforce lead; the workbook counts a user under every lead on the phone.',
+        no_touch: 'Users with no lead touch on/before their payment: no Salesforce lead on that phone, or all touches came after the payment. Shown as "No Touch Before Payment" in the tables.',
+        no_lead: 'Paying users whose phone matches no Salesforce lead.',
+        credit: 'Every user is credited to ONE touch: the latest touch dated on/before its last valid payment day, across all Salesforce leads with the same phone. Touch point, source, medium, campaign and staff come from that touch.',
+        touches: 'Number of touches on/before the payment for the users in the row.',
+        course: 'Users by the course they bought; a user buying two courses appears under both.',
+        grade: 'Grade of the course that was bought, not the class recorded on the lead.',
+        stage: 'Lead stage of the user\'s most recently created Salesforce lead (one lead per user).',
         revenue: 'Sum of payment amounts of the users in the row (all their valid payments, any method, any date).',
-        pm: 'Payment method: "All" counts every successful payment like the Metabase sales queries; "Method 0" is the Tableau / Overview rule; "Method 1" is the rest (gateway EMI instalments). The per-user columns payments / revenue / courses always cover every method.',
+        pm: 'Payment method: "All" counts every successful payment; "Method 0" counts payment_method 0 only, the rule the Overview uses; "Method 1" is the rest (gateway EMI instalments). The per-user columns payments / revenue / courses always cover every method.',
       },
     };
   }),

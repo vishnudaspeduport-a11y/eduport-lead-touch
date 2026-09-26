@@ -66,7 +66,7 @@ export default function TouchAttribution({ mode }: { mode: 'first' | 'last' }) {
   return (
     <div className="space-y-4">
       <PageHeader title={mode === 'first' ? 'First touch' : 'Last touch'}
-        subtitle={`touch date ${f.from} → ${f.to} · same definitions as the Tableau "Lead Touch - ${mode === 'first' ? 'First' : 'Last'} Touch" dashboard`} />
+        subtitle={`touch date ${f.from} → ${f.to} · every converted lead credited to its ${mode === 'first' ? 'first' : 'last'} touch`} />
       {q.error && <Note>⚠ {q.error.message}</Note>}
 
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
@@ -94,8 +94,8 @@ export default function TouchAttribution({ mode }: { mode: 'first' | 'last' }) {
       {drill && <DrillDrawer drill={drill} onClose={() => setDrill(null)} />}
       <Note>
         {mode === 'first'
-          ? <>Each converted lead is credited to <b>one</b> touch: its selected first touch (earliest touch on/after 1 March 2026, or its latest touch if none after that date), exactly as the workbook's "first touch" measure. </>
-          : <>Each lead is credited to <b>one</b> touch: its last valid touch, the latest touch made <b>before the moment of its last valid payment</b>. A touch on the payment day counts when it happened before the payment. This deliberately differs from the workbook, which never credits payment-day touches (its formula reads the payment date as midnight), so this page credits Eduport App more and earlier channels less than Tableau. </>}
+          ? <>Each converted lead is credited to <b>one</b> touch: its selected first touch (earliest touch on/after 1 March 2026, or its latest touch if none after that date). </>
+          : <>Each lead is credited to <b>one</b> touch: its last valid touch, the latest touch made <b>before the moment of its last valid payment</b>. A touch on the payment day counts when it happened before the payment. </>}
         So the {label.toLowerCase()} column adds up across rows, unlike Total leads and Converted, where a lead can appear under several values. Clicking a KPI lists the leads; clicking a bar or row filters every card.
       </Note>
     </div>

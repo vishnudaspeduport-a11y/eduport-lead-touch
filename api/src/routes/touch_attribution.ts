@@ -55,14 +55,14 @@ touchAttribution.get('/touch-attribution', (c) =>
       kpis: { ...k, conv_pct: pct(k.converted, k.leads), attr_pct: pct(k.attributed, k.leads), attr_of_converted_pct: pct(k.attributed, k.converted) },
       touch_point: touchPoint, class_raw: classRaw, source, medium, campaign, daily,
       definitions: {
-        leads: 'Tableau "Total leads": distinct leads with a touch in the window (per row: with a touch of that value).',
-        converted: 'Tableau "Converted": distinct touched leads with any valid payment dated on/after such a touch.',
+        leads: 'Distinct leads with a touch in the window (per row: with a touch of that value).',
+        converted: 'Distinct touched leads with any valid payment dated on/after such a touch.',
         attributed: mode === 'first'
-          ? 'Tableau "first touch": converted leads whose selected first touch is in the window (per row: has that value). Selected first touch = the lead\'s earliest touch on/after 1 Mar 2026, or its latest touch if it has none after that date. Each converted lead is credited to exactly one touch point / source / medium / campaign / class.'
-          : 'Leads whose last valid touch is in the window (per row: has that value). Last valid touch = the latest touch made before the moment of the lead\'s last valid payment; a touch on the payment day counts when it happened before the payment (payment time, else the record time; if no time is recorded, any touch that day counts). Each such lead is credited to exactly one touch point / source / medium / campaign / class. Deviation from the workbook, which never credits payment-day touches: for Sep 2026 the workbook shows Eduport App 1,639 where this page credits the same-day app touch.',
-        attr_pct: mode === 'first' ? 'Tableau "percentage": first-touch conversions ÷ Total leads.' : 'Last-touch conversions ÷ Total leads (the workbook shows Converted ÷ Total leads as "%").',
+          ? 'Converted leads whose selected first touch is in the window (per row: has that value). Selected first touch = the lead\'s earliest touch on/after 1 Mar 2026, or its latest touch if it has none after that date. Each converted lead is credited to exactly one touch point / source / medium / campaign / class.'
+          : 'Leads whose last valid touch is in the window (per row: has that value). Last valid touch = the latest touch made before the moment of the lead\'s last valid payment; a touch on the payment day counts when it happened before the payment (payment time, else the record time; if no time is recorded, any touch that day counts). Each such lead is credited to exactly one touch point / source / medium / campaign / class.',
+        attr_pct: mode === 'first' ? 'First-touch conversions ÷ Total leads.' : 'Last-touch conversions ÷ Total leads.',
         share_pct: `${label} of this row ÷ ${label.toLowerCase()} of all rows in the table (adds up to 100%).`,
-        conv_pct: 'Tableau "%": Converted ÷ Total leads.',
+        conv_pct: 'Converted ÷ Total leads.',
       },
     };
   }),

@@ -84,7 +84,7 @@ export default function Overview() {
 
   return (
     <div className="space-y-4">
-      <PageHeader title="Overview" subtitle={`${f.basis === 'created' ? 'lead created' : 'touch date'} ${f.from} → ${f.to}${f.pay ? ` · payment date ${f.pfrom} → ${f.pto}` : ''} · same definitions as the Tableau "Lead Touch - Overview" dashboard`} />
+      <PageHeader title="Overview" subtitle={`${f.basis === 'created' ? 'lead created' : 'touch date'} ${f.from} → ${f.to}${f.pay ? ` · payment date ${f.pfrom} → ${f.pto}` : ''} · touch-level view of every lead touched in the range`} />
       {q.error && <Note>⚠ {q.error.message}</Note>}
 
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-4 xl:grid-cols-5">
@@ -111,21 +111,21 @@ export default function Overview() {
 
       <div className="grid gap-4 xl:grid-cols-2">
         <ChartCard title="Lead funnel · LM stage" tone="tone-brand" subtitle="Total leads by current Lead Stage · click a slice to filter" loading={q.isLoading} error={q.error} rows={d?.stages ?? []} height={240}
-          help="Current Lead_Stage__c of the distinct leads that have a touch in the window (Tableau sheet 'LM-Stage').">
+          help="Current Lead Stage of the distinct leads that have a touch in the window.">
           <Donut data={(d?.stages ?? []).map((s) => ({ key: s.key, value: s.leads, secondary: s.converted, selected: (f.lists.lead_stage ?? []).includes(s.key) }))} valueLabel="Total leads" secondaryLabel="Converted" centerLabel="leads" onClick={(key) => toggleValue('lead_stage', key)} />
         </ChartCard>
         <ChartCard title="Lead funnel · IC status" tone="tone-pink" subtitle="Total leads by Interested Course status · click a bar to filter (IC status)" loading={q.isLoading} error={q.error} rows={d?.ic_status ?? []} height={240}
-          help="Interested_Course__c.Status__c for the leads touched in the window, blank status excluded (Tableau sheet 'IC Status'). A lead with several ICs appears under each status.">
+          help="Interested Course status for the leads touched in the window, blank status excluded. A lead with several interested courses appears under each status.">
           <HBars colorful data={(d?.ic_status ?? []).map((s) => ({ key: s.key, value: s.leads, secondary: s.ics }))} valueLabel="Total leads" secondaryLabel="Interested courses" secondaryFormat={fmtInt} onClick={(key) => toggleValue('ic_status', key)} />
         </ChartCard>
       </div>
 
       <div className="grid gap-4 xl:grid-cols-2">
         {dimCard('Touch point analysis (converted leads)', d?.touch_point, 'touch_point', ['touches', 'converted'], 'tone-teal', { colorful: true, height: 270 })}
-        {dimCard('Lead source distribution', d?.source, 'source', ['touches', 'converted'], 'tone-orange', { asTable: true, height: 270, help: 'Touch Source__c: total lead touches, converted leads and total leads (Tableau sheet "Lead source distribution").' })}
+        {dimCard('Lead source distribution', d?.source, 'source', ['touches', 'converted'], 'tone-orange', { asTable: true, height: 270, help: 'Source recorded on the touch: total lead touches, converted leads and total leads per source.' })}
         {dimCard('Class (converted lead touches)', d?.class_raw, 'class_raw', ['touches', 'converted'], 'tone-violet', { limit: 14, height: 300, colorful: true })}
         {dimCard('LM Reason', d?.lm_reason, 'lm_reason', ['leads'], 'tone-amber', { limit: 14, height: 300, help: def.lm_reason, subtitle: 'Total leads by the LM Reason field on the lead · click a row to filter every card' })}
-        {dimCard('Last call reason', d?.reason, 'call_reason', ['leads', 'converted'], 'tone-amber', { limit: 14, height: 300, help: def.reason, subtitle: 'Total leads by the reason on their last call · see the help icon for the deviation from Tableau' })}
+        {dimCard('Last call reason', d?.reason, 'call_reason', ['leads', 'converted'], 'tone-amber', { limit: 14, height: 300, help: def.reason, subtitle: 'Total leads by the reason recorded on their last call · click a row to filter every card' })}
         {dimCard('Medium', d?.medium, 'medium', ['leads', 'converted'], 'tone-green', { asTable: true, height: 260 })}
         {dimCard('Campaign name', d?.campaign, 'campaign', ['leads', 'touches'], 'tone-brand', { asTable: true, height: 260 })}
         {dimCard('Staff-wise', d?.staff, 'staff', ['leads', 'touches'], 'tone-pink', { asTable: true, height: 260 })}
@@ -138,7 +138,7 @@ export default function Overview() {
       </div>
 
       {drill && <DrillDrawer drill={drill} onClose={() => setDrill(null)} />}
-      <Note>The main date range applies to the <b>lead created</b> date or the <b>touch date</b>, whichever is selected in the filter bar (the workbook uses touch date). Switch on <b>Payment date</b> to add a second window: Converted then counts only valid payments dated inside it. Filters on top apply to every card; the Class Group and Medium filters correspond to the two Tableau filters. Click a KPI tile to list the leads behind it (with CSV download). Clicking a bar, slice or table row filters every other card by that value; click more rows to add them (a card never filters itself, so its rows stay visible and highlighted); remove the chip on top or click the row again to undo. Every card also has a chart/table toggle. Hover the help icon on a card or KPI for the exact definition and any deviation from Tableau.</Note>
+      <Note>The main date range applies to the <b>lead created</b> date or the <b>touch date</b>, whichever is selected in the filter bar. Switch on <b>Payment date</b> to add a second window: Converted then counts only valid payments dated inside it. Filters on top apply to every card. Click a KPI tile to list the leads behind it (with CSV download). Clicking a bar, slice or table row filters every other card by that value; click more rows to add them (a card never filters itself, so its rows stay visible and highlighted); remove the chip on top or click the row again to undo. Every card also has a chart/table toggle. Hover the help icon on a card or KPI for the exact definition.</Note>
     </div>
   );
 }

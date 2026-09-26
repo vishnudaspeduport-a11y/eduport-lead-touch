@@ -91,10 +91,10 @@ export default function Converted() {
 
   return (
     <div className="space-y-4">
-      <PageHeader title="Converted" subtitle={`payment date ${f.from} → ${f.to} · paying users by PAYMENT date, whatever their touch dates · credited to the last touch before payment (Tableau "Lead Touch - Converted")`}
+      <PageHeader title="Converted" subtitle={`payment date ${f.from} → ${f.to} · paying users by PAYMENT date, whatever their touch dates · credited to the last touch before payment`}
         right={<div className="flex flex-wrap items-center gap-3">
           <label className="flex items-center gap-1.5 text-xs text-ink-2" title={def.pm}>Payment method
-            <Segmented size="xs" value={pm} onChange={changePm} options={[{ value: 'all', label: 'All', title: 'Every successful payment (Metabase sales rule)' }, { value: 'm0', label: 'Method 0', title: 'payment_method = 0: the Tableau / Overview rule' }, { value: 'm1', label: 'Method 1', title: 'payment_method = 1: gateway EMI instalments' }]} />
+            <Segmented size="xs" value={pm} onChange={changePm} options={[{ value: 'all', label: 'All', title: 'Every successful payment, any payment method' }, { value: 'm0', label: 'Method 0', title: 'payment_method = 0 only: the rule the Overview uses' }, { value: 'm1', label: 'Method 1', title: 'payment_method = 1: gateway EMI instalments' }]} />
           </label>
           <label className="flex items-center gap-1.5 text-xs text-ink-2">Purchased grade
             <GradePicker all={d?.grades ?? []} value={grades} onChange={setGrades} />
@@ -129,7 +129,7 @@ export default function Converted() {
       </div>
 
       {drill && <DrillDrawer drill={drill} onClose={() => setDrill(null)} />}
-      <Note>This page counts <b>paying app users</b>, not Salesforce leads, and its date range is the <b>payment date</b>, whatever the basis switch says. Each user is credited to one touch: the latest touch dated on or before the last payment day, across every lead sharing the phone; users without such a touch are grouped as "No Touch Before Payment", and users whose phone matches no lead as "No Salesforce lead". Purchased grade and course come from the batch that was bought, so they can differ from the lead's class. The Class Group chip in the filter bar applies to the lead's class; use the Purchased grade selector above for the workbook's grade filter.</Note>
+      <Note>This page counts <b>paying app users</b>, not Salesforce leads, and its date range is the <b>payment date</b>, whatever the basis switch says. Each user is credited to one touch: the latest touch dated on or before the last payment day, across every lead sharing the phone; users without such a touch are grouped as "No Touch Before Payment", and users whose phone matches no lead as "No Salesforce lead". Purchased grade and course come from the batch that was bought, so they can differ from the lead's class. The Class Group chip in the filter bar applies to the lead's class; use the Purchased grade selector above to filter by the grade that was bought.</Note>
     </div>
   );
 }
