@@ -96,8 +96,6 @@ export const NEW_LEAD_COLS: Col<Row>[] = [
   { key: 'lm_reason', header: 'LM reason' },
   { key: 'best_ic_status', header: 'IC status' },
   { key: 'sf_is_converted', header: 'SF converted', render: yesNo },
-  { key: 'is_duplicate', header: 'Duplicate', render: yesNo },
-  { key: 'email', header: 'Email' },
   { key: 'lead_id', header: 'Salesforce Id' },
 ];
 export const NEW_LEAD_SORTS: [string, string][] = [['created_date', 'Created'], ['n_touches_all', 'Touches (all)'], ['last_touch_any', 'Last touch'], ['converted_at', 'First payment'], ['last_payment_date', 'Last payment'], ['revenue', 'Revenue'], ['lead_name', 'Lead ID'], ['lead_stage', 'Stage'], ['class_raw', 'Class'], ['owner_name', 'Owner']];
