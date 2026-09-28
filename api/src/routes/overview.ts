@@ -159,12 +159,12 @@ overview.get('/overview', (c) =>
         SELECT stage, count(*)::int AS total, count(*) FILTER (WHERE last_touch > analytics.stage_since(lead_id, stage, created))::int AS reactivated
         FROM r GROUP BY stage ORDER BY reactivated DESC`,
       byDim(sql, wx('lm_reason'), 'lm_reason', conv, convFirst),
-      // New leads: every Salesforce lead created inside the window (most have no touch yet, so this reads the lead view, not the touch table)
+      // New leads: every Salesforce lead created inside the window (most have no touch yet, so this reads the lead view, not the touch table).
+      // Keep the touched test as a correlated EXISTS (index probe, ~0.1 s): `lead_id IN (SELECT ...)` inside the FILTER ran row by row (150 s).
       sql<{ new_leads: number; new_leads_touched: number }[]>`
-        SELECT count(*)::int AS new_leads, count(tl.lead_id)::int AS new_leads_touched
-        FROM analytics.v_lead_conv l
-        LEFT JOIN (SELECT DISTINCT t.lead_id FROM analytics.mv_touch_flat t) tl ON tl.lead_id = l.lead_id
-        WHERE ${newLeadWhere(sql, f, periods.current)}`,
+        SELECT count(*)::int AS new_leads,
+               count(*) FILTER (WHERE EXISTS (SELECT 1 FROM analytics.mv_touch_flat t WHERE t.lead_id = l.lead_id))::int AS new_leads_touched
+        FROM analytics.v_lead_conv l WHERE ${newLeadWhere(sql, f, periods.current)}`,
       // Revised funnel: a closed-stage lead (Not Willing Now / Disqualified / Not Connected / P2 Completed) that was touched AFTER the stage change
       // counts under New (it is active again); every other lead keeps its stage. Stage moment = analytics.stage_since (Salesforce field history).
       sql<{ key: string; leads: number; converted: number; revived: number }[]>`

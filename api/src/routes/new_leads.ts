@@ -201,10 +201,8 @@ newLeads.get('/overview/new_leads/summary', (c) =>
     const rows = await sql<{ dim: string; key: string | null; leads: number; revenue: number | null }[]>`
       WITH sel AS (
         SELECT l.lead_id, l.phone_key, l.lead_stage, l.class_group, l.lead_source, l.owner_name, l.district, l.best_ic_status, l.lm_reason,
-               (tl.lead_id IS NOT NULL) AS touched
-        FROM analytics.v_lead_conv l
-        LEFT JOIN (SELECT DISTINCT t.lead_id FROM analytics.mv_touch_flat t) tl ON tl.lead_id = l.lead_id
-        WHERE ${where}),
+               EXISTS (SELECT 1 FROM analytics.mv_touch_flat t WHERE t.lead_id = l.lead_id) AS touched
+        FROM analytics.v_lead_conv l WHERE ${where}),
       pay AS (
         SELECT DISTINCT ON (s.lead_id) s.lead_id, m.user_id, m.revenue
         FROM sel s JOIN analytics.mv_payer m ON m.phone_key = s.phone_key
