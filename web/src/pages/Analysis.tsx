@@ -109,6 +109,16 @@ export default function Analysis() {
   return (
     <div className="space-y-4">
       <PageHeader title="Analysis" subtitle="upload a spreadsheet with phone numbers and get every lead's details back · the file is read in your browser and nothing is stored" />
+      <div className="card text-xs leading-relaxed text-ink-2">
+        <div className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-ink-3">Before you upload</div>
+        <ul className="list-disc space-y-1 pl-4">
+          <li><b>Phone numbers in column A</b> of the first sheet, one per row, with a header such as <b>Phone</b>. Country code, spaces, dashes and +91 are fine: only the last 10 digits are used. If the file has several number columns you can pick the right one after the upload.</li>
+          <li><b>Data starts on 1 March 2026.</b> The dashboard holds every Salesforce lead created since then, plus older leads only if they had a lead touch or a payment. A number whose lead is older and was never touched comes back as <b>not in the dashboard database</b>, even though it exists in Salesforce.</li>
+          <li><b>New activity brings a lead in.</b> As soon as an older lead gets a new lead touch it is picked up by the next sync (every 4 hours) and will show here with its full history.</li>
+          <li><b>Call reasons and comments</b> are available for calls logged since <b>1 May 2026</b>; stage-change dates since 1 March 2026.</li>
+          <li>Payments are matched on the number, so a paying number shows as converted on every lead that shares it.</li>
+        </ul>
+      </div>
 
       <div className="card flex flex-wrap items-center gap-3">
         <input ref={fileRef} type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) onFile(f); e.target.value = ''; }} />
@@ -167,7 +177,7 @@ export default function Analysis() {
       )}
 
       {leadId && <LeadDrawer leadId={leadId} onClose={() => setLeadId(null)} />}
-      <Note>How it works: the spreadsheet is opened in your browser only. Phone numbers are normalised to their last 10 digits and sent to the dashboard's API in batches of 1,000, which looks them up in the same lead, payment and touch data as the rest of the dashboard and answers immediately. Neither the file nor the results are written to the database, so nothing needs deleting and no storage is used. Each lead sharing a number is returned; payments belong to the number, so they repeat on every lead of that number.</Note>
+      <Note>How it works: the spreadsheet is opened in your browser only. Phone numbers are normalised to their last 10 digits and sent to the dashboard's API in batches of 1,000, which looks them up in the same lead, payment and touch data as the rest of the dashboard and answers immediately. Neither the file nor the results are written to the database, so nothing needs deleting and no storage is used. Each lead sharing a number is returned; payments belong to the number, so they repeat on every lead of that number. Coverage: leads created since 1 March 2026 and older leads with a touch or a payment; see the notes above the upload button.</Note>
     </div>
   );
 }
