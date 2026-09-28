@@ -19,7 +19,7 @@ export function KpiTile({ title, value, sub, def, tone, icon, onClick, split, sm
       <div className="mt-2 flex items-end justify-between gap-2">
         <div className="min-w-0">
           <div className={`font-semibold leading-none tabular-nums tracking-tight ${small ? 'text-xl' : 'text-2xl'}`}>{value}</div>
-          {sub && <div className="mt-1.5 line-clamp-2 text-[11px] leading-snug text-ink-3">{sub}</div>}
+          {sub && <div className="mt-1.5 text-[10.5px] leading-snug text-ink-3">{sub}</div>}
         </div>
         <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-tone text-tone">{icon}</span>
       </div>
