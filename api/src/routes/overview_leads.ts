@@ -4,7 +4,7 @@ import type { AppEnv, Role } from '../env';
 import { handle, intParam, maskEmail, maskName, maskPhone } from '../http';
 import { parseFilters, resolvePeriods, type Filters, type Frag, type Period } from '../filters';
 import { getSql, release } from '../db';
-import { flatWhere, FLAT_COLS, convCond, convFirstCond } from './overview';
+import { flatWhere, FLAT_COLS, convCond, convFirstCond, tatBucket } from './overview';
 import { paymentPeriod } from '../filters';
 
 /**
@@ -46,6 +46,13 @@ function dimCond(sql: Sql, q: Record<string, string>): Frag {
     return value === '(no call)' || value === '(null)'
       ? sql`NOT EXISTS (SELECT 1 FROM salesforce.lead_calls c WHERE c.lead_id = t.lead_id AND c.last_reason IS NOT NULL)`
       : sql`t.lead_id IN (SELECT c.lead_id FROM salesforce.lead_calls c WHERE c.last_reason = ${value})`;
+  }
+  if (dim === 'tat_created' || dim === 'tat_touch') {
+    // turnaround band of a converted lead: first valid payment day minus the creation day / the latest touch day on or before the payment
+    const days = dim === 'tat_created'
+      ? sql`(t.converted_at - t.lead_created_date)`
+      : sql`(t.converted_at - (SELECT max(t2.touch_date) FROM analytics.mv_touch_flat t2 WHERE t2.lead_id = t.lead_id AND t2.is_pre_conversion))`;
+    return sql`(t.converted_at IS NOT NULL AND ${tatBucket(sql, days)} = ${value})`;
   }
   if (dim === 'revised_stage') {
     // Revised funnel slice: closed-stage leads touched after the stage change count as New; the rest keep their stage

@@ -78,6 +78,13 @@ export function flatWhere(sql: Sql, f: Filters, p: Period | null, skip?: string)
   return c.reduce((a, x) => sql`${a} AND ${x}`, sql`true`);
 }
 
+/** turnaround-time band for a day count (date - date) */
+export function tatBucket(sql: Sql, days: Frag): Frag {
+  return sql`CASE WHEN ${days} IS NULL THEN 'no prior touch' WHEN ${days} < 0 THEN 'before lead created' WHEN ${days} = 0 THEN 'same day' WHEN ${days} <= 3 THEN '1–3 d' WHEN ${days} <= 7 THEN '4–7 d'
+                WHEN ${days} <= 14 THEN '8–14 d' WHEN ${days} <= 30 THEN '15–30 d' ELSE '31+ d' END`;
+}
+export const TAT_BUCKETS = ['before lead created', 'same day', '1–3 d', '4–7 d', '8–14 d', '15–30 d', '31+ d', 'no prior touch'];
+
 export interface DimRow { key: string; touches: number; leads: number; converted: number; converted_first: number; conv_rate?: number | null }
 
 async function byDim(sql: Sql, w: Frag, col: string, conv: Frag, convFirst: Frag, limit = 40): Promise<DimRow[]> {
@@ -98,7 +105,7 @@ overview.get('/overview', (c) =>
     const conv = convCond(sql, f); const convFirst = convFirstCond(sql, f);
     const pp = paymentPeriod(f);
     const staleDays = Math.max(1, Math.min(365, Number.parseInt(q.stale_days ?? '5', 10) || 5));
-    const [[k], [stale], [avgWin], [avgAll], stages, icStatus, touchPoint, source, classRaw, reason, medium, campaign, staff, daily, reactRows, lmReason, [newLeads], stagesRevised] = await Promise.all([
+    const [[k], [stale], [avgWin], [avgAll], stages, icStatus, touchPoint, source, classRaw, reason, medium, campaign, staff, daily, reactRows, lmReason, [newLeads], stagesRevised, tatRows] = await Promise.all([
       sql<{ touches: number; leads: number; converted: number; converted_first: number; sf_converted: number; stage_conv_total: number; stage_conv_unpaid: number; paid_other_stage: number; touches_of_converted: number }[]>`
         SELECT count(*)::int AS touches,
                count(DISTINCT t.lead_id)::int AS leads,
@@ -180,7 +187,24 @@ overview.get('/overview', (c) =>
           FROM r)
         SELECT key, count(*)::int AS leads, count(*) FILTER (WHERE converted)::int AS converted, count(*) FILTER (WHERE key IS DISTINCT FROM stage)::int AS revived
         FROM x GROUP BY key ORDER BY leads DESC`,
+      // Turnaround time of the converted leads in the selection: lead created -> first valid payment day, and latest touch on/before that day -> payment day
+      sql<{ kind: string; key: string; leads: number; avg_days: number | null; median_days: number | null }[]>`
+        WITH c AS (
+          SELECT t.lead_id, max(t.converted_at) AS paid, max(t.lead_created_date) AS created,
+                 (SELECT max(t2.touch_date) FROM analytics.mv_touch_flat t2 WHERE t2.lead_id = t.lead_id AND t2.is_pre_conversion) AS last_touch
+          FROM analytics.mv_touch_flat t WHERE ${w} AND ${conv} AND t.converted_at IS NOT NULL GROUP BY t.lead_id),
+        d AS (SELECT 'created' AS kind, (paid - created)::int AS days FROM c
+              UNION ALL SELECT 'touch', (paid - last_touch)::int FROM c)
+        SELECT kind, ${tatBucket(sql, sql`days`)} AS key, count(*)::int AS leads, NULL::float8 AS avg_days, NULL::float8 AS median_days FROM d GROUP BY 1, 2
+        UNION ALL
+        SELECT kind, '_all', count(*)::int, avg(days)::float8, percentile_cont(0.5) WITHIN GROUP (ORDER BY days)::float8 FROM d GROUP BY 1`,
     ]);
+    const tatShape = (kind: 'created' | 'touch') => {
+      const all = tatRows.find((r) => r.kind === kind && r.key === '_all');
+      const buckets = TAT_BUCKETS.map((key) => ({ key, leads: tatRows.find((r) => r.kind === kind && r.key === key)?.leads ?? 0 }))
+        .filter((b) => (b.key !== 'before lead created' && b.key !== 'no prior touch') || b.leads > 0);
+      return { leads: all?.leads ?? 0, avg_days: all?.avg_days ?? null, median_days: all?.median_days ?? null, buckets };
+    };
     return {
       period: periods.current, payment_period: pp, basis: f.basis === 'created' ? 'created' : 'touch',
       kpis: {
@@ -200,7 +224,7 @@ overview.get('/overview', (c) =>
         stale_nc: stale?.stale_nc ?? 0, stale_nc_untouched: stale?.stale_nc_untouched ?? 0, nc_total: stale?.nc_total ?? 0,
         new_leads: newLeads?.new_leads ?? 0, new_leads_touched: newLeads?.new_leads_touched ?? 0,
       },
-      stages, stages_revised: stagesRevised, ic_status: icStatus,
+      stages, stages_revised: stagesRevised, ic_status: icStatus, tat: { created: tatShape('created'), touch: tatShape('touch') },
       touch_point: touchPoint, source, class_raw: classRaw, reason, lm_reason: lmReason, medium, campaign, staff, daily,
       definitions: {
         leads: 'Distinct leads that have at least one touch dated (IST) inside the window. Deleted leads are excluded; duplicate leads are excluded unless toggled on.',
@@ -208,6 +232,7 @@ overview.get('/overview', (c) =>
         converted: pp
           ? `Payment-date filter ON: leads in the selection that have a valid payment (payment_method 0, not deleted, is_success, payment_success) dated between ${pp.from} and ${pp.to}.`
           : 'Distinct leads in the selection that have ANY valid payment (payment_method 0, not deleted, is_success, payment_success) dated on/after one of their touch days. Payments are matched to leads on the phone number (last 10 digits).',
+        tat: 'Turnaround time of the converted leads in the selection (Total converted rule), in calendar days. "Lead created → paid": from the day the lead was created to the day of its FIRST valid payment; "before lead created" = the phone already had a payment before the lead existed. "Last touch → paid": from the latest lead touch on or before that payment day to the payment day; "no prior touch" = the first payment came before any touch (the lead counts as converted because a later payment followed a touch). Median = half the leads were faster. Click a band to list those leads.',
         stages_revised: 'Same leads as the Lead funnel, but a lead in Not Willing Now, Disqualified, Not Connected or P2 Completed that received a lead touch AFTER it entered that stage is counted under New (it is active again). Leads with no touch after the stage change stay in their stage. The stage moment comes from the Salesforce field-history log; leads with no logged change since 1 March 2026 use their creation date, or 1 March 2026 if older.',
         new_leads: 'Salesforce leads created (IST) inside the date range, whether or not they have a touch yet - the only figure on this page that includes leads without a touch. Deleted leads are excluded; duplicates are excluded unless toggled on. Lead filters (class, lead source, stage, LM reason, owner …) apply to the lead itself; touch filters (touch point, source, campaign, medium, staff) keep only leads with at least one such touch on any date. "With a touch" = at least one lead touch on record, any date.',
         leads_basis: f.basis === 'created' ? 'Main window = LEAD CREATED date: leads created in the range, with all their touches.' : 'Main window = TOUCH date: touches dated in the range.',
