@@ -28,14 +28,18 @@ const VALID_ANY = (sql: Sql) => sql`hp.deleted = false AND hp.is_success = true 
  * WHERE for analytics.v_lead_conv AS l: leads created inside the window, honouring the filter bar.
  * Lead filters apply to the lead itself; touch filters keep leads with at least one matching touch (any date).
  */
-export function newLeadWhere(sql: Sql, f: Filters, p: Period): Frag {
-  // IST calendar days expressed as a range on the raw timestamp, so the creation-date index is used
-  const c: Frag[] = [sql`l.created_at >= (${p.from}::date)::timestamp AT TIME ZONE 'Asia/Kolkata' AND l.created_at < (${p.to}::date + 1)::timestamp AT TIME ZONE 'Asia/Kolkata'`];
+export function newLeadWhere(sql: Sql, f: Filters, p: Period | null, opts: { validPay?: boolean } = {}): Frag {
+  // IST calendar days expressed as a range on the raw timestamp, so the creation-date index is used; p = null: no date window (Lead explorer)
+  const c: Frag[] = p ? [sql`l.created_at >= (${p.from}::date)::timestamp AT TIME ZONE 'Asia/Kolkata' AND l.created_at < (${p.to}::date + 1)::timestamp AT TIME ZONE 'Asia/Kolkata'`] : [];
   if (f.dups !== '1') c.push(sql`l.is_duplicate = false`);
   if (f.paid) c.push(f.paid === 'paid' ? sql`l.is_paid_lead = true` : sql`l.is_paid_lead IS NOT TRUE`);
   if (f.repeat) c.push(f.repeat === '1' ? sql`l.is_repeat = true` : sql`l.is_repeat IS NOT TRUE`);
-  if (f.converted === '1') c.push(sql`EXISTS (SELECT 1 FROM analytics.mv_payer m WHERE m.phone_key = l.phone_key)`);
-  if (f.converted === '0') c.push(sql`NOT EXISTS (SELECT 1 FROM analytics.mv_payer m WHERE m.phone_key = l.phone_key)`);
+  // validPay: the dashboard's conversion rule (valid payment, payment_method 0); otherwise any successful payment (payer table)
+  const paid = opts.validPay
+    ? sql`EXISTS (SELECT 1 FROM analytics.v_valid_payment vp WHERE vp.phone_key = l.phone_key)`
+    : sql`EXISTS (SELECT 1 FROM analytics.mv_payer m WHERE m.phone_key = l.phone_key)`;
+  if (f.converted === '1') c.push(paid);
+  if (f.converted === '0') c.push(sql`NOT ${paid}`);
   if (f.pre_existing) {
     const pre = sql`EXISTS (SELECT 1 FROM analytics.mv_payer m WHERE m.phone_key = l.phone_key AND m.first_payment_date < l.created_date)`;
     c.push(f.pre_existing === '1' ? pre : sql`NOT ${pre}`);

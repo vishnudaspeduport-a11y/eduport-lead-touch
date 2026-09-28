@@ -2,8 +2,9 @@ import { Hono } from 'hono';
 import type { Sql } from 'postgres';
 import type { AppEnv, Role } from '../env';
 import { handle, intParam, maskEmail, maskName, maskPhone } from '../http';
-import { activeDimKeys, leadWhere, parseFilters, resolvePeriods, type Frag } from '../filters';
+import { activeDimKeys, parseFilters, resolvePeriods, type Frag } from '../filters';
 import { getSql, release } from '../db';
+import { newLeadWhere } from './new_leads';
 
 export const leads = new Hono<AppEnv>();
 
@@ -22,6 +23,64 @@ const LIST_COLS = sql_cols([
   'payment_count', 'best_ic_status', 'lm_reason', 'sf_is_converted', 'sf_touch_count', 'is_open',
 ]);
 function sql_cols(cols: string[]) { return cols; }
+
+/** sort columns that live on the lead itself: page first, then enrich only the page */
+const LEAD_SORT = new Set(['created_at', 'lead_name', 'lead_source', 'lead_stage', 'class_group', 'owner_name', 'district', 'priority']);
+/** sort columns computed from the touches (the rest of SORTABLE comes from the payments) */
+const TOUCH_SORT = new Set(['total_touches', 'valid_touches', 'first_touch_at', 'last_touch_any_at', 'response_hours']);
+
+/**
+ * The explorer list. It used to read analytics.v_lead_base, which recomputes every lead's touch history (window functions over
+ * all touches) and payments on each call: ~40 s per page, enough to starve the database when several pages were open.
+ * Now: leads from the light lead view, touches from the materialized touch table, payments from the valid-payment view.
+ * `page` = { limit, offset }; offset 0 + a large limit serves the CSV export.
+ */
+function explorerQuery(sql: Sql, where: Frag, sortCol: string, dirIn: Frag, page: { limit: number; offset: number }, asc = false) {
+  // creation time is never null: a plain ASC / DESC lets the newest-first page walk the creation-date index instead of sorting every lead
+  const dir = sortCol === 'created_at' ? (asc ? sql`ASC` : sql`DESC`) : dirIn;
+
+  // step 1: pick the page's lead ids on a narrow row (id + sort key). Only the side the sort needs is computed for every lead.
+  let sortExpr: Frag; let sortJoin: Frag = sql``;
+  if (LEAD_SORT.has(sortCol)) sortExpr = sql`l.${sql(sortCol)}`;
+  else if (TOUCH_SORT.has(sortCol)) {
+    sortJoin = sql`LEFT JOIN (SELECT t.lead_id, count(*)::int AS total_touches, count(*) FILTER (WHERE t.is_pre_conversion)::int AS valid_touches,
+                                     min(t.touch_at) AS first_touch_at, max(t.touch_at) AS last_touch_any_at
+                              FROM analytics.mv_touch_flat t GROUP BY t.lead_id) ta ON ta.lead_id = l.lead_id`;
+    sortExpr = sortCol === 'total_touches' ? sql`COALESCE(ta.total_touches, 0)` : sortCol === 'valid_touches' ? sql`COALESCE(ta.valid_touches, 0)`
+      : sortCol === 'response_hours' ? sql`EXTRACT(epoch FROM ta.first_touch_at - l.created_at)` : sql`ta.${sql(sortCol)}`;
+  } else {
+    sortJoin = sql`LEFT JOIN (SELECT vp.phone_key, min(vp.payment_date) AS converted_at, sum(vp.amount) AS revenue
+                              FROM analytics.v_valid_payment vp WHERE vp.phone_key IS NOT NULL GROUP BY vp.phone_key) pay ON pay.phone_key = l.phone_key`;
+    sortExpr = sortCol === 'revenue' ? sql`COALESCE(pay.revenue, 0)` : sortCol === 'days_to_convert' ? sql`(pay.converted_at - l.created_date)` : sql`pay.converted_at`;
+  }
+  const ids = sql`SELECT l.lead_id, ${sortExpr} AS sk FROM analytics.v_lead_conv l ${sortJoin} WHERE ${where}
+                  ORDER BY sk ${dir}, l.lead_id LIMIT ${page.limit} OFFSET ${page.offset}`;
+
+  // step 2: the page's rows, with touches and payments looked up per lead (index probes)
+  const rows = sql`
+    SELECT l.lead_id, l.lead_name, l.first_name, l.last_name, l.mobile, l.email, l.phone_key, l.created_at, l.created_date, l.lead_source, l.lead_stage,
+           l.lead_type, l.priority, l.class_raw, l.class_group, l.district, l.city, l.owner_name, l.is_duplicate, l.is_paid_lead,
+           l.best_ic_status, l.lm_reason, l.sf_is_converted, l.sf_touch_count
+    FROM (${ids}) k JOIN analytics.v_lead_conv l ON l.lead_id = k.lead_id`;
+  const inner = sql`
+    SELECT s.*, COALESCE(ta.total_touches, 0) AS total_touches, COALESCE(ta.valid_touches, 0) AS valid_touches, analytics.touch_bucket(COALESCE(ta.valid_touches, 0)) AS touch_bucket,
+           ta.first_touch_at, ta.first_touch_point, ta.first_touch_source, ta.last_touch_at, ta.last_touch_point, ta.last_touch_any_at,
+           round((EXTRACT(epoch FROM ta.first_touch_at - s.created_at) / 3600)::numeric, 2) AS response_hours,
+           (COALESCE(pay.payment_count, 0) > 0) AS converted, pay.converted_at, (pay.converted_at - s.created_date)::int AS days_to_convert,
+           (pay.converted_at < s.created_date) AS pre_existing_customer, COALESCE(pay.revenue, 0) AS revenue, COALESCE(pay.payment_count, 0) AS payment_count,
+           (COALESCE(pay.payment_count, 0) = 0 AND s.lead_stage NOT IN ('Converted', 'Disqualified')) AS is_open
+    FROM (${rows}) s
+    LEFT JOIN LATERAL (
+      SELECT count(*)::int AS total_touches, count(*) FILTER (WHERE t.is_pre_conversion)::int AS valid_touches,
+             min(t.touch_at) AS first_touch_at, max(t.touch_at) FILTER (WHERE t.is_pre_conversion) AS last_touch_at, max(t.touch_at) AS last_touch_any_at,
+             (array_agg(t.touch_point ORDER BY t.touch_at, t.touch_id))[1] AS first_touch_point, (array_agg(t.source ORDER BY t.touch_at, t.touch_id))[1] AS first_touch_source,
+             (array_agg(t.touch_point ORDER BY t.touch_at DESC, t.touch_id DESC) FILTER (WHERE t.is_pre_conversion))[1] AS last_touch_point
+      FROM analytics.mv_touch_flat t WHERE t.lead_id = s.lead_id) ta ON true
+    LEFT JOIN LATERAL (
+      SELECT min(vp.payment_date) AS converted_at, count(*)::int AS payment_count, sum(vp.amount) AS revenue
+      FROM analytics.v_valid_payment vp WHERE vp.phone_key = s.phone_key) pay ON true`;
+  return sql<Rec[]>`SELECT ${sql(LIST_COLS)} FROM (${inner}) x ORDER BY ${sql(sortCol)} ${dir}, lead_id`;
+}
 
 function searchCond(sql: Sql, q: string): Frag {
   const s = q.trim();
@@ -54,16 +113,15 @@ leads.get('/leads', (c) =>
     const sortCol = SORTABLE[q.sort ?? ''] ?? 'created_at';
     const dir = q.dir === 'asc' ? sql`ASC NULLS FIRST` : sql`DESC NULLS LAST`;
     // the explorer is not limited by the date window: every lead in the replica, narrowed by the filter pickers and the search box
-    const where = sql`${leadWhere(sql, f, periods.current, { noPeriod: true })} AND ${searchCond(sql, q.q ?? '')}`;
-    // no filter, no search: count on the base table (the full view takes ~6 s to count)
+    void periods;
+    const where = sql`${newLeadWhere(sql, f, null, { validPay: true })} AND ${searchCond(sql, q.q ?? '')}`;
+    // no filter, no search: count on the base table
     const plain = !(q.q ?? '').trim() && activeDimKeys(f).length === 0 && !f.converted && !f.paid && !f.paid_touch;
     const countQ = plain
       ? sql<{ n: number }[]>`SELECT count(*)::int AS n FROM salesforce.lead_master__c l WHERE COALESCE(l.is_deleted__c, false) = false AND COALESCE(l.isdeleted, false) = false ${f.dups !== '1' ? sql`AND COALESCE(l.is_duplicate__c, false) = false` : sql``}`
-      : sql<{ n: number }[]>`SELECT count(*)::int AS n FROM analytics.v_lead_base l WHERE ${where}`;
+      : sql<{ n: number }[]>`SELECT count(*)::int AS n FROM analytics.v_lead_conv l WHERE ${where}`;
     const [rows, [tot]] = await Promise.all([
-      sql<Rec[]>`
-        SELECT ${sql(LIST_COLS)} FROM analytics.v_lead_base l WHERE ${where}
-        ORDER BY ${sql(sortCol)} ${dir}, l.lead_id LIMIT ${limit} OFFSET ${(page - 1) * limit}`,
+      explorerQuery(sql, where, sortCol, dir, { limit, offset: (page - 1) * limit }, q.dir === 'asc'),
       countQ,
     ]);
     return { page, limit, total: tot.n, rows: rows.map((r) => maskRow(r, role)), masked: role === 'viewer' };
@@ -71,7 +129,8 @@ leads.get('/leads', (c) =>
 );
 
 /** GET /api/leads/:id : full lead + touch timeline + ICs + payments + calls */
-leads.get('/leads/:id', (c) =>
+// the id pattern keeps this route from swallowing /leads/export.csv (registered below)
+leads.get('/leads/:id{[a-zA-Z0-9]+}', (c) =>
   handle(c, async ({ sql, role }) => {
     const id = c.req.param('id');
     if (!/^[a-zA-Z0-9]{15,18}$/.test(id)) throw Object.assign(new Error('bad lead id'), { status: 400 });
@@ -117,7 +176,8 @@ leads.get('/leads/export.csv', async (c) => {
   const sql = getSql(c.env);
   const sortCol = SORTABLE[q.sort ?? ''] ?? 'created_at';
   const dir = q.dir === 'asc' ? sql`ASC NULLS FIRST` : sql`DESC NULLS LAST`;
-  const where = sql`${leadWhere(sql, f, periods.current, { noPeriod: true })} AND ${searchCond(sql, q.q ?? '')}`;
+  void periods;
+  const where = sql`${newLeadWhere(sql, f, null, { validPay: true })} AND ${searchCond(sql, q.q ?? '')}`;
   const cols = LIST_COLS;
   const enc = new TextEncoder();
   const esc = (v: unknown) => {
@@ -130,7 +190,7 @@ leads.get('/leads/export.csv', async (c) => {
       try {
         controller.enqueue(enc.encode(cols.join(',') + '\n'));
         let n = 0;
-        const cursor = sql<Rec[]>`SELECT ${sql(cols)} FROM analytics.v_lead_base l WHERE ${where} ORDER BY ${sql(sortCol)} ${dir}, l.lead_id LIMIT ${cap}`.cursor(500);
+        const cursor = explorerQuery(sql, where, sortCol, dir, { limit: cap, offset: 0 }, q.dir === 'asc').cursor(500);
         for await (const batch of cursor) {
           let chunk = '';
           for (const r of batch) { const m = maskRow(r, role); chunk += cols.map((k) => esc(m[k])).join(',') + '\n'; n++; }
