@@ -76,8 +76,8 @@ function dimCond(sql: Sql, q: Record<string, string>): Frag {
   if (!dim || value === undefined) return sql`true`;
   const blank = value === '(null)' || value === '(blank)';
   if (dim === 'touched') {
-    const ex = sql`l.lead_id IN (SELECT t.lead_id FROM analytics.mv_touch_flat t)`;
-    return value === 'Touched' ? ex : sql`NOT (${ex})`;
+    const ex = sql`EXISTS (SELECT 1 FROM analytics.mv_touch_flat t WHERE t.lead_id = l.lead_id)`;
+    return value === 'Touched' ? ex : sql`NOT ${ex}`;
   }
   if (dim === 'call_reason') {
     return value === '(no call)' || blank
@@ -201,8 +201,10 @@ newLeads.get('/overview/new_leads/summary', (c) =>
     const rows = await sql<{ dim: string; key: string | null; leads: number; revenue: number | null }[]>`
       WITH sel AS (
         SELECT l.lead_id, l.phone_key, l.lead_stage, l.class_group, l.lead_source, l.owner_name, l.district, l.best_ic_status, l.lm_reason,
-               (l.lead_id IN (SELECT t.lead_id FROM analytics.mv_touch_flat t)) AS touched
-        FROM analytics.v_lead_conv l WHERE ${where}),
+               (tl.lead_id IS NOT NULL) AS touched
+        FROM analytics.v_lead_conv l
+        LEFT JOIN (SELECT DISTINCT t.lead_id FROM analytics.mv_touch_flat t) tl ON tl.lead_id = l.lead_id
+        WHERE ${where}),
       pay AS (
         SELECT DISTINCT ON (s.lead_id) s.lead_id, m.user_id, m.revenue
         FROM sel s JOIN analytics.mv_payer m ON m.phone_key = s.phone_key

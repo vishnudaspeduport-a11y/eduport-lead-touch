@@ -23,6 +23,7 @@ interface OverviewResponse {
     new_leads: number; new_leads_touched: number;
   };
   stages: { key: string; leads: number; converted: number }[];
+  stages_revised: { key: string; leads: number; converted: number; revived: number }[];
   ic_status: { key: string; leads: number; ics: number }[];
   touch_point: DimRow[]; source: DimRow[]; class_raw: DimRow[]; reason: DimRow[]; lm_reason: DimRow[]; medium: DimRow[]; campaign: DimRow[]; staff: DimRow[];
   daily: { d: string; touches: number; leads: number; converted: number }[];
@@ -76,6 +77,7 @@ export default function Overview() {
   const k = d?.kpis;
   const def = d?.definitions ?? {};
   const [drill, setDrill] = useState<Drill | null>(null);
+  const revived = d?.stages_revised?.find((s) => s.key === 'New')?.revived ?? 0;
   const open = (metric: DrillMetric, title: string, dim?: string, value?: string, subtitle?: string) => setDrill({ metric, title, dim, value, subtitle, summary: !dim });
   // New leads live on the lead table (not the touch table): own list / CSV / summary endpoints
   const openNew = (touched?: 'Touched' | 'No touch yet') => setDrill({
@@ -121,10 +123,15 @@ export default function Overview() {
         </>}
       </div>
 
-      <div className="grid gap-4 xl:grid-cols-2">
+      <div className="grid gap-4 xl:grid-cols-3">
         <ChartCard title="Lead funnel · LM stage" tone="tone-brand" subtitle="Total leads by current Lead Stage · click a slice to filter" loading={q.isLoading} error={q.error} rows={d?.stages ?? []} height={240}
           help="Current Lead Stage of the distinct leads that have a touch in the window.">
           <Donut data={(d?.stages ?? []).map((s) => ({ key: s.key, value: s.leads, secondary: s.converted, selected: (f.lists.lead_stage ?? []).includes(s.key) }))} valueLabel="Total leads" secondaryLabel="Converted" centerLabel="leads" onClick={(key) => toggleValue('lead_stage', key)} />
+        </ChartCard>
+        <ChartCard title="Revised Lead funnel · LM stage" tone="tone-violet" subtitle={`closed-stage leads touched again after the stage change count as New${revived ? ` · ${fmtInt(revived)} moved to New` : ''} · click a slice for the leads`} loading={q.isLoading} error={q.error} rows={d?.stages_revised ?? []} height={240}
+          help={def.stages_revised}>
+          <Donut data={(d?.stages_revised ?? []).map((s) => ({ key: s.key, value: s.leads, secondary: s.converted }))} valueLabel="Total leads" secondaryLabel="Converted" centerLabel="leads"
+            onClick={(key) => open('leads', `Revised funnel · ${key}`, 'revised_stage', key, key === 'New' ? 'leads in stage New plus closed-stage leads touched again after the stage change' : ['Not Willing Now', 'Disqualified', 'Not Connected', 'P2 Completed'].includes(key) ? `leads in stage ${key} with no touch after the stage change` : `leads in stage ${key}`)} />
         </ChartCard>
         <ChartCard title="Lead funnel · IC status" tone="tone-pink" subtitle="Total leads by Interested Course status · click a bar to filter (IC status)" loading={q.isLoading} error={q.error} rows={d?.ic_status ?? []} height={240}
           help="Interested Course status for the leads touched in the window, blank status excluded. A lead with several interested courses appears under each status.">

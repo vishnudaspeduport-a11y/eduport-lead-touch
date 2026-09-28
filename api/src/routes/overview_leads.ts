@@ -47,6 +47,14 @@ function dimCond(sql: Sql, q: Record<string, string>): Frag {
       ? sql`NOT EXISTS (SELECT 1 FROM salesforce.lead_calls c WHERE c.lead_id = t.lead_id AND c.last_reason IS NOT NULL)`
       : sql`t.lead_id IN (SELECT c.lead_id FROM salesforce.lead_calls c WHERE c.last_reason = ${value})`;
   }
+  if (dim === 'revised_stage') {
+    // Revised funnel slice: closed-stage leads touched after the stage change count as New; the rest keep their stage
+    const closed = ['Not Willing Now', 'Disqualified', 'Not Connected', 'P2 Completed'];
+    const react = sql`EXISTS (SELECT 1 FROM analytics.mv_touch_flat t3 WHERE t3.lead_id = t.lead_id AND t3.touch_at > analytics.stage_since(t.lead_id, t.lead_stage, t.lead_created_date::timestamptz))`;
+    if (value === 'New') return sql`(t.lead_stage = 'New' OR (t.lead_stage IN ${sql(closed)} AND ${react}))`;
+    if (closed.includes(value)) return sql`(t.lead_stage = ${value} AND NOT ${react})`;
+    return value === '(null)' ? sql`t.lead_stage IS NULL` : sql`t.lead_stage = ${value}`;
+  }
   if (dim === 'ic_status') {
     return sql`t.lead_id IN (SELECT ic.lead_master__c FROM salesforce.interested_course__c ic WHERE NOT ic.isdeleted AND btrim(ic.status__c) = ${value})`;
   }
