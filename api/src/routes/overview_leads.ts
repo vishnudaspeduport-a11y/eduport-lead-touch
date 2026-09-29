@@ -67,8 +67,8 @@ function dimCond(sql: Sql, q: Record<string, string>): Frag {
   }
   if (dim === 'course' || dim === 'grade') {
     // purchased course / grade: any valid payment of the lead's app user on that batch
-    const keyExpr = dim === 'course' ? sql`btrim(COALESCE(b.course_title, 'batch ' || hp.batch_id::text))` : sql`COALESCE(b.grade_title, 'No Grade On Batch')`;
-    return sql`EXISTS (SELECT 1 FROM app.home_payment hp LEFT JOIN app.core_batch b ON b.id = hp.batch_id
+    const keyExpr = dim === 'course' ? sql`analytics.course_label(b.title, b.course_title, COALESCE(hp.enrollment_batch_id, hp.batch_id))` : sql`COALESCE(b.grade_title, 'No Grade On Batch')`;
+    return sql`EXISTS (SELECT 1 FROM app.home_payment hp LEFT JOIN app.core_batch b ON b.id = COALESCE(hp.enrollment_batch_id, hp.batch_id)
                        WHERE hp.user_id = t.app_user_id AND ${VALID_PAY(sql)} AND ${keyExpr} = ${value})`;
   }
   const col = FLAT_COLS[dim as keyof typeof FLAT_COLS] ?? (dim === 'touch_date' ? 'touch_date' : undefined);
@@ -249,12 +249,12 @@ overviewLeads.get('/overview/leads/summary', (c) =>
       UNION ALL
       SELECT p.dim, p.key, count(DISTINCT p.lead_id)::int AS leads, sum(p.amount)::float8 AS revenue
       FROM (
-        SELECT s.lead_id, hp.amount, 'course' AS dim, btrim(COALESCE(b.course_title, 'batch ' || hp.batch_id::text)) AS key
-        FROM sel s JOIN app.home_payment hp ON hp.user_id = s.app_user_id LEFT JOIN app.core_batch b ON b.id = hp.batch_id
+        SELECT s.lead_id, hp.amount, 'course' AS dim, analytics.course_label(b.title, b.course_title, COALESCE(hp.enrollment_batch_id, hp.batch_id)) AS key
+        FROM sel s JOIN app.home_payment hp ON hp.user_id = s.app_user_id LEFT JOIN app.core_batch b ON b.id = COALESCE(hp.enrollment_batch_id, hp.batch_id)
         WHERE ${VALID_PAY(sql)} ${payWin}
         UNION ALL
         SELECT s.lead_id, hp.amount, 'grade' AS dim, COALESCE(b.grade_title, 'No Grade On Batch') AS key
-        FROM sel s JOIN app.home_payment hp ON hp.user_id = s.app_user_id LEFT JOIN app.core_batch b ON b.id = hp.batch_id
+        FROM sel s JOIN app.home_payment hp ON hp.user_id = s.app_user_id LEFT JOIN app.core_batch b ON b.id = COALESCE(hp.enrollment_batch_id, hp.batch_id)
         WHERE ${VALID_PAY(sql)} ${payWin}
       ) p
       GROUP BY p.dim, p.key`;

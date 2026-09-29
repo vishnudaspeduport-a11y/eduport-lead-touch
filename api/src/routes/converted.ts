@@ -36,8 +36,8 @@ const DIMS: Record<string, string> = {
 /** payments-in-window semi-join (+ optional grade / course restriction) */
 function payWindow(sql: Sql, p: Period, grades: string[], courses: string[], pm: PayMethod = 'all'): Frag {
   const gradeCond = grades.length ? sql`AND COALESCE(b.grade_title, 'No Grade On Batch') IN ${sql(grades)}` : sql``;
-  const courseCond = courses.length ? sql`AND btrim(COALESCE(b.course_title, 'batch ' || hp.batch_id::text)) IN ${sql(courses)}` : sql``;
-  return sql`EXISTS (SELECT 1 FROM app.home_payment hp LEFT JOIN app.core_batch b ON b.id = hp.batch_id
+  const courseCond = courses.length ? sql`AND analytics.course_label(b.title, b.course_title, COALESCE(hp.enrollment_batch_id, hp.batch_id)) IN ${sql(courses)}` : sql``;
+  return sql`EXISTS (SELECT 1 FROM app.home_payment hp LEFT JOIN app.core_batch b ON b.id = COALESCE(hp.enrollment_batch_id, hp.batch_id)
                      WHERE hp.user_id = m.user_id AND ${VALID(sql, pm)} AND hp.payment_date BETWEEN ${p.from} AND ${p.to} ${gradeCond} ${courseCond})`;
 }
 
@@ -50,7 +50,7 @@ function payRestrict(sql: Sql, q: Record<string, string>, skip?: string): Frag {
   if (q.dim === 'course' && q.value !== undefined) courses.push(q.value);
   const c: Frag[] = [];
   if (grades.length) c.push(sql`COALESCE(b.grade_title, 'No Grade On Batch') IN ${sql(grades)}`);
-  if (courses.length) c.push(sql`btrim(COALESCE(b.course_title, 'batch ' || hp.batch_id::text)) IN ${sql(courses)}`);
+  if (courses.length) c.push(sql`analytics.course_label(b.title, b.course_title, COALESCE(hp.enrollment_batch_id, hp.batch_id)) IN ${sql(courses)}`);
   return c.reduce((a, x) => sql`${a} AND ${x}`, sql`true`);
 }
 
@@ -108,25 +108,25 @@ converted.get('/converted', (c) =>
         FROM analytics.mv_payer m WHERE ${w}`,
       sql<{ payments_all: number; revenue_all: number }[]>`
         SELECT count(*)::int AS payments_all, COALESCE(sum(hp.amount), 0)::float8 AS revenue_all
-        FROM app.home_payment hp LEFT JOIN app.core_batch b ON b.id = hp.batch_id WHERE ${V} AND ${R} AND hp.payment_date BETWEEN ${p.from} AND ${p.to}
+        FROM app.home_payment hp LEFT JOIN app.core_batch b ON b.id = COALESCE(hp.enrollment_batch_id, hp.batch_id) WHERE ${V} AND ${R} AND hp.payment_date BETWEEN ${p.from} AND ${p.to}
           AND hp.user_id IN (SELECT m.user_id FROM analytics.mv_payer m WHERE ${w})`,
       byDim(sql, wx('lead_stage'), 'lead_stage', p), byDim(sql, wx('touch_point'), 'last_touch_point', p), byDim(sql, wx('source'), 'last_touch_source', p), byDim(sql, wx('medium'), 'last_touch_medium', p),
       byDim(sql, wx('campaign'), 'last_touch_campaign', p), byDim(sql, wx('staff'), 'last_touch_staff', p),
       sql<PayerDim[]>`
-        SELECT btrim(COALESCE(b.course_title, 'batch ' || hp.batch_id::text)) AS key, count(DISTINCT hp.user_id)::int AS users, count(*)::int AS touches,
+        SELECT analytics.course_label(b.title, b.course_title, COALESCE(hp.enrollment_batch_id, hp.batch_id)) AS key, count(DISTINCT hp.user_id)::int AS users, count(*)::int AS touches,
                COALESCE(sum(hp.amount), 0)::float8 AS revenue, 0::int AS new_users, NULL::float8 AS share_pct
-        FROM app.home_payment hp LEFT JOIN app.core_batch b ON b.id = hp.batch_id
+        FROM app.home_payment hp LEFT JOIN app.core_batch b ON b.id = COALESCE(hp.enrollment_batch_id, hp.batch_id)
         WHERE ${V} AND ${payRestrict(sql, q, 'course')} AND hp.payment_date BETWEEN ${p.from} AND ${p.to} AND hp.user_id IN (SELECT m.user_id FROM analytics.mv_payer m WHERE ${wx('course')})
         GROUP BY 1 ORDER BY users DESC LIMIT 200`,
       sql<PayerDim[]>`
         SELECT COALESCE(b.grade_title, 'No Grade On Batch') AS key, count(DISTINCT hp.user_id)::int AS users, count(*)::int AS touches,
                COALESCE(sum(hp.amount), 0)::float8 AS revenue, 0::int AS new_users, NULL::float8 AS share_pct
-        FROM app.home_payment hp LEFT JOIN app.core_batch b ON b.id = hp.batch_id
+        FROM app.home_payment hp LEFT JOIN app.core_batch b ON b.id = COALESCE(hp.enrollment_batch_id, hp.batch_id)
         WHERE ${V} AND ${payRestrict(sql, q, 'grade')} AND hp.payment_date BETWEEN ${p.from} AND ${p.to} AND hp.user_id IN (SELECT m.user_id FROM analytics.mv_payer m WHERE ${wx('grade')})
         GROUP BY 1 ORDER BY users DESC`,
       sql<{ d: string; users: number; payments: number; revenue: number }[]>`
         SELECT hp.payment_date::text AS d, count(DISTINCT hp.user_id)::int AS users, count(*)::int AS payments, COALESCE(sum(hp.amount), 0)::float8 AS revenue
-        FROM app.home_payment hp LEFT JOIN app.core_batch b ON b.id = hp.batch_id WHERE ${V} AND ${R} AND hp.payment_date BETWEEN ${p.from} AND ${p.to} AND hp.user_id IN (SELECT m.user_id FROM analytics.mv_payer m WHERE ${w})
+        FROM app.home_payment hp LEFT JOIN app.core_batch b ON b.id = COALESCE(hp.enrollment_batch_id, hp.batch_id) WHERE ${V} AND ${R} AND hp.payment_date BETWEEN ${p.from} AND ${p.to} AND hp.user_id IN (SELECT m.user_id FROM analytics.mv_payer m WHERE ${w})
         GROUP BY 1 ORDER BY 1`,
       sql<{ key: string }[]>`SELECT DISTINCT COALESCE(grade_title, 'No Grade On Batch') AS key FROM app.core_batch ORDER BY 1`,
     ]);
@@ -146,8 +146,8 @@ converted.get('/converted', (c) =>
         no_lead: 'Paying users whose phone matches no Salesforce lead.',
         credit: 'Every user is credited to ONE touch: the latest touch dated on/before its last valid payment day, across all Salesforce leads with the same phone. If that last touch is an Eduport App touch made less than 2 hours before the payment, the credit goes to the touch before it; when the app touch is the only touch, it keeps the credit. Touch point, source, medium, campaign and staff come from that touch.',
         touches: 'Number of touches on/before the payment for the users in the row.',
-        course: 'Users by the course they bought; a user buying two courses appears under both.',
-        grade: 'Grade of the course that was bought, not the class recorded on the lead.',
+        course: 'Users by the course they bought; a user buying two courses appears under both. The course is the one of the batch on the payment\x27s ENROLLMENT (where the student is enrolled now), with " - Fastrack" / " - Booster" added from the batch name; the batch written on the payment is used only when the enrollment has none.',
+        grade: 'Grade of the course that was bought (batch of the payment\x27s enrollment), not the class recorded on the lead.',
         stage: 'Lead stage of the user\'s most recently created Salesforce lead (one lead per user).',
         revenue: 'Sum of payment amounts of the users in the row (all their valid payments, any method, any date).',
         pm: 'Payment method: "All" counts every successful payment; "Method 0" counts payment_method 0 only, the rule the Overview uses; "Method 1" is the rest (gateway EMI instalments). In the user list, course / grade / payments / revenue cover the payments inside the selected dates; the all-time columns cover every payment of the user.',
@@ -195,10 +195,10 @@ function listQuery(sql: Sql, f: Filters, p: Period, q: Record<string, string>, p
       LEFT JOIN salesforce.lead_master__c l ON l.id = m.lead_id
       LEFT JOIN app.home_customuser u ON u.id = m.user_id
       LEFT JOIN LATERAL (
-        SELECT string_agg(DISTINCT COALESCE(b.title, 'batch ' || hp.batch_id::text), ' | ') AS courses,
+        SELECT string_agg(DISTINCT COALESCE(b.title, 'batch ' || COALESCE(hp.enrollment_batch_id, hp.batch_id)::text), ' | ') AS courses,
                string_agg(DISTINCT COALESCE(b.grade_title, 'No Grade On Batch'), ' | ') AS grades,
                count(*)::int AS payments, min(hp.payment_date) AS first_payment_date, max(hp.payment_date) AS last_payment_date, sum(hp.amount)::float8 AS revenue
-        FROM app.home_payment hp LEFT JOIN app.core_batch b ON b.id = hp.batch_id
+        FROM app.home_payment hp LEFT JOIN app.core_batch b ON b.id = COALESCE(hp.enrollment_batch_id, hp.batch_id)
         WHERE hp.user_id = m.user_id AND ${VALID(sql, payMethod(q))} AND hp.payment_date BETWEEN ${p.from} AND ${p.to} AND ${payRestrict(sql, q)}) pw ON true
       WHERE ${w} AND ${searchCond(sql, q.q ?? '')}
     ) x

@@ -101,8 +101,8 @@ function dimCond(sql: Sql, q: Record<string, string>): Frag {
       : sql`l.lead_id IN (SELECT ic.lead_master__c FROM salesforce.interested_course__c ic WHERE NOT ic.isdeleted AND btrim(ic.status__c) = ${value})`;
   }
   if (dim === 'course' || dim === 'grade') {
-    const keyExpr = dim === 'course' ? sql`btrim(COALESCE(b.course_title, 'batch ' || hp.batch_id::text))` : sql`COALESCE(b.grade_title, 'No Grade On Batch')`;
-    return sql`EXISTS (SELECT 1 FROM analytics.v_user_phone up JOIN analytics.mv_payer m ON m.user_id = up.user_id JOIN app.home_payment hp ON hp.user_id = m.user_id LEFT JOIN app.core_batch b ON b.id = hp.batch_id
+    const keyExpr = dim === 'course' ? sql`analytics.course_label(b.title, b.course_title, COALESCE(hp.enrollment_batch_id, hp.batch_id))` : sql`COALESCE(b.grade_title, 'No Grade On Batch')`;
+    return sql`EXISTS (SELECT 1 FROM analytics.v_user_phone up JOIN analytics.mv_payer m ON m.user_id = up.user_id JOIN app.home_payment hp ON hp.user_id = m.user_id LEFT JOIN app.core_batch b ON b.id = COALESCE(hp.enrollment_batch_id, hp.batch_id)
                        WHERE up.phone_key = l.phone_key AND ${VALID_ANY(sql)} AND ${keyExpr} = ${value})`;
   }
   const leadCol: Record<string, string> = { lead_stage: 'lead_stage', class_group: 'class_group', lead_source: 'lead_source', owner: 'owner_name', district: 'district', lm_reason: 'lm_reason', class_raw: 'class_raw', city: 'city' };
@@ -240,8 +240,8 @@ newLeads.get('/overview/new_leads/summary', (c) =>
       GROUP BY d.dim, d.key
       UNION ALL
       SELECT d.dim, d.key, count(DISTINCT pay.lead_id)::int, sum(hp.amount)::float8
-      FROM pay JOIN app.home_payment hp ON hp.user_id = pay.user_id LEFT JOIN app.core_batch b ON b.id = hp.batch_id
-      CROSS JOIN LATERAL (VALUES ('course', btrim(COALESCE(b.course_title, 'batch ' || hp.batch_id::text))), ('grade', COALESCE(b.grade_title, 'No Grade On Batch'))) AS d(dim, key)
+      FROM pay JOIN app.home_payment hp ON hp.user_id = pay.user_id LEFT JOIN app.core_batch b ON b.id = COALESCE(hp.enrollment_batch_id, hp.batch_id)
+      CROSS JOIN LATERAL (VALUES ('course', analytics.course_label(b.title, b.course_title, COALESCE(hp.enrollment_batch_id, hp.batch_id))), ('grade', COALESCE(b.grade_title, 'No Grade On Batch'))) AS d(dim, key)
       WHERE ${VALID_ANY(sql)} ${payWin}
       GROUP BY d.dim, d.key`;
     const one = (dim: string) => rows.find((r) => r.dim === dim);

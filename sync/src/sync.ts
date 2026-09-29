@@ -271,20 +271,23 @@ interface AppTableSpec { name: string; select: (src: Sql, since: Date | null) =>
 // Minimal copy (Supabase free tier): only payments that can ever count as valid + the users behind them,
 // and only the columns the analytics views read. Every payment_method is copied (0 = Tableau rule, 1 = gateway EMI
 // instalments; the Converted page can switch). Validity is still evaluated in the analytics views, so a payment
-// that is refunded / deleted later is corrected by the 45-day incremental tail.
+// that is refunded / deleted later is corrected by the 45-day incremental tail. enrollment_batch_id = the batch of the payment's
+// enrollment (course / grade of a purchase follow the enrollment, like the Metabase sales query); a batch move is picked up inside the same tail.
 const VALID = `p.deleted = false AND p.is_success = true AND p.payment_success = true`;
 const APP_TABLES: AppTableSpec[] = [
   {
     name: 'home_payment', stampCol: 'created',
     select: (src, since) => (since
       ? src`SELECT p.id, p.user_id, p.payment_method, p.payment_type, p.deleted, p.is_success, p.payment_success, p.payment_date, p.payment_time, p.created,
-                   p.amount, p.total, p.tuition_fees, p.discount, p.refund_amount, p.course_id, p.course_new_id, p.batch_id, p.sales_person_id, p.enrollment_id
-            FROM public.home_payment p
+                   p.amount, p.total, p.tuition_fees, p.discount, p.refund_amount, p.course_id, p.course_new_id, p.batch_id, p.sales_person_id, p.enrollment_id,
+                   he.batch_id AS enrollment_batch_id
+            FROM public.home_payment p LEFT JOIN public.home_enrollment he ON he.id = p.enrollment_id
             WHERE p.created > ${since}::timestamptz - interval '45 days' OR p.payment_date >= (${since}::date - 45)
             ORDER BY p.id`.cursor(5000)
       : src.unsafe(`SELECT p.id, p.user_id, p.payment_method, p.payment_type, p.deleted, p.is_success, p.payment_success, p.payment_date, p.payment_time, p.created,
-                   p.amount, p.total, p.tuition_fees, p.discount, p.refund_amount, p.course_id, p.course_new_id, p.batch_id, p.sales_person_id, p.enrollment_id
-            FROM public.home_payment p WHERE ${VALID} ORDER BY p.id`).cursor(5000)),
+                   p.amount, p.total, p.tuition_fees, p.discount, p.refund_amount, p.course_id, p.course_new_id, p.batch_id, p.sales_person_id, p.enrollment_id,
+                   he.batch_id AS enrollment_batch_id
+            FROM public.home_payment p LEFT JOIN public.home_enrollment he ON he.id = p.enrollment_id WHERE ${VALID} ORDER BY p.id`).cursor(5000)),
   },
   {
     name: 'home_customuser', stampCol: 'updated_at',
