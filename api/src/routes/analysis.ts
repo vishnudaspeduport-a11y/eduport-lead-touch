@@ -39,11 +39,12 @@ analysis.post('/analysis/phones', async (c) => {
         LEFT JOIN salesforce."user" u ON u.id::text = l.ownerid::text
         WHERE COALESCE(l.isdeleted, false) = false AND COALESCE(l.is_deleted__c, false) = false),
       pay AS (
-        SELECT p.phone_key, min(cu.id) AS eps_id, min(hp.payment_date) AS first_payment_date, max(hp.payment_date) AS last_payment_date,
+        SELECT p.phone_key, min(cu.user_id) AS eps_id, min(hp.payment_date) AS first_payment_date, max(hp.payment_date) AS last_payment_date,
                count(*)::int AS payments, sum(hp.amount)::float8 AS revenue,
                string_agg(DISTINCT COALESCE(b.title, 'batch ' || hp.batch_id::text), ' | ') AS courses
-        FROM p JOIN app.home_customuser cu ON analytics.phone_key(cu.phone) = p.phone_key AND cu.is_deleted = false
-        JOIN app.home_payment hp ON hp.user_id = cu.id AND hp.payment_method = 0 AND hp.deleted = false AND hp.is_success = true AND hp.payment_success = true
+        -- the paying account's own phone or its alternative number
+        FROM p JOIN analytics.v_user_phone cu ON cu.phone_key = p.phone_key
+        JOIN app.home_payment hp ON hp.user_id = cu.user_id AND hp.payment_method = 0 AND hp.deleted = false AND hp.is_success = true AND hp.payment_success = true
         LEFT JOIN app.core_batch b ON b.id = hp.batch_id
         GROUP BY 1),
       tch AS (

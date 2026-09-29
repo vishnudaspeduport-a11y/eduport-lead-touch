@@ -50,7 +50,7 @@ function explorerQuery(sql: Sql, where: Frag, sortCol: string, dirIn: Frag, page
       : sortCol === 'response_hours' ? sql`EXTRACT(epoch FROM ta.first_touch_at - l.created_at)` : sql`ta.${sql(sortCol)}`;
   } else {
     sortJoin = sql`LEFT JOIN (SELECT vp.phone_key, min(vp.payment_date) AS converted_at, sum(vp.amount) AS revenue
-                              FROM analytics.v_valid_payment vp WHERE vp.phone_key IS NOT NULL GROUP BY vp.phone_key) pay ON pay.phone_key = l.phone_key`;
+                              FROM analytics.v_valid_payment_x vp WHERE vp.phone_key IS NOT NULL GROUP BY vp.phone_key) pay ON pay.phone_key = l.phone_key`;
     sortExpr = sortCol === 'revenue' ? sql`COALESCE(pay.revenue, 0)` : sortCol === 'days_to_convert' ? sql`(pay.converted_at - l.created_date)` : sql`pay.converted_at`;
   }
   const ids = sql`SELECT l.lead_id, ${sortExpr} AS sk FROM analytics.v_lead_conv l ${sortJoin} WHERE ${where}
@@ -78,7 +78,7 @@ function explorerQuery(sql: Sql, where: Frag, sortCol: string, dirIn: Frag, page
       FROM analytics.mv_touch_flat t WHERE t.lead_id = s.lead_id) ta ON true
     LEFT JOIN LATERAL (
       SELECT min(vp.payment_date) AS converted_at, count(*)::int AS payment_count, sum(vp.amount) AS revenue
-      FROM analytics.v_valid_payment vp WHERE vp.phone_key = s.phone_key) pay ON true`;
+      FROM analytics.v_valid_payment_x vp WHERE vp.phone_key = s.phone_key) pay ON true`;
   return sql<Rec[]>`SELECT ${sql(LIST_COLS)} FROM (${inner}) x ORDER BY ${sql(sortCol)} ${dir}, lead_id`;
 }
 
@@ -149,7 +149,7 @@ leads.get('/leads/:id{[a-zA-Z0-9]+}', (c) =>
       phoneKey
         ? sql<Rec[]>`SELECT vp.payment_id, vp.payment_date::text, b.course_title AS course, b.title AS batch, vp.amount::float8, vp.total::float8, vp.discount::float8, vp.refund_amount::float8,
                             vp.payment_time::text, vp.course_new_id, vp.batch_id, vp.sales_person_id, vp.enrollment_id, vp.payment_type
-                     FROM analytics.v_valid_payment vp LEFT JOIN app.core_batch b ON b.id = vp.batch_id
+                     FROM analytics.v_valid_payment_x vp LEFT JOIN app.core_batch b ON b.id = vp.batch_id
                      WHERE vp.phone_key = ${phoneKey} ORDER BY vp.payment_date, vp.payment_id LIMIT 100`
         : Promise.resolve([] as Rec[]),
       // per-lead call summary (salesforce.lead_calls, reduced from the Salesforce call log since May 2026)
