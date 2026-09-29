@@ -7,7 +7,7 @@ import { DataTable, type Col } from '../components/DataTable';
 import { DailyLines, Donut, HBars } from '../charts';
 import { CardSearch, Icon, Note, PageHeader, Segmented, Skeleton, useDebounce } from '../components/ui';
 import { KpiTile, type KpiSplit } from '../components/KpiTile';
-import { DrillDrawer, NEW_LEAD_COLS, NEW_LEAD_SORTS, type Drill, type DrillMetric } from '../components/DrillDrawer';
+import { DrillDrawer, FEE_COLS, NEW_LEAD_COLS, NEW_LEAD_SORTS, type Drill, type DrillMetric } from '../components/DrillDrawer';
 
 interface DimRow { key: string; touches: number; leads: number; converted: number; converted_first: number; conv_rate?: number | null }
 interface OverviewResponse {
@@ -91,6 +91,8 @@ export default function Overview() {
   ] : [];
   const revived = d?.stages_revised?.find((s) => s.key === 'New')?.revived ?? 0;
   const open = (metric: DrillMetric, title: string, dim?: string, value?: string, subtitle?: string) => setDrill({ metric, title, dim, value, subtitle, summary: !dim });
+  const openFee = (title: string) => setDrill({ metric: 'fee_paid', title, columns: FEE_COLS, summary: true,
+    subtitle: `leads of the selection whose app account paid ${k?.fee_window.from ?? f.from} → ${k?.fee_window.to ?? f.to} · fee received and proposed fee per lead` });
   // New leads live on the lead table (not the touch table): own list / CSV / summary endpoints
   const openNew = (touched?: 'Touched' | 'No touch yet', title = 'New leads', union = false) => setDrill({
     metric: 'new_leads', title, subtitle: union ? `leads created ${f.from} → ${f.to} (touched or not) plus older leads touched in those dates` : `Salesforce leads created ${f.from} → ${f.to}, touched or not`,
@@ -129,9 +131,9 @@ export default function Overview() {
           <Kpi tone="tone-teal" icon={<Icon.Check />} title="Paid · stage not Converted" value={fmtInt(k.paid_other_stage)} sub="counted in Total converted, but the Salesforce stage was never moved to Converted" def={def.paid_other_stage} onClick={() => open('paid_other_stage', 'Paid · stage not Converted')} />
           <Kpi tone="tone-violet" icon={<Icon.Touch />} title="Lost leads with new activity" value={fmtInt(k.stage_react)} sub={`of ${fmtInt(k.stage_react_total)} leads in Not Willing Now / Disqualified / Not Connected / P2 Completed · new touch after the stage was set`} def={def.stage_react}
             onClick={() => open('stage_react', 'Lost leads with new activity')} />
-          <Kpi tone="tone-red" icon={<Icon.Spark />} title="Proposed fee" value={fmtINR(k.proposed_fee)} def={def.proposed_fee}
+          <Kpi tone="tone-red" icon={<Icon.Spark />} title="Proposed fee" value={fmtINR(k.proposed_fee)} def={def.proposed_fee} onClick={() => openFee('Proposed fee')}
             sub={`fee − discount of ${fmtInt(k.fee_enrollments)} enrollments paid ${k.fee_window.from} → ${k.fee_window.to}${k.fee_enrollments_unknown ? ` · ${fmtInt(k.fee_enrollments_unknown)} without a fee on record` : ''}`} />
-          <Kpi tone="tone-amber" icon={<Icon.Check />} title="Fee received" value={fmtINR(k.fee_received)} def={def.fee_received}
+          <Kpi tone="tone-amber" icon={<Icon.Check />} title="Fee received" value={fmtINR(k.fee_received)} def={def.fee_received} onClick={() => openFee('Fee received')}
             sub={`${fmtInt(k.fee_payments)} payments by ${fmtInt(k.fee_payers)} users · ${k.fee_window.from} → ${k.fee_window.to}${k.proposed_fee ? ` · ${fmtPct((k.fee_received / k.proposed_fee) * 100)} of the proposed fee` : ''}`} />
         </>}
       </div>

@@ -7,7 +7,7 @@ import { LeadDrawer } from './LeadDrawer';
 import { DrillSummary } from './DrillSummary';
 import { ErrorNote, Icon, Skeleton, useDebounce } from './ui';
 
-export type DrillMetric = 'leads' | 'touches' | 'converted' | 'first_touch' | 'last_touch' | 'stale_new' | 'stale_not_connected' | 'converted_first' | 'sf_converted' | 'stage_conv_unpaid' | 'paid_other_stage' | 'stage_react' | 'avg_alltime' | 'avg_window' | 'new_leads';
+export type DrillMetric = 'leads' | 'touches' | 'converted' | 'first_touch' | 'last_touch' | 'stale_new' | 'stale_not_connected' | 'converted_first' | 'sf_converted' | 'stage_conv_unpaid' | 'paid_other_stage' | 'stage_react' | 'avg_alltime' | 'avg_window' | 'new_leads' | 'fee_paid';
 export interface Drill {
   metric: DrillMetric; title: string; subtitle?: string; dim?: string; value?: string;
   /** alternative list endpoint (default /overview/leads) */
@@ -23,6 +23,7 @@ const METRIC_LABEL: Record<DrillMetric, string> = {
   converted_first: 'leads whose first payment came after a touch',
   sf_converted: 'leads flagged Is_Converted__c in Salesforce', stage_conv_unpaid: 'leads in stage Converted with no valid payment on their phone (any date)', paid_other_stage: 'leads with a valid payment (Total converted rule) whose stage is not Converted', stage_react: 'leads in Not Willing Now / Disqualified / Not Connected / P2 Completed that received a new touch after that stage was set', avg_alltime: 'leads with a valid payment (all touches, no date filter)', avg_window: 'leads with a valid payment touched in the window',
   new_leads: 'Salesforce leads created inside the date range, touched or not',
+  fee_paid: 'leads of the selection whose app account paid inside the date range',
 };
 
 type Row = Record<string, unknown>;
@@ -64,6 +65,31 @@ const COLS: Col<Row>[] = [
   { key: 'sf_is_converted', header: 'SF converted', render: yesNo },
   { key: 'is_duplicate', header: 'Duplicate', render: yesNo },
   { key: 'email', header: 'Email' },
+  { key: 'lead_id', header: 'Salesforce Id' },
+];
+
+/** columns of the Proposed fee / Fee received list: the money columns first */
+export const FEE_COLS: Col<Row>[] = [
+  { key: 'lead_name', header: 'Lead ID' },
+  { key: 'eps_id', header: 'EPS ID', render: (v) => (v == null ? '–' : String(v)) },
+  { key: 'first_name', header: 'Name', render: (v, r) => `${v ?? ''} ${r.last_name ?? ''}`.trim() || '–' },
+  { key: 'mobile', header: 'Phone' },
+  { key: 'payments_in_range', header: 'Payments (in range)', align: 'right' },
+  { key: 'fee_received', header: 'Fee received (in range)', align: 'right', render: (v) => fmtINR(v as number) },
+  { key: 'proposed_fee', header: 'Proposed fee', align: 'right', render: (v) => fmtINR(v as number) },
+  { key: 'courses', header: 'Course / batch' },
+  { key: 'converted_at', header: 'First payment' },
+  { key: 'last_payment_date', header: 'Last payment' },
+  { key: 'revenue', header: 'Paid (all time)', align: 'right', render: (v) => fmtINR(v as number) },
+  { key: 'lead_stage', header: 'Stage' },
+  { key: 'class_raw', header: 'Class' },
+  { key: 'lead_source', header: 'Lead source' },
+  { key: 'lead_created_date', header: 'Created' },
+  { key: 'n_touches_all', header: 'Touches (all)', align: 'right' },
+  { key: 'last_touch_point', header: 'Last valid touch' },
+  { key: 'owner_name', header: 'Owner' },
+  { key: 'last_call_at', header: 'Last call', render: (v) => fmtDateTime(v as string) },
+  { key: 'last_call_reason', header: 'Last call reason' },
   { key: 'lead_id', header: 'Salesforce Id' },
 ];
 

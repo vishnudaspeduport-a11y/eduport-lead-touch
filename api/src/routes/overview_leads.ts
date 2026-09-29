@@ -20,7 +20,7 @@ import { paymentPeriod } from '../filters';
 export const overviewLeads = new Hono<AppEnv>();
 
 type Rec = Record<string, unknown>;
-const METRICS = ['leads', 'touches', 'converted', 'first_touch', 'last_touch', 'stale_new', 'stale_not_connected', 'converted_first', 'sf_converted', 'stage_conv_unpaid', 'paid_other_stage', 'stage_react', 'avg_alltime', 'avg_window'] as const;
+const METRICS = ['leads', 'touches', 'converted', 'first_touch', 'last_touch', 'stale_new', 'stale_not_connected', 'converted_first', 'sf_converted', 'stage_conv_unpaid', 'paid_other_stage', 'stage_react', 'avg_alltime', 'avg_window', 'fee_paid'] as const;
 type Metric = (typeof METRICS)[number];
 
 const SORTABLE: Record<string, string> = {
@@ -35,6 +35,7 @@ const COLS = [
   'touches_in_window', 'n_touches_all', 'first_touch_in_window', 'last_touch_in_window', 'last_touch_any', 'days_since_last_touch', 'touch_points', 'sources', 'staff',
   'tab_converted', 'first_touch_point', 'last_touch_point', 'converted_first', 'converted', 'converted_at', 'last_payment_date', 'revenue', 'courses', 'sf_is_converted', 'sf_touch_count',
   'stage_since', 'touches_after_stage', 'calls', 'first_call_at', 'last_call_at', 'last_call_reason', 'last_call_status',
+  'payments_in_range', 'fee_received', 'proposed_fee',
 ];
 
 const VALID_PAY = (sql: Sql) => sql`hp.payment_method = 0 AND hp.deleted = false AND hp.is_success = true AND hp.payment_success = true`;
@@ -101,6 +102,7 @@ function metricHaving(sql: Sql, metric: Metric, p: Period, f?: Filters, q: Recor
         AND (SELECT max(t2.touch_at) FROM analytics.mv_touch_flat t2 WHERE t2.lead_id = t.lead_id) > analytics.stage_since(t.lead_id, max(t.lead_stage), max(t.lead_created_date)::timestamptz)`;
     case 'paid_other_stage': return sql`bool_or(${conv}) AND max(t.lead_stage) IS DISTINCT FROM 'Converted'`;
     case 'avg_alltime': case 'avg_window': return sql`bool_or(t.converted)`;
+    case 'fee_paid': return sql`true`;   // the payment condition is part of the row selection (feeLeads)
     default: return sql`true`;
   }
 }
@@ -121,18 +123,35 @@ function maskRow(r: Rec, role: Role): Rec {
   return { ...r, mobile: maskPhone(r.mobile as string | null, role), email: maskEmail(r.email as string | null, role), first_name: maskName(r.first_name as string | null, role), last_name: maskName(r.last_name as string | null, role) };
 }
 
+/** fee KPIs: the payment window = the payment-date window when it is on, else the main date range */
+const feeWindow = (f: Filters, p: Period): Period => paymentPeriod(f) ?? p;
+
+/** leads whose app accounts have a valid payment (payment_method 0) inside the fee window; built from the payments side (a few thousand rows) */
+function feeLeads(sql: Sql, win: Period): Frag {
+  return sql`t.lead_id IN (
+    SELECT m.id
+    FROM app.home_payment hp
+    JOIN app.home_customuser u ON u.id = hp.user_id AND u.is_deleted = false
+    CROSS JOIN LATERAL (VALUES (analytics.phone_key(u.phone)),
+                               (CASE WHEN analytics.phone_key_valid(u.alternative_number) THEN analytics.phone_key(u.alternative_number) END)) AS v(pk)
+    JOIN salesforce.lead_master__c m ON analytics.phone_key(m.mobile_number__c) = v.pk
+    WHERE ${VALID_PAY(sql)} AND hp.payment_date BETWEEN ${win.from} AND ${win.to} AND v.pk IS NOT NULL)`;
+}
+
 /** the selection shared by the list, the CSV and the summary: touch-row condition + per-lead GROUP BY / HAVING */
 function selection(sql: Sql, f: Filters, periods: { current: Period }, q: Record<string, string>) {
   const metric = (METRICS as readonly string[]).includes(q.metric ?? '') ? (q.metric as Metric) : 'leads';
   const w = flatWhere(sql, f, metric === 'avg_alltime' ? null : periods.current);
   const sel = sql`${w} AND ${dimCond(sql, q)} AND ${searchCond(sql, q.q ?? '')}`;
+  // pick = the condition that chooses the leads (evaluated once); sel alone is reused per lead for the touch columns
+  const pick = metric === 'fee_paid' ? sql`${sel} AND ${feeLeads(sql, feeWindow(f, periods.current))}` : sel;
   const having = metricHaving(sql, metric, periods.current, f, q);
-  return { metric, sel, having };
+  return { metric, sel, pick, having };
 }
 
 /** the lead list; `page` null = no paging (export) */
 function leadQuery(sql: Sql, f: Filters, periods: { current: Period }, q: Record<string, string>, page: { limit: number; offset: number } | null) {
-  const { metric, sel, having } = selection(sql, f, periods, q);
+  const { metric, sel, pick, having } = selection(sql, f, periods, q);
   const sortCol = SORTABLE[q.sort ?? ''] ?? (metric.startsWith('stale') ? 'last_touch_in_window' : 'touches_in_window');
   const dir = q.dir === 'asc' ? sql`ASC NULLS FIRST` : sql`DESC NULLS LAST`;
   return sql<Rec[]>`
@@ -143,7 +162,7 @@ function leadQuery(sql: Sql, f: Filters, periods: { current: Period }, q: Record
              max(t.lead_source) AS lead_source, max(t.owner_name) AS owner_name, max(t.district) AS district,
              max(t.converted_at) AS converted_at, max(t.last_payment_date) AS last_payment_date, max(t.revenue) AS revenue
       FROM analytics.mv_touch_flat t
-      WHERE ${sel}
+      WHERE ${pick}
       GROUP BY t.lead_id
       HAVING ${having}
     ),
@@ -163,12 +182,22 @@ function leadQuery(sql: Sql, f: Filters, periods: { current: Period }, q: Record
            ss.stage_since::text AS stage_since,
            (SELECT count(*)::int FROM analytics.mv_touch_flat t3 WHERE t3.lead_id = pg.lead_id AND t3.touch_at > ss.stage_since) AS touches_after_stage,
            lc.calls, lc.first_call_at::text AS first_call_at, lc.last_call_at::text AS last_call_at, lc.last_reason AS last_call_reason, lc.last_call_status,
+           fp.payments_in_range, fp.fee_received, fp.proposed_fee,
            pg.total_rows
     FROM pg
     LEFT JOIN salesforce.lead_calls lc ON lc.lead_id = pg.lead_id
     JOIN LATERAL (SELECT analytics.stage_since(pg.lead_id, pg.lead_stage, pg.lead_created_date::timestamptz) AS stage_since) ss ON true
     JOIN salesforce.lead_master__c l ON l.id = pg.lead_id
     JOIN LATERAL (SELECT max(t2.touch_at) AS last_touch_any FROM analytics.mv_touch_flat t2 WHERE t2.lead_id = pg.lead_id) la ON true
+    LEFT JOIN LATERAL (
+      -- payments of the lead's app accounts inside the fee window; proposed fee = fee - discount, each enrollment once
+      SELECT count(*)::int AS payments_in_range, COALESCE(sum(x.amount), 0)::float8 AS fee_received,
+             COALESCE(sum(x.prop) FILTER (WHERE x.rn = 1), 0)::float8 AS proposed_fee
+      FROM (SELECT hp.amount, hp.enrollment_fee - COALESCE(hp.enrollment_discount, 0) AS prop,
+                   row_number() OVER (PARTITION BY COALESCE(hp.enrollment_id::text, 'p' || hp.id::text) ORDER BY hp.id) AS rn
+            FROM analytics.v_user_phone up JOIN app.home_payment hp ON hp.user_id = up.user_id
+            WHERE up.phone_key = analytics.phone_key(l.mobile_number__c) AND ${VALID_PAY(sql)}
+              AND hp.payment_date BETWEEN ${feeWindow(f, periods.current).from} AND ${feeWindow(f, periods.current).to}) x) fp ON true
     JOIN LATERAL (
       SELECT max(t.lead_type) AS lead_type, max(t.priority) AS priority, max(t.class_group) AS class_group, max(t.city) AS city,
              max(t.best_ic_status) AS best_ic_status,
@@ -206,7 +235,7 @@ const SPLITS: { dim: string; label: string; kind: 'lead' | 'touch' | 'pay' }[] =
 /** GET /overview/leads/summary : the selected leads split by purchase + lead + touch dimensions (for the drill drawer's overview) */
 overviewLeads.get('/overview/leads/summary', (c) =>
   handle(c, async ({ sql, f, periods, q }) => {
-    const { sel, having } = selection(sql, f, periods, q);
+    const { sel, pick, having } = selection(sql, f, periods, q);
     const pp = paymentPeriod(f);
     const payWin = pp ? sql`AND hp.payment_date BETWEEN ${pp.from} AND ${pp.to}` : sql``;
     // after-stage mode (re-touched KPI): every touch-level figure counts only touches AFTER the lead entered its current stage
@@ -216,7 +245,7 @@ overviewLeads.get('/overview/leads/summary', (c) =>
       WITH sel AS (
         SELECT t.lead_id, max(t.app_user_id) AS app_user_id, max(t.revenue) AS revenue, count(*)::int AS touches_in_window,
                analytics.stage_since(t.lead_id, max(t.lead_stage), max(t.lead_created_date)::timestamptz) AS since
-        FROM analytics.mv_touch_flat t WHERE ${sel} GROUP BY t.lead_id HAVING ${having}
+        FROM analytics.mv_touch_flat t WHERE ${pick} GROUP BY t.lead_id HAVING ${having}
       )
       SELECT '_total' AS dim, NULL AS key, count(*)::int AS leads, sum(revenue)::float8 AS revenue FROM sel
       UNION ALL
