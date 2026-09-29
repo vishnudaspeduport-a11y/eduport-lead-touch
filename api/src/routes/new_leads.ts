@@ -28,9 +28,15 @@ const VALID_ANY = (sql: Sql) => sql`hp.deleted = false AND hp.is_success = true 
  * WHERE for analytics.v_lead_conv AS l: leads created inside the window, honouring the filter bar.
  * Lead filters apply to the lead itself; touch filters keep leads with at least one matching touch (any date).
  */
-export function newLeadWhere(sql: Sql, f: Filters, p: Period | null, opts: { validPay?: boolean } = {}): Frag {
+export function newLeadWhere(sql: Sql, f: Filters, p: Period | null, opts: { validPay?: boolean; scope?: string } = {}): Frag {
   // IST calendar days expressed as a range on the raw timestamp, so the creation-date index is used; p = null: no date window (Lead explorer)
-  const c: Frag[] = p ? [sql`l.created_at >= (${p.from}::date)::timestamp AT TIME ZONE 'Asia/Kolkata' AND l.created_at < (${p.to}::date + 1)::timestamp AT TIME ZONE 'Asia/Kolkata'`] : [];
+  // scope 'union' (Total leads on the lead-created basis): created in the window OR touched in the window
+  const c: Frag[] = !p ? []
+    : opts.scope === 'union'
+      // two index conditions OR-ed (creation-date index + primary key against the touched ids, computed once): no scan of every lead
+      ? [sql`((l.created_at >= (${p.from}::date)::timestamp AT TIME ZONE 'Asia/Kolkata' AND l.created_at < (${p.to}::date + 1)::timestamp AT TIME ZONE 'Asia/Kolkata')
+              OR l.lead_id = ANY (ARRAY(SELECT DISTINCT t.lead_id::text FROM analytics.mv_touch_flat t WHERE t.touch_date BETWEEN ${p.from} AND ${p.to})))`]
+      : [sql`l.created_at >= (${p.from}::date)::timestamp AT TIME ZONE 'Asia/Kolkata' AND l.created_at < (${p.to}::date + 1)::timestamp AT TIME ZONE 'Asia/Kolkata'`];
   if (f.dups !== '1') c.push(sql`l.is_duplicate = false`);
   if (f.paid) c.push(f.paid === 'paid' ? sql`l.is_paid_lead = true` : sql`l.is_paid_lead IS NOT TRUE`);
   if (f.repeat) c.push(f.repeat === '1' ? sql`l.is_repeat = true` : sql`l.is_repeat IS NOT TRUE`);
@@ -140,7 +146,7 @@ const COLS = [
 ];
 
 function leadQuery(sql: Sql, f: Filters, p: Period, q: Record<string, string>, page: { limit: number; offset: number } | null) {
-  const where = sql`${newLeadWhere(sql, f, p)} AND ${dimCond(sql, q)} AND ${searchCond(sql, q.q ?? '')}`;
+  const where = sql`${newLeadWhere(sql, f, p, { scope: q.scope })} AND ${dimCond(sql, q)} AND ${searchCond(sql, q.q ?? '')}`;
   const sortCol = SORTABLE[q.sort ?? ''] ?? 'created_at';
   const dir = q.dir === 'asc' ? sql`ASC NULLS FIRST` : sql`DESC NULLS LAST`;
   const base = sql`
@@ -199,7 +205,7 @@ const SPLITS: { dim: string; label: string; kind: 'lead' | 'touch' | 'pay' }[] =
 
 newLeads.get('/overview/new_leads/summary', (c) =>
   handle(c, async ({ sql, f, periods, q }) => {
-    const where = sql`${newLeadWhere(sql, f, periods.current)} AND ${dimCond(sql, q)} AND ${searchCond(sql, q.q ?? '')}`;
+    const where = sql`${newLeadWhere(sql, f, periods.current, { scope: q.scope })} AND ${dimCond(sql, q)} AND ${searchCond(sql, q.q ?? '')}`;
     const pp = paymentPeriod(f);
     const payWin = pp ? sql`AND hp.payment_date BETWEEN ${pp.from} AND ${pp.to}` : sql``;
     const rows = await sql<{ dim: string; key: string | null; leads: number; revenue: number | null }[]>`
@@ -243,7 +249,7 @@ newLeads.get('/overview/new_leads/summary', (c) =>
       return { ...s, rows: list.slice(0, 40), distinct: list.length };
     });
     return {
-      mode: 'created', leads: one('_total')?.leads ?? 0, touched: one('_touched')?.leads ?? 0, touches: one('_touches')?.leads ?? 0,
+      mode: 'created', scope: q.scope === 'union' ? 'union' : 'created', leads: one('_total')?.leads ?? 0, touched: one('_touched')?.leads ?? 0, touches: one('_touches')?.leads ?? 0,
       payers: one('_payers')?.leads ?? 0, revenue: one('_payers')?.revenue ?? 0, payment_window: pp, splits,
     };
   }, 0),

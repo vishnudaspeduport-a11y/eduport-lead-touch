@@ -105,7 +105,7 @@ overview.get('/overview', (c) =>
     const conv = convCond(sql, f); const convFirst = convFirstCond(sql, f);
     const pp = paymentPeriod(f);
     const staleDays = Math.max(1, Math.min(365, Number.parseInt(q.stale_days ?? '5', 10) || 5));
-    const [[k], [stale], [avgWin], [avgAll], stages, icStatus, touchPoint, source, classRaw, reason, medium, campaign, staff, daily, reactRows, lmReason, [newLeads], stagesRevised, tatRows] = await Promise.all([
+    const [[k], [stale], [avgWin], [avgAll], stages, icStatus, touchPoint, source, classRaw, reason, medium, campaign, staff, daily, reactRows, lmReason, [newLeads], stagesRevised, tatRows, [leadsUnion]] = await Promise.all([
       sql<{ touches: number; leads: number; converted: number; converted_first: number; sf_converted: number; stage_conv_total: number; stage_conv_unpaid: number; paid_other_stage: number; touches_of_converted: number }[]>`
         SELECT count(*)::int AS touches,
                count(DISTINCT t.lead_id)::int AS leads,
@@ -198,6 +198,10 @@ overview.get('/overview', (c) =>
         SELECT kind, ${tatBucket(sql, sql`days`)} AS key, count(*)::int AS leads, NULL::float8 AS avg_days, NULL::float8 AS median_days FROM d GROUP BY 1, 2
         UNION ALL
         SELECT kind, '_all', count(*)::int, avg(days)::float8, percentile_cont(0.5) WITHIN GROUP (ORDER BY days)::float8 FROM d GROUP BY 1`,
+      // Total leads on the lead-created basis: leads created in the window OR touched in the window
+      f.basis === 'created'
+        ? sql<{ n: number }[]>`SELECT count(*)::int AS n FROM analytics.v_lead_conv l WHERE ${newLeadWhere(sql, f, periods.current, { scope: 'union' })}`
+        : Promise.resolve([{ n: 0 }]),
     ]);
     const tatShape = (kind: 'created' | 'touch') => {
       const all = tatRows.find((r) => r.kind === kind && r.key === '_all');
@@ -205,10 +209,14 @@ overview.get('/overview', (c) =>
         .filter((b) => (b.key !== 'before lead created' && b.key !== 'no prior touch') || b.leads > 0);
       return { leads: all?.leads ?? 0, avg_days: all?.avg_days ?? null, median_days: all?.median_days ?? null, buckets };
     };
+    const leadsAll = f.basis === 'created' ? (leadsUnion?.n ?? k.leads) : k.leads;
     return {
       period: periods.current, payment_period: pp, basis: f.basis === 'created' ? 'created' : 'touch',
       kpis: {
         ...k,
+        // Lead-created basis: Total leads = leads created in the window (touched or not) + leads touched in the window; New leads = the created ones.
+        // Touch-date basis: leads with a touch dated in the window. leads_touched = leads of the selection that have a touch (base of the rates).
+        leads: leadsAll, leads_touched: k.leads,
         stage_react: reactRows.reduce((a, r) => a + r.reactivated, 0),
         stage_react_total: reactRows.reduce((a, r) => a + r.total, 0),
         stage_react_by: reactRows,
@@ -227,7 +235,9 @@ overview.get('/overview', (c) =>
       stages, stages_revised: stagesRevised, ic_status: icStatus, tat: { created: tatShape('created'), touch: tatShape('touch') },
       touch_point: touchPoint, source, class_raw: classRaw, reason, lm_reason: lmReason, medium, campaign, staff, daily,
       definitions: {
-        leads: 'Distinct leads that have at least one touch dated (IST) inside the window. Deleted leads are excluded; duplicate leads are excluded unless toggled on.',
+        leads: f.basis === 'created'
+          ? 'Leads created (IST) inside the window, touched or not, PLUS older leads that received a touch dated inside the window. New leads is the created part, so it is always a subset of this figure. Deleted leads are excluded; duplicate leads are excluded unless toggled on. The rates, charts and tables below stay touch-level: they cover the leads created in the window that have a touch.'
+          : 'Distinct leads that have at least one touch dated (IST) inside the window. Deleted leads are excluded; duplicate leads are excluded unless toggled on.',
         touches: 'Number of distinct touch records dated inside the window (app installs, webinar registrations, forms, ads, community joins). Deleted touches are excluded. One lead can have several touches.',
         converted: pp
           ? `Payment-date filter ON: leads in the selection that have a valid payment (payment_method 0, not deleted, is_success, payment_success) dated between ${pp.from} and ${pp.to}.`
@@ -235,7 +245,7 @@ overview.get('/overview', (c) =>
         tat: 'Turnaround time of the converted leads in the selection (Total converted rule), in calendar days. "Lead created → paid": from the day the lead was created to the day of its FIRST valid payment; "before lead created" = the phone already had a payment before the lead existed. "Last touch → paid": from the latest lead touch on or before that payment day to the payment day; "no prior touch" = the first payment came before any touch (the lead counts as converted because a later payment followed a touch). Median = half the leads were faster. Click a band to list those leads.',
         stages_revised: 'Same leads as the Lead funnel, but a lead in Not Willing Now, Disqualified, Not Connected or P2 Completed that received a lead touch AFTER it entered that stage is counted under New (it is active again). Leads with no touch after the stage change stay in their stage. The stage moment comes from the Salesforce field-history log; leads with no logged change since 1 March 2026 use their creation date, or 1 March 2026 if older.',
         new_leads: 'Salesforce leads created (IST) inside the date range, whether or not they have a touch yet - the only figure on this page that includes leads without a touch. Deleted leads are excluded; duplicates are excluded unless toggled on. Lead filters (class, lead source, stage, LM reason, owner …) apply to the lead itself; touch filters (touch point, source, campaign, medium, staff) keep only leads with at least one such touch on any date. "With a touch" = at least one lead touch on record, any date.',
-        leads_basis: f.basis === 'created' ? 'Main window = LEAD CREATED date: leads created in the range, with all their touches.' : 'Main window = TOUCH date: touches dated in the range.',
+        leads_basis: f.basis === 'created' ? 'Main window = LEAD CREATED date: leads created in the range (touched or not), with all their touches.' : 'Main window = TOUCH date: touches dated in the range.',
         converted_first: 'Brief definition: touched leads whose FIRST valid payment is on/after one of their touches in the window.',
         sf_converted: 'Touched leads with Salesforce Lead_Master__c.Is_Converted__c = true (reference).',
         stage_react: 'Leads in the selection whose current stage is Not Willing Now, Disqualified, Not Connected or P2 Completed AND that received at least one lead touch AFTER entering that stage. The stage moment comes from the Salesforce field-history log (latest change into the current stage); leads with no logged change since 1 March 2026 use their creation date, or 1 March 2026 if older.',

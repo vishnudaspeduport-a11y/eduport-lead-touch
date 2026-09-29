@@ -13,7 +13,7 @@ interface DimRow { key: string; touches: number; leads: number; converted: numbe
 interface OverviewResponse {
   period: { from: string; to: string }; payment_period: { from: string; to: string } | null; basis: 'created' | 'touch';
   kpis: {
-    touches: number; leads: number; converted: number; converted_first: number; sf_converted: number; stage_conv_total: number; stage_conv_unpaid: number; paid_other_stage: number; touches_of_converted: number; revenue: number;
+    touches: number; leads: number; leads_touched: number; converted: number; converted_first: number; sf_converted: number; stage_conv_total: number; stage_conv_unpaid: number; paid_other_stage: number; touches_of_converted: number; revenue: number;
     conv_rate: number | null; touches_per_lead: number | null;
     avg_touches_alltime: number | null; avg_touches_alltime_per_lead: number | null; avg_touches_alltime_n: number;
     avg_touches_window: number | null; avg_touches_window_per_lead: number | null; avg_touches_window_n: number;
@@ -83,8 +83,9 @@ export default function Overview() {
   const revived = d?.stages_revised?.find((s) => s.key === 'New')?.revived ?? 0;
   const open = (metric: DrillMetric, title: string, dim?: string, value?: string, subtitle?: string) => setDrill({ metric, title, dim, value, subtitle, summary: !dim });
   // New leads live on the lead table (not the touch table): own list / CSV / summary endpoints
-  const openNew = (touched?: 'Touched' | 'No touch yet') => setDrill({
-    metric: 'new_leads', title: 'New leads', subtitle: `Salesforce leads created ${f.from} → ${f.to}, touched or not`,
+  const openNew = (touched?: 'Touched' | 'No touch yet', title = 'New leads', union = false) => setDrill({
+    metric: 'new_leads', title, subtitle: union ? `leads created ${f.from} → ${f.to} (touched or not) plus older leads touched in those dates` : `Salesforce leads created ${f.from} → ${f.to}, touched or not`,
+    extra: union ? { scope: 'union' } : undefined,
     path: '/overview/new_leads', csvPath: '/overview/new_leads.csv', summaryPath: '/overview/new_leads/summary', columns: NEW_LEAD_COLS, sortOptions: NEW_LEAD_SORTS, defaultSort: 'created_date',
     dim: touched ? 'touched' : undefined, value: touched, summary: !touched,
   });
@@ -107,7 +108,7 @@ export default function Overview() {
               { label: 'with a touch', value: fmtInt(k.new_leads_touched), title: 'at least one lead touch on record (any date) · click for the list', onClick: () => openNew('Touched') },
               { label: 'no touch yet', value: fmtInt(k.new_leads - k.new_leads_touched), title: 'no lead touch on record · click for the list', onClick: () => openNew('No touch yet') },
             ]} />
-          <Kpi tone="tone-brand" icon={<Icon.Users />} title="Total leads" value={fmtInt(k.leads)} sub={f.basis === 'created' ? 'distinct leads created in the window' : 'distinct leads touched in the window'} def={`${def.leads_basis ?? ''} ${def.leads ?? ''}`} onClick={() => open('leads', 'Total leads')} />
+          <Kpi tone="tone-brand" icon={<Icon.Users />} title="Total leads" value={fmtInt(k.leads)} sub={f.basis === 'created' ? `${fmtInt(k.new_leads)} created in the window + ${fmtInt(Math.max(0, k.leads - k.new_leads))} older leads touched in it` : 'distinct leads touched in the window'} def={`${def.leads_basis ?? ''} ${def.leads ?? ''}`} onClick={() => (f.basis === 'created' ? openNew(undefined, 'Total leads', true) : open('leads', 'Total leads'))} />
           <Kpi tone="tone-teal" icon={<Icon.Touch />} title="Total lead touches" value={fmtInt(k.touches)} sub={`${fmt2(k.touches_per_lead)} touches per lead`} def={def.touches} onClick={() => open('touches', 'Total lead touches')} />
           <Kpi tone="tone-orange" icon={<Icon.Check />} title="Total converted" value={fmtInt(k.converted)} sub={f.pay ? `${fmtPct(k.conv_rate)} of leads · paid ${f.pfrom} → ${f.pto}` : `${fmtPct(k.conv_rate)} of leads · paid on/after a touch`} def={`${def.converted} — ${def.converted_first}`} onClick={() => open('converted', 'Total converted')}
             split={[

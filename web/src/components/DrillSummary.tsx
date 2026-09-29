@@ -12,7 +12,7 @@ function saveTables(key: string, v: string[]) { try { localStorage.setItem(key, 
 
 interface SplitRow { key: string; leads: number; revenue: number | null }
 interface Split { dim: string; label: string; kind: 'lead' | 'touch' | 'pay'; rows: SplitRow[]; distinct: number }
-interface Summary { mode: 'after_stage' | 'window' | 'created'; touched?: number; called_after: number; paid_after: number; paid_after_revenue: number; retouched: number; avg_days_to_retouch: number | null; leads: number; revenue: number; touches: number; payers: number; payment_window: { from: string; to: string } | null; splits: Split[] }
+interface Summary { mode: 'after_stage' | 'window' | 'created'; scope?: 'created' | 'union'; touched?: number; called_after: number; paid_after: number; paid_after_revenue: number; retouched: number; avg_days_to_retouch: number | null; leads: number; revenue: number; touches: number; payers: number; payment_window: { from: string; to: string } | null; splits: Split[] }
 
 /**
  * Overview of the leads behind a drill: headline figures + one small "split" card per dimension
@@ -41,7 +41,7 @@ export function DrillSummary({ params, onPick, path }: { params: Params; onPick:
       </div>
       ) : d.mode === 'created' ? (
       <div className="mb-3 grid grid-cols-2 gap-3 sm:grid-cols-5">
-        <Head label="Leads created" value={fmtInt(d.leads)} sub="in the date range, touched or not" />
+        <Head label={d.scope === 'union' ? 'Total leads' : 'Leads created'} value={fmtInt(d.leads)} sub={d.scope === 'union' ? 'created or touched in the date range' : 'in the date range, touched or not'} />
         <Head label="With a touch" value={fmtInt(d.touched ?? 0)} sub={d.leads ? `${fmtPct(((d.touched ?? 0) / d.leads) * 100)} · ${fmtInt(d.leads - (d.touched ?? 0))} no touch yet` : undefined} />
         <Head label="Touches (all dates)" value={fmtInt(d.touches)} sub={d.touched ? `${fmt1(d.touches / d.touched)} per touched lead` : undefined} />
         <Head label="With a purchase" value={fmtInt(d.payers)} sub={d.payment_window ? `paid ${d.payment_window.from} → ${d.payment_window.to}` : 'any successful payment, any date'} />
