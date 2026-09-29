@@ -40,6 +40,16 @@ filters.get('/filters', (c) =>
         WHERE ${flatWhere(sql, f, p, d)}
           ${search ? sql`AND lower(${ref}) LIKE ${'%' + search + '%'}` : sql`AND true`}
         GROUP BY 1 ORDER BY ${d === 'class_group' ? sql`min(analytics.class_group_order(t.class_group)), 1` : sql`2 DESC, 1`} LIMIT ${limit}`;
+      // a search also looks OUTSIDE the current filters and date range, so a value that exists is never answered with "No options":
+      // those matches come back flagged, with their all-time lead count and touch dates
+      if (search && rows.length < 20) {
+        const outside = await sql<{ value: string; leads: number; first_touch: string; last_touch: string }[]>`
+          SELECT ${ref} AS value, count(DISTINCT t.lead_id)::int AS leads, min(t.touch_date)::text AS first_touch, max(t.touch_date)::text AS last_touch
+          FROM analytics.mv_touch_flat t WHERE lower(${ref}) LIKE ${'%' + search + '%'}
+          GROUP BY 1 ORDER BY 2 DESC, 1 LIMIT 30`;
+        const seen = new Set(rows.map((r) => r.value));
+        return { dim: d, options: [...rows, ...outside.filter((o) => !seen.has(o.value)).map((o) => ({ value: o.value, leads: 0, converted: 0, outside: true, leads_all: o.leads, first_touch: o.first_touch, last_touch: o.last_touch }))] };
+      }
       return { dim: d, options: rows };
     }
 
