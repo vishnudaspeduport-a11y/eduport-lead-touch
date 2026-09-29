@@ -87,12 +87,14 @@ export const TAT_BUCKETS = ['before lead created', 'same day', '1–3 d', '4–7
 
 export interface DimRow { key: string; touches: number; leads: number; converted: number; converted_first: number; conv_rate?: number | null }
 
-async function byDim(sql: Sql, w: Frag, col: string, conv: Frag, convFirst: Frag, limit = 40): Promise<DimRow[]> {
+/** `keep` = the values selected in the filter bar: always returned (first), even when they rank below the row limit */
+async function byDim(sql: Sql, w: Frag, col: string, conv: Frag, convFirst: Frag, limit = 40, keep: string[] = []): Promise<DimRow[]> {
+  const keepFirst = keep.length ? sql`(COALESCE(t.${sql(col)}::text, '(null)') IN ${sql(keep)}) DESC,` : sql``;
   const rows = await sql<DimRow[]>`
     SELECT COALESCE(t.${sql(col)}::text, '(null)') AS key, count(*)::int AS touches, count(DISTINCT t.lead_id)::int AS leads,
            count(DISTINCT t.lead_id) FILTER (WHERE ${conv})::int AS converted,
            count(DISTINCT t.lead_id) FILTER (WHERE ${convFirst})::int AS converted_first
-    FROM analytics.mv_touch_flat t WHERE ${w} GROUP BY 1 ORDER BY touches DESC LIMIT ${limit}`;
+    FROM analytics.mv_touch_flat t WHERE ${w} GROUP BY 1 ORDER BY ${keepFirst} touches DESC LIMIT ${limit + keep.length}`;
   return rows.map((r) => ({ ...r, conv_rate: pct(r.converted, r.leads) }));
 }
 
@@ -147,12 +149,12 @@ overview.get('/overview', (c) =>
         WHERE NOT ic.isdeleted AND NULLIF(btrim(ic.status__c),'') IS NOT NULL
           AND ic.lead_master__c IN (SELECT DISTINCT t.lead_id FROM analytics.mv_touch_flat t WHERE ${wx('ic_status')})
         GROUP BY 1 ORDER BY leads DESC`,
-      byDim(sql, wx('touch_point'), 'touch_point', conv, convFirst), byDim(sql, wx('source'), 'source', conv, convFirst), byDim(sql, wx('class_raw'), 'class_raw', conv, convFirst), sql<DimRow[]>`
+      byDim(sql, wx('touch_point'), 'touch_point', conv, convFirst, 40, f.touch_point ?? []), byDim(sql, wx('source'), 'source', conv, convFirst, 40, f.source ?? []), byDim(sql, wx('class_raw'), 'class_raw', conv, convFirst, 40, f.class_raw ?? []), sql<DimRow[]>`
         SELECT COALESCE(c.last_reason, '(no call)') AS key, count(*)::int AS touches, count(DISTINCT t.lead_id)::int AS leads,
                count(DISTINCT t.lead_id) FILTER (WHERE ${conv})::int AS converted, count(DISTINCT t.lead_id) FILTER (WHERE ${convFirst})::int AS converted_first
         FROM analytics.mv_touch_flat t LEFT JOIN salesforce.lead_calls c ON c.lead_id = t.lead_id
         WHERE ${wx('call_reason')} GROUP BY 1 ORDER BY leads DESC LIMIT 40`,
-      byDim(sql, wx('medium'), 'medium', conv, convFirst), byDim(sql, wx('campaign'), 'campaign', conv, convFirst), byDim(sql, wx('staff'), 'staff', conv, convFirst),
+      byDim(sql, wx('medium'), 'medium', conv, convFirst, 40, f.medium ?? []), byDim(sql, wx('campaign'), 'campaign', conv, convFirst, 1000, f.campaign ?? []), byDim(sql, wx('staff'), 'staff', conv, convFirst, 40, f.staff ?? []),
       sql<{ d: string; touches: number; leads: number; converted: number }[]>`
         SELECT t.touch_date::text AS d, count(*)::int AS touches, count(DISTINCT t.lead_id)::int AS leads,
                count(DISTINCT t.lead_id) FILTER (WHERE ${conv})::int AS converted
@@ -165,7 +167,7 @@ overview.get('/overview', (c) =>
           FROM analytics.mv_touch_flat t WHERE ${w} AND t.lead_stage IN ('Not Willing Now', 'Disqualified', 'Not Connected', 'P2 Completed') GROUP BY t.lead_id)
         SELECT stage, count(*)::int AS total, count(*) FILTER (WHERE last_touch > analytics.stage_since(lead_id, stage, created))::int AS reactivated
         FROM r GROUP BY stage ORDER BY reactivated DESC`,
-      byDim(sql, wx('lm_reason'), 'lm_reason', conv, convFirst),
+      byDim(sql, wx('lm_reason'), 'lm_reason', conv, convFirst, 40, f.lm_reason ?? []),
       // New leads: every Salesforce lead created inside the window (most have no touch yet, so this reads the lead view, not the touch table).
       // Keep the touched test as a correlated EXISTS (index probe, ~0.1 s): `lead_id IN (SELECT ...)` inside the FILTER ran row by row (150 s).
       sql<{ new_leads: number; new_leads_touched: number }[]>`
