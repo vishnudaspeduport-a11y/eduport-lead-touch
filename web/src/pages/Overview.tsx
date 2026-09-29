@@ -136,7 +136,7 @@ export default function Overview() {
         </>}
       </div>
 
-      <div className="grid gap-4 xl:grid-cols-2">
+      <div className="grid gap-4 xl:grid-cols-3">
         <ChartCard title="Lead funnel · LM stage" tone="tone-brand" subtitle="Total leads by current Lead Stage · click a slice to filter" loading={q.isLoading} error={q.error} rows={d?.stages ?? []} height={240}
           help="Current Lead Stage of the distinct leads that have a touch in the window.">
           <Donut data={(d?.stages ?? []).map((s) => ({ key: s.key, value: s.leads, secondary: s.converted, selected: (f.lists.lead_stage ?? []).includes(s.key) }))} valueLabel="Total leads" secondaryLabel="Converted" centerLabel="leads" onClick={(key) => toggleValue('lead_stage', key)} />
@@ -145,25 +145,6 @@ export default function Overview() {
           help={def.stages_revised}>
           <Donut data={(d?.stages_revised ?? []).map((s) => ({ key: s.key, value: s.leads, secondary: s.converted }))} valueLabel="Total leads" secondaryLabel="Converted" centerLabel="leads"
             onClick={(key) => open('leads', `Revised funnel · ${key}`, 'revised_stage', key, key === 'New' ? 'leads in stage New plus closed-stage leads touched again after the stage change' : ['Not Willing Now', 'Disqualified', 'Not Connected', 'P2 Completed'].includes(key) ? `leads in stage ${key} with no touch after the stage change` : `leads in stage ${key}`)} />
-        </ChartCard>
-        <ChartCard title="Leads still waiting in a stage" tone="tone-red" loading={q.isLoading} error={q.error} rows={staleRows} height={240}
-          subtitle={`still in the stage, created more than ${k?.stale_days ?? staleDays} days ago and not touched in the last ${k?.stale_days ?? staleDays} days · click a row for the leads`}
-          help={`${def.stale_new ?? ''} ${def.stale_nc ?? ''}`}
-          actions={<div className="flex items-center gap-1 text-[11px] text-ink-2">
-            <span>Days</span>
-            {[3, 5, 7, 10, 15].map((n) => <button key={n} className={`rounded border px-1.5 py-0.5 ${staleDays === n ? 'border-accent bg-accent/10 font-semibold text-accent' : 'border-line hover:bg-surface-2'}`} onClick={() => changeStale(n)}>{n}</button>)}
-            <input type="number" min={1} max={365} className="input !w-16 !py-0.5" title="any number of days" value={staleDays} onChange={(e) => changeStale(Number(e.target.value))} />
-          </div>}>
-          <DataTable rows={staleRows} compact maxHeight="100%" rowKey={(r) => r.stage}
-            onRowClick={(r) => setDrill({ metric: r.metric, title: `Still ${r.stage} after ${k?.stale_days ?? staleDays} days`, extra: { stale_days: k?.stale_days ?? staleDays }, summary: true,
-              subtitle: `leads still in stage ${r.stage}, created more than ${k?.stale_days ?? staleDays} days ago and not touched in the last ${k?.stale_days ?? staleDays} days · sorted by last touch` })}
-            columns={[
-              { key: 'stage', header: 'Stage' },
-              { key: 'total', header: 'Leads in the stage', align: 'right' },
-              { key: 'stale', header: `Still there after ${k?.stale_days ?? staleDays} days`, align: 'right', bar: true },
-              { key: 'share', header: 'Share', align: 'right', render: (v) => fmtPct(v as number) },
-              { key: 'untouched', header: 'Never touched after creation', align: 'right' },
-            ]} />
         </ChartCard>
         <ChartCard title="Lead funnel · IC status" tone="tone-pink" subtitle="Total leads by Interested Course status · click a bar to filter (IC status)" loading={q.isLoading} error={q.error} rows={d?.ic_status ?? []} height={240}
           help="Interested Course status for the leads touched in the window, blank status excluded. A lead with several interested courses appears under each status.">
@@ -194,6 +175,28 @@ export default function Overview() {
           ]} />}>
           <HBars data={(tatData?.buckets ?? []).map((b) => ({ key: b.key, value: b.leads, secondary: tatData?.leads ? (b.leads / tatData.leads) * 100 : null }))} valueLabel="Converted leads" secondaryLabel="share"
             onClick={(key) => open('converted', `Turnaround · ${key}`, tat === 'created' ? 'tat_created' : 'tat_touch', key, tat === 'created' ? `converted leads whose first payment came ${key} after the lead was created` : `converted leads whose first payment came ${key} after their last touch`)} />
+        </ChartCard>
+      </div>
+
+      <div className="grid gap-4">
+        <ChartCard title="Leads still waiting in a stage" tone="tone-red" loading={q.isLoading} error={q.error} rows={staleRows} height={240}
+          subtitle={`still in the stage, created more than ${k?.stale_days ?? staleDays} days ago and not touched in the last ${k?.stale_days ?? staleDays} days · click a row for the leads`}
+          help={`${def.stale_new ?? ''} ${def.stale_nc ?? ''}`}
+          actions={<div className="flex items-center gap-1 text-[11px] text-ink-2">
+            <span>Days</span>
+            {[3, 5, 7, 10, 15].map((n) => <button key={n} className={`rounded border px-1.5 py-0.5 ${staleDays === n ? 'border-accent bg-accent/10 font-semibold text-accent' : 'border-line hover:bg-surface-2'}`} onClick={() => changeStale(n)}>{n}</button>)}
+            <input type="number" min={1} max={365} className="input !w-16 !py-0.5" title="any number of days" value={staleDays} onChange={(e) => changeStale(Number(e.target.value))} />
+          </div>}>
+          <DataTable rows={staleRows} compact maxHeight="100%" rowKey={(r) => r.stage}
+            onRowClick={(r) => setDrill({ metric: r.metric, title: `Still ${r.stage} after ${k?.stale_days ?? staleDays} days`, extra: { stale_days: k?.stale_days ?? staleDays }, summary: true,
+              subtitle: `leads still in stage ${r.stage}, created more than ${k?.stale_days ?? staleDays} days ago and not touched in the last ${k?.stale_days ?? staleDays} days · sorted by last touch` })}
+            columns={[
+              { key: 'stage', header: 'Stage' },
+              { key: 'total', header: 'Leads in the stage', align: 'right' },
+              { key: 'stale', header: `Still there after ${k?.stale_days ?? staleDays} days`, align: 'right', bar: true },
+              { key: 'share', header: 'Share', align: 'right', render: (v) => fmtPct(v as number) },
+              { key: 'untouched', header: 'Never touched after creation', align: 'right' },
+            ]} />
         </ChartCard>
       </div>
 
