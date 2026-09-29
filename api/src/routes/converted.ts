@@ -36,26 +36,27 @@ const DIMS: Record<string, string> = {
 /** payments-in-window semi-join (+ optional grade / course restriction) */
 function payWindow(sql: Sql, p: Period, grades: string[], courses: string[], pm: PayMethod = 'all'): Frag {
   const gradeCond = grades.length ? sql`AND COALESCE(b.grade_title, 'No Grade On Batch') IN ${sql(grades)}` : sql``;
-  const courseCond = courses.length ? sql`AND COALESCE(b.course_title, 'batch ' || hp.batch_id::text) IN ${sql(courses)}` : sql``;
+  const courseCond = courses.length ? sql`AND btrim(COALESCE(b.course_title, 'batch ' || hp.batch_id::text)) IN ${sql(courses)}` : sql``;
   return sql`EXISTS (SELECT 1 FROM app.home_payment hp LEFT JOIN app.core_batch b ON b.id = hp.batch_id
                      WHERE hp.user_id = m.user_id AND ${VALID(sql, pm)} AND hp.payment_date BETWEEN ${p.from} AND ${p.to} ${gradeCond} ${courseCond})`;
 }
 
 /** grade / course restriction on a payment row (hp + b aliases): the page selector and the grade / course drill */
-function payRestrict(sql: Sql, q: Record<string, string>): Frag {
-  const grades = (q.grade ?? '').split('|').map((s) => s.trim()).filter(Boolean);
-  const courses = (q.course ?? '').split('|').map((s) => s.trim()).filter(Boolean);
+function payRestrict(sql: Sql, q: Record<string, string>, skip?: string): Frag {
+  // skip = 'grade' / 'course': the card of that dimension ignores its own selection, so more rows can be picked
+  const grades = skip === 'grade' ? [] : (q.grade ?? '').split('|').map((s) => s.trim()).filter(Boolean);
+  const courses = skip === 'course' ? [] : (q.course ?? '').split('|').map((s) => s.trim()).filter(Boolean);
   if (q.dim === 'grade' && q.value !== undefined) grades.push(q.value);
   if (q.dim === 'course' && q.value !== undefined) courses.push(q.value);
   const c: Frag[] = [];
   if (grades.length) c.push(sql`COALESCE(b.grade_title, 'No Grade On Batch') IN ${sql(grades)}`);
-  if (courses.length) c.push(sql`COALESCE(b.course_title, 'batch ' || hp.batch_id::text) IN ${sql(courses)}`);
+  if (courses.length) c.push(sql`btrim(COALESCE(b.course_title, 'batch ' || hp.batch_id::text)) IN ${sql(courses)}`);
   return c.reduce((a, x) => sql`${a} AND ${x}`, sql`true`);
 }
 
 function payerWhere(sql: Sql, f: Filters, p: Period, q: Record<string, string>, skip?: string): Frag {
-  const grades = (q.grade ?? '').split('|').map((s) => s.trim()).filter(Boolean);
-  const courses = (q.course ?? '').split('|').map((s) => s.trim()).filter(Boolean);
+  const grades = skip === 'grade' ? [] : (q.grade ?? '').split('|').map((s) => s.trim()).filter(Boolean);
+  const courses = skip === 'course' ? [] : (q.course ?? '').split('|').map((s) => s.trim()).filter(Boolean);
   const pm = payMethod(q);
   const c: Frag[] = [payWindow(sql, p, grades, courses, pm)];
   if (f.dups !== '1') c.push(sql`true`);
@@ -112,16 +113,16 @@ converted.get('/converted', (c) =>
       byDim(sql, wx('lead_stage'), 'lead_stage', p), byDim(sql, wx('touch_point'), 'last_touch_point', p), byDim(sql, wx('source'), 'last_touch_source', p), byDim(sql, wx('medium'), 'last_touch_medium', p),
       byDim(sql, wx('campaign'), 'last_touch_campaign', p), byDim(sql, wx('staff'), 'last_touch_staff', p),
       sql<PayerDim[]>`
-        SELECT COALESCE(b.course_title, 'batch ' || hp.batch_id::text) AS key, count(DISTINCT hp.user_id)::int AS users, count(*)::int AS touches,
+        SELECT btrim(COALESCE(b.course_title, 'batch ' || hp.batch_id::text)) AS key, count(DISTINCT hp.user_id)::int AS users, count(*)::int AS touches,
                COALESCE(sum(hp.amount), 0)::float8 AS revenue, 0::int AS new_users, NULL::float8 AS share_pct
         FROM app.home_payment hp LEFT JOIN app.core_batch b ON b.id = hp.batch_id
-        WHERE ${V} AND ${R} AND hp.payment_date BETWEEN ${p.from} AND ${p.to} AND hp.user_id IN (SELECT m.user_id FROM analytics.mv_payer m WHERE ${w})
-        GROUP BY 1 ORDER BY users DESC LIMIT 60`,
+        WHERE ${V} AND ${payRestrict(sql, q, 'course')} AND hp.payment_date BETWEEN ${p.from} AND ${p.to} AND hp.user_id IN (SELECT m.user_id FROM analytics.mv_payer m WHERE ${wx('course')})
+        GROUP BY 1 ORDER BY users DESC LIMIT 200`,
       sql<PayerDim[]>`
         SELECT COALESCE(b.grade_title, 'No Grade On Batch') AS key, count(DISTINCT hp.user_id)::int AS users, count(*)::int AS touches,
                COALESCE(sum(hp.amount), 0)::float8 AS revenue, 0::int AS new_users, NULL::float8 AS share_pct
         FROM app.home_payment hp LEFT JOIN app.core_batch b ON b.id = hp.batch_id
-        WHERE ${V} AND ${R} AND hp.payment_date BETWEEN ${p.from} AND ${p.to} AND hp.user_id IN (SELECT m.user_id FROM analytics.mv_payer m WHERE ${w})
+        WHERE ${V} AND ${payRestrict(sql, q, 'grade')} AND hp.payment_date BETWEEN ${p.from} AND ${p.to} AND hp.user_id IN (SELECT m.user_id FROM analytics.mv_payer m WHERE ${wx('grade')})
         GROUP BY 1 ORDER BY users DESC`,
       sql<{ d: string; users: number; payments: number; revenue: number }[]>`
         SELECT hp.payment_date::text AS d, count(DISTINCT hp.user_id)::int AS users, count(*)::int AS payments, COALESCE(sum(hp.amount), 0)::float8 AS revenue

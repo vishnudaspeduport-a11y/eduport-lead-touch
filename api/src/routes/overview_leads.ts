@@ -67,7 +67,7 @@ function dimCond(sql: Sql, q: Record<string, string>): Frag {
   }
   if (dim === 'course' || dim === 'grade') {
     // purchased course / grade: any valid payment of the lead's app user on that batch
-    const keyExpr = dim === 'course' ? sql`COALESCE(b.course_title, 'batch ' || hp.batch_id::text)` : sql`COALESCE(b.grade_title, 'No Grade On Batch')`;
+    const keyExpr = dim === 'course' ? sql`btrim(COALESCE(b.course_title, 'batch ' || hp.batch_id::text))` : sql`COALESCE(b.grade_title, 'No Grade On Batch')`;
     return sql`EXISTS (SELECT 1 FROM app.home_payment hp LEFT JOIN app.core_batch b ON b.id = hp.batch_id
                        WHERE hp.user_id = t.app_user_id AND ${VALID_PAY(sql)} AND ${keyExpr} = ${value})`;
   }
@@ -249,7 +249,7 @@ overviewLeads.get('/overview/leads/summary', (c) =>
       UNION ALL
       SELECT p.dim, p.key, count(DISTINCT p.lead_id)::int AS leads, sum(p.amount)::float8 AS revenue
       FROM (
-        SELECT s.lead_id, hp.amount, 'course' AS dim, COALESCE(b.course_title, 'batch ' || hp.batch_id::text) AS key
+        SELECT s.lead_id, hp.amount, 'course' AS dim, btrim(COALESCE(b.course_title, 'batch ' || hp.batch_id::text)) AS key
         FROM sel s JOIN app.home_payment hp ON hp.user_id = s.app_user_id LEFT JOIN app.core_batch b ON b.id = hp.batch_id
         WHERE ${VALID_PAY(sql)} ${payWin}
         UNION ALL

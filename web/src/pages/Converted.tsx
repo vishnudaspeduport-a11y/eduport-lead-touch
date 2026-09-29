@@ -37,7 +37,8 @@ const USER_SORTS: [string, string][] = [['last_payment_date', 'Last payment'], [
 
 function Kpi(p: { title: string; value: string; sub?: string; def?: string; tone: string; icon: ReactNode; onClick?: () => void }) { return <KpiTile {...p} />; }
 
-type ConvCardOpts = { filterDim?: ListDim; asTable?: boolean; height?: number; limit?: number; help?: string; cols?: Col<Dim>[] };
+type Pick = { selected: string[]; toggle: (key: string) => void; set: (keys: string[]) => void };
+type ConvCardOpts = { filterDim?: ListDim; pick?: Pick; asTable?: boolean; height?: number; limit?: number; help?: string; cols?: Col<Dim>[] };
 
 function ConvCard({ title, rows, tone, opts, cols, loading, error, onRetry, help, selected, onRow, onApply }: {
   title: string; rows: Dim[] | undefined; tone: string; opts: ConvCardOpts; cols: Col<Dim>[]; loading: boolean; error: unknown; onRetry: () => void; help: string;
@@ -49,7 +50,7 @@ function ConvCard({ title, rows, tone, opts, cols, loading, error, onRetry, help
   const filtered = s ? all.filter((r) => r.key.toLowerCase().includes(s)) : all;
   const data = filtered.slice(0, opts.limit ?? 14);
   return (
-    <ChartCard title={title} tone={tone} subtitle={rows ? `${fmtInt(filtered.reduce((x, r) => x + r.users, 0))} users${s ? ` in ${filtered.length} matching rows` : ''} · ${opts.filterDim ? 'click a row to filter every card' : 'click a row for the users'}` : undefined}
+    <ChartCard title={title} tone={tone} subtitle={rows ? `${fmtInt(filtered.reduce((x, r) => x + r.users, 0))} users${s ? ` in ${filtered.length} matching rows` : ''} · ${opts.filterDim || opts.pick ? `click rows to filter every card (multi-select)${selected.length ? ` · ${selected.length} selected` : ''}` : 'click a row for the users'}` : undefined}
       loading={loading} error={error} onRetry={onRetry} rows={filtered} columns={cols} height={opts.height ?? 280} help={help}
       actions={<CardSearch value={search} onChange={setSearch} count={filtered.length} onApply={onApply ? () => onApply(filtered.map((r) => r.key)) : undefined} />}>
       {opts.asTable
@@ -65,15 +66,19 @@ export default function Converted() {
   const { f, params, toggleValue, setList } = useFilters();
   const [grades, setGrades] = useState<string[]>([]);
   const grade = grades.join('|');   // the API takes a pipe-separated list
+  // purchased course picked on the course table (multi-select), like the grade
+  const [courses, setCourses] = useState<string[]>([]);
+  const course = courses.join('|');
+  const toggleIn = (list: string[], set: (v: string[]) => void) => (key: string) => set(list.includes(key) ? list.filter((x) => x !== key) : [...list, key]);
   const [pm, setPm] = useState<'all' | 'm0' | 'm1'>(() => { try { return (localStorage.getItem('lt-pm') as 'all' | 'm0' | 'm1') || 'all'; } catch { return 'all'; } });
   const changePm = (v: 'all' | 'm0' | 'm1') => { setPm(v); try { localStorage.setItem('lt-pm', v); } catch { /* ignore */ } };
-  const q = useApi<Resp>('/converted', { ...params, grade, pm });
+  const q = useApi<Resp>('/converted', { ...params, grade, course, pm });
   const d = q.data?.data;
   const k = d?.kpis;
   const def = d?.definitions ?? {};
   const [drill, setDrill] = useState<Drill | null>(null);
   const open = (title: string, dim?: string, value?: string, subtitle?: string) =>
-    setDrill({ metric: 'leads', title, dim, value, subtitle: subtitle ?? 'paying users with a valid payment in the window · click a row for the lead record', path: '/converted/users', csvPath: '/converted/users.csv', columns: USER_COLS, sortOptions: USER_SORTS, defaultSort: 'last_payment_date', extra: { pm, ...(grade ? { grade } : {}) }, noun: 'users' });
+    setDrill({ metric: 'leads', title, dim, value, subtitle: subtitle ?? 'paying users with a valid payment in the window · click a row for the lead record', path: '/converted/users', csvPath: '/converted/users.csv', columns: USER_COLS, sortOptions: USER_SORTS, defaultSort: 'last_payment_date', extra: { pm, ...(course ? { course } : {}), ...(grade ? { grade } : {}) }, noun: 'users' });
 
   const dimCols: Col<Dim>[] = [
     { key: 'key', header: '' }, { key: 'users', header: 'Converted (users)', bar: true }, { key: 'share_pct', header: 'Share', render: (v) => fmtPct(v as number) },
@@ -85,9 +90,9 @@ export default function Converted() {
 
   const card = (title: string, rows: Dim[] | undefined, drillDim: string, tone: string, opts: ConvCardOpts = {}) => (
     <ConvCard key={title} title={title} rows={rows} tone={tone} opts={opts} cols={opts.cols ?? dimCols} loading={q.isLoading} error={q.error} onRetry={q.refetch}
-      help={opts.help ?? `${title}. ${def.credit ?? ''}`} selected={opts.filterDim ? (f.lists[opts.filterDim] ?? []) : []}
-      onRow={(key) => (opts.filterDim ? toggleValue(opts.filterDim, key) : open(`${title} · ${key}`, drillDim, key))}
-      onApply={opts.filterDim ? (keys) => setList(opts.filterDim!, keys) : undefined} />
+      help={opts.help ?? `${title}. ${def.credit ?? ''}`} selected={opts.pick ? opts.pick.selected : opts.filterDim ? (f.lists[opts.filterDim] ?? []) : []}
+      onRow={(key) => (opts.pick ? opts.pick.toggle(key) : opts.filterDim ? toggleValue(opts.filterDim, key) : open(`${title} · ${key}`, drillDim, key))}
+      onApply={opts.pick ? opts.pick.set : opts.filterDim ? (keys) => setList(opts.filterDim!, keys) : undefined} />
   );
 
   return (
@@ -99,7 +104,11 @@ export default function Converted() {
           </label>
           <label className="flex items-center gap-1.5 text-xs text-ink-2">Purchased grade
             <GradePicker all={d?.grades ?? []} value={grades} onChange={setGrades} />
-          </label></div>} />
+          </label>
+          {courses.length > 0 && (
+            <span className="chip" title={courses.join(', ')}><b>Purchased course</b>: {courses.length === 1 ? courses[0] : `${courses.length} selected`}
+              <button className="ml-1 text-ink-3 hover:text-ink" title="Clear the course selection" onClick={() => setCourses([])}>×</button></span>
+          )}</div>} />
       {q.error && <Note>⚠ {q.error.message}</Note>}
 
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 xl:grid-cols-5">
@@ -118,8 +127,8 @@ export default function Converted() {
           <Donut data={(d?.by_stage ?? []).map((s) => ({ key: s.key === '(null)' ? 'No Salesforce lead' : s.key, value: s.users, selected: (f.lists.lead_stage ?? []).includes(s.key) }))} valueLabel="Converted (users)" centerLabel="users" onClick={(key) => toggleValue('lead_stage', key === 'No Salesforce lead' ? '(null)' : key)} />
         </ChartCard>
         {card('Touch point analysis (converted leads)', d?.by_last_touch_point, 'last_touch_point', 'tone-teal', { filterDim: 'touch_point', height: 260 })}
-        {card('Class wise conversion (purchased course)', d?.by_course, 'course', 'tone-violet', { asTable: true, cols: payCols, help: def.course })}
-        {card('Purchased grade', d?.by_grade, 'grade', 'tone-amber', { cols: payCols, help: def.grade, height: 280 })}
+        {card('Class wise conversion (purchased course)', d?.by_course, 'course', 'tone-violet', { asTable: true, cols: payCols, help: def.course, pick: { selected: courses, toggle: toggleIn(courses, setCourses), set: setCourses } })}
+        {card('Purchased grade', d?.by_grade, 'grade', 'tone-amber', { cols: payCols, help: def.grade, height: 280, pick: { selected: grades, toggle: toggleIn(grades, setGrades), set: setGrades } })}
         {card('Staff-wise (last touch)', d?.by_last_staff, 'last_touch_staff', 'tone-pink', { filterDim: 'staff', asTable: true })}
         {card('Lead source distribution (last touch)', d?.by_last_source, 'last_touch_source', 'tone-orange', { filterDim: 'source', asTable: true })}
         {card('Medium wise conversion (last touch)', d?.by_last_medium, 'last_touch_medium', 'tone-green', { filterDim: 'medium', asTable: true })}
