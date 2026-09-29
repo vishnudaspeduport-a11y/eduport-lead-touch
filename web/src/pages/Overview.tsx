@@ -1,11 +1,11 @@
 import { useState, type ReactNode } from 'react';
 import { useApi } from '../lib/api';
 import { useFilters, type ListDim } from '../lib/filters';
-import { fmt1, fmt2, fmtInt, fmtPct } from '../lib/format';
+import { fmt1, fmt2, fmtInt, fmtINR, fmtPct } from '../lib/format';
 import { ChartCard } from '../components/ChartCard';
 import { DataTable, type Col } from '../components/DataTable';
 import { DailyLines, Donut, HBars } from '../charts';
-import { CardSearch, Icon, Note, PageHeader, Segmented, Skeleton } from '../components/ui';
+import { CardSearch, Icon, Note, PageHeader, Segmented, Skeleton, useDebounce } from '../components/ui';
 import { KpiTile, type KpiSplit } from '../components/KpiTile';
 import { DrillDrawer, NEW_LEAD_COLS, NEW_LEAD_SORTS, type Drill, type DrillMetric } from '../components/DrillDrawer';
 
@@ -21,6 +21,7 @@ interface OverviewResponse {
     stale_nc: number; stale_nc_untouched: number; nc_total: number;
     stage_react: number; stage_react_total: number; stage_react_by: { stage: string; total: number; reactivated: number }[];
     new_leads: number; new_leads_touched: number;
+    proposed_fee: number; fee_received: number; fee_payers: number; fee_payments: number; fee_enrollments: number; fee_enrollments_unknown: number; fee_window: { from: string; to: string };
   };
   stages: { key: string; leads: number; converted: number }[];
   stages_revised: { key: string; leads: number; converted: number; revived: number }[];
@@ -73,13 +74,21 @@ function DimCard({ title, rows, dim, measures, tone, opts, loading, error, onRet
 /** Mirrors the Tableau "Lead Touch - Overview" dashboard: touch-date window, touch grain. */
 export default function Overview() {
   const { f, params, toggleValue, setList, set } = useFilters();
-  const q = useApi<OverviewResponse>('/overview', params);
+  // days a lead may sit in New / Not Connected before it counts as waiting (remembered per browser)
+  const [staleDays, setStaleDays] = useState<number>(() => { try { const v = Number.parseInt(localStorage.getItem('lt-stale-days') ?? '', 10); return v >= 1 && v <= 365 ? v : 5; } catch { return 5; } });
+  const changeStale = (v: number) => { const n = Math.max(1, Math.min(365, Math.round(v) || 1)); setStaleDays(n); try { localStorage.setItem('lt-stale-days', String(n)); } catch { /* ignore */ } };
+  const staleQ = useDebounce(staleDays, 500);
+  const q = useApi<OverviewResponse>('/overview', { ...params, stale_days: staleQ });
   const d = q.data?.data;
   const k = d?.kpis;
   const def = d?.definitions ?? {};
   const [drill, setDrill] = useState<Drill | null>(null);
   const [tat, setTat] = useState<'created' | 'touch'>('created');
   const tatData = d?.tat?.[tat];
+  const staleRows: { stage: string; metric: DrillMetric; total: number; stale: number; share: number | null; untouched: number }[] = k ? [
+    { stage: 'New', metric: 'stale_new', total: k.new_total, stale: k.stale_new, share: k.new_total ? (k.stale_new / k.new_total) * 100 : null, untouched: k.stale_new_untouched },
+    { stage: 'Not Connected', metric: 'stale_not_connected', total: k.nc_total, stale: k.stale_nc, share: k.nc_total ? (k.stale_nc / k.nc_total) * 100 : null, untouched: k.stale_nc_untouched },
+  ] : [];
   const revived = d?.stages_revised?.find((s) => s.key === 'New')?.revived ?? 0;
   const open = (metric: DrillMetric, title: string, dim?: string, value?: string, subtitle?: string) => setDrill({ metric, title, dim, value, subtitle, summary: !dim });
   // New leads live on the lead table (not the touch table): own list / CSV / summary endpoints
@@ -118,16 +127,16 @@ export default function Overview() {
           <Kpi tone="tone-green" icon={<Icon.Calendar />} title="Avg touches before conversion (date-wise)" value={fmt2(k.avg_touches_window)} sub={`in window · ${fmt2(k.avg_touches_window_per_lead)} per lead (${fmtInt(k.avg_touches_window_n)} leads)`} def={`${def.avg_touches_window} ${def.avg_per_lead}`} onClick={() => open('avg_window', 'Avg touches before conversion (date-wise)', undefined, undefined, 'converted leads touched in the window, with their all-time touch counts')} />
           <Kpi tone="tone-slate" icon={<Icon.Spark />} title="Stage Converted · not paid" value={fmtInt(k.stage_conv_unpaid)} sub={`of ${fmtInt(k.stage_conv_total)} leads in stage Converted · no payment on record`} def={def.stage_conv_unpaid} onClick={() => open('stage_conv_unpaid', 'Stage Converted · not paid')} />
           <Kpi tone="tone-teal" icon={<Icon.Check />} title="Paid · stage not Converted" value={fmtInt(k.paid_other_stage)} sub="counted in Total converted, but the Salesforce stage was never moved to Converted" def={def.paid_other_stage} onClick={() => open('paid_other_stage', 'Paid · stage not Converted')} />
-          <Kpi tone="tone-red" icon={<Icon.Calendar />} title={`Still New after ${k.stale_days} days`} value={fmtInt(k.stale_new)} sub={`of ${fmtInt(k.new_total)} leads in stage New · ${fmtInt(k.stale_new_untouched)} never touched after creation`} def={def.stale_new}
-            onClick={() => open('stale_new', `Still New after ${k.stale_days} days`, undefined, undefined, 'leads still in stage New, created more than 5 days ago and not touched in the last 5 days · sorted by last touch')} />
           <Kpi tone="tone-violet" icon={<Icon.Touch />} title="Lost leads with new activity" value={fmtInt(k.stage_react)} sub={`of ${fmtInt(k.stage_react_total)} leads in Not Willing Now / Disqualified / Not Connected / P2 Completed · new touch after the stage was set`} def={def.stage_react}
             onClick={() => open('stage_react', 'Lost leads with new activity')} />
-          <Kpi tone="tone-amber" icon={<Icon.Calendar />} title={`Still Not Connected after ${k.stale_days} days`} value={fmtInt(k.stale_nc)} sub={`of ${fmtInt(k.nc_total)} leads in stage Not Connected · ${fmtInt(k.stale_nc_untouched)} never touched after creation`} def={def.stale_nc}
-            onClick={() => open('stale_not_connected', `Still Not Connected after ${k.stale_days} days`, undefined, undefined, 'leads still in stage Not Connected, created more than 5 days ago and not touched in the last 5 days · sorted by last touch')} />
+          <Kpi tone="tone-red" icon={<Icon.Spark />} title="Proposed fee" value={fmtINR(k.proposed_fee)} def={def.proposed_fee}
+            sub={`fee − discount of ${fmtInt(k.fee_enrollments)} enrollments paid ${k.fee_window.from} → ${k.fee_window.to}${k.fee_enrollments_unknown ? ` · ${fmtInt(k.fee_enrollments_unknown)} without a fee on record` : ''}`} />
+          <Kpi tone="tone-amber" icon={<Icon.Check />} title="Fee received" value={fmtINR(k.fee_received)} def={def.fee_received}
+            sub={`${fmtInt(k.fee_payments)} payments by ${fmtInt(k.fee_payers)} users · ${k.fee_window.from} → ${k.fee_window.to}${k.proposed_fee ? ` · ${fmtPct((k.fee_received / k.proposed_fee) * 100)} of the proposed fee` : ''}`} />
         </>}
       </div>
 
-      <div className="grid gap-4 xl:grid-cols-3">
+      <div className="grid gap-4 xl:grid-cols-2">
         <ChartCard title="Lead funnel · LM stage" tone="tone-brand" subtitle="Total leads by current Lead Stage · click a slice to filter" loading={q.isLoading} error={q.error} rows={d?.stages ?? []} height={240}
           help="Current Lead Stage of the distinct leads that have a touch in the window.">
           <Donut data={(d?.stages ?? []).map((s) => ({ key: s.key, value: s.leads, secondary: s.converted, selected: (f.lists.lead_stage ?? []).includes(s.key) }))} valueLabel="Total leads" secondaryLabel="Converted" centerLabel="leads" onClick={(key) => toggleValue('lead_stage', key)} />
@@ -136,6 +145,25 @@ export default function Overview() {
           help={def.stages_revised}>
           <Donut data={(d?.stages_revised ?? []).map((s) => ({ key: s.key, value: s.leads, secondary: s.converted }))} valueLabel="Total leads" secondaryLabel="Converted" centerLabel="leads"
             onClick={(key) => open('leads', `Revised funnel · ${key}`, 'revised_stage', key, key === 'New' ? 'leads in stage New plus closed-stage leads touched again after the stage change' : ['Not Willing Now', 'Disqualified', 'Not Connected', 'P2 Completed'].includes(key) ? `leads in stage ${key} with no touch after the stage change` : `leads in stage ${key}`)} />
+        </ChartCard>
+        <ChartCard title="Leads still waiting in a stage" tone="tone-red" loading={q.isLoading} error={q.error} rows={staleRows} height={240}
+          subtitle={`still in the stage, created more than ${k?.stale_days ?? staleDays} days ago and not touched in the last ${k?.stale_days ?? staleDays} days · click a row for the leads`}
+          help={`${def.stale_new ?? ''} ${def.stale_nc ?? ''}`}
+          actions={<div className="flex items-center gap-1 text-[11px] text-ink-2">
+            <span>Days</span>
+            {[3, 5, 7, 10, 15].map((n) => <button key={n} className={`rounded border px-1.5 py-0.5 ${staleDays === n ? 'border-accent bg-accent/10 font-semibold text-accent' : 'border-line hover:bg-surface-2'}`} onClick={() => changeStale(n)}>{n}</button>)}
+            <input type="number" min={1} max={365} className="input !w-16 !py-0.5" title="any number of days" value={staleDays} onChange={(e) => changeStale(Number(e.target.value))} />
+          </div>}>
+          <DataTable rows={staleRows} compact maxHeight="100%" rowKey={(r) => r.stage}
+            onRowClick={(r) => setDrill({ metric: r.metric, title: `Still ${r.stage} after ${k?.stale_days ?? staleDays} days`, extra: { stale_days: k?.stale_days ?? staleDays }, summary: true,
+              subtitle: `leads still in stage ${r.stage}, created more than ${k?.stale_days ?? staleDays} days ago and not touched in the last ${k?.stale_days ?? staleDays} days · sorted by last touch` })}
+            columns={[
+              { key: 'stage', header: 'Stage' },
+              { key: 'total', header: 'Leads in the stage', align: 'right' },
+              { key: 'stale', header: `Still there after ${k?.stale_days ?? staleDays} days`, align: 'right', bar: true },
+              { key: 'share', header: 'Share', align: 'right', render: (v) => fmtPct(v as number) },
+              { key: 'untouched', header: 'Never touched after creation', align: 'right' },
+            ]} />
         </ChartCard>
         <ChartCard title="Lead funnel · IC status" tone="tone-pink" subtitle="Total leads by Interested Course status · click a bar to filter (IC status)" loading={q.isLoading} error={q.error} rows={d?.ic_status ?? []} height={240}
           help="Interested Course status for the leads touched in the window, blank status excluded. A lead with several interested courses appears under each status.">

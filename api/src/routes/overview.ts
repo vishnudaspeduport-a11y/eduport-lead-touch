@@ -106,8 +106,9 @@ overview.get('/overview', (c) =>
     const wx = (skip: string) => flatWhere(sql, f, periods.current, skip);
     const conv = convCond(sql, f); const convFirst = convFirstCond(sql, f);
     const pp = paymentPeriod(f);
+    const feeWin = pp ?? periods.current;   // payments counted for the fee KPIs: the payment-date window when it is on, else the main date range
     const staleDays = Math.max(1, Math.min(365, Number.parseInt(q.stale_days ?? '5', 10) || 5));
-    const [[k], [stale], [avgWin], [avgAll], stages, icStatus, touchPoint, source, classRaw, reason, medium, campaign, staff, daily, reactRows, lmReason, [newLeads], stagesRevised, tatRows, [leadsUnion]] = await Promise.all([
+    const [[k], [stale], [avgWin], [avgAll], stages, icStatus, touchPoint, source, classRaw, reason, medium, campaign, staff, daily, reactRows, lmReason, [newLeads], stagesRevised, tatRows, [leadsUnion], [fees]] = await Promise.all([
       sql<{ touches: number; leads: number; converted: number; converted_first: number; sf_converted: number; stage_conv_total: number; stage_conv_unpaid: number; paid_other_stage: number; touches_of_converted: number }[]>`
         SELECT count(*)::int AS touches,
                count(DISTINCT t.lead_id)::int AS leads,
@@ -204,6 +205,33 @@ overview.get('/overview', (c) =>
       f.basis === 'created'
         ? sql<{ n: number }[]>`SELECT count(*)::int AS n FROM analytics.v_lead_conv l WHERE ${newLeadWhere(sql, f, periods.current, { scope: 'union' })}`
         : Promise.resolve([{ n: 0 }]),
+      // Proposed fee / fee received: valid payments (payment_method 0) dated inside the window, made by the app accounts of the leads in the
+      // selection (own phone or alternative number). Proposed fee = fee - discount of the enrollments those payments belong to, each once.
+      sql<{ fee_payers: number; fee_payments: number; fee_received: number; proposed_fee: number; fee_enrollments: number; fee_enrollments_unknown: number }[]>`
+        WITH hp0 AS (
+          -- start from the payments of the window (a few thousand rows), then keep those whose account belongs to a lead of the selection
+          SELECT hp.id, hp.user_id, hp.amount, hp.enrollment_id, hp.enrollment_fee, hp.enrollment_discount
+          FROM app.home_payment hp
+          WHERE hp.payment_method = 0 AND hp.deleted = false AND hp.is_success = true AND hp.payment_success = true
+            AND hp.payment_date BETWEEN ${feeWin.from} AND ${feeWin.to}),
+        uk AS (
+          SELECT u.id AS user_id, analytics.phone_key(u.phone) AS pk1,
+                 CASE WHEN analytics.phone_key_valid(u.alternative_number) THEN analytics.phone_key(u.alternative_number) END AS pk2
+          FROM app.home_customuser u WHERE u.is_deleted = false AND u.id IN (SELECT user_id FROM hp0)),
+        ok AS (
+          SELECT DISTINCT uk.user_id
+          FROM uk CROSS JOIN LATERAL (VALUES (uk.pk1), (uk.pk2)) AS v(pk)
+          JOIN salesforce.lead_master__c m ON analytics.phone_key(m.mobile_number__c) = v.pk
+          WHERE v.pk IS NOT NULL AND EXISTS (SELECT 1 FROM analytics.mv_touch_flat t WHERE t.lead_id = m.id AND ${w})),
+        pay AS (SELECT hp0.* FROM hp0 WHERE hp0.user_id IN (SELECT user_id FROM ok)),
+        enr AS (
+          SELECT DISTINCT ON (COALESCE(enrollment_id::text, 'p' || id::text)) enrollment_id, enrollment_fee, enrollment_discount
+          FROM pay ORDER BY COALESCE(enrollment_id::text, 'p' || id::text))
+        SELECT (SELECT count(DISTINCT user_id) FROM pay)::int AS fee_payers, (SELECT count(*) FROM pay)::int AS fee_payments,
+               (SELECT COALESCE(sum(amount), 0) FROM pay)::float8 AS fee_received,
+               (SELECT COALESCE(sum(enrollment_fee - COALESCE(enrollment_discount, 0)), 0) FROM enr)::float8 AS proposed_fee,
+               (SELECT count(*) FROM enr WHERE enrollment_fee IS NOT NULL)::int AS fee_enrollments,
+               (SELECT count(*) FROM enr WHERE enrollment_fee IS NULL)::int AS fee_enrollments_unknown`,
     ]);
     const tatShape = (kind: 'created' | 'touch') => {
       const all = tatRows.find((r) => r.kind === kind && r.key === '_all');
@@ -233,6 +261,7 @@ overview.get('/overview', (c) =>
         stale_new: stale?.stale_new ?? 0, stale_new_untouched: stale?.stale_new_untouched ?? 0, new_total: stale?.new_total ?? 0, stale_days: staleDays,
         stale_nc: stale?.stale_nc ?? 0, stale_nc_untouched: stale?.stale_nc_untouched ?? 0, nc_total: stale?.nc_total ?? 0,
         new_leads: newLeads?.new_leads ?? 0, new_leads_touched: newLeads?.new_leads_touched ?? 0,
+        ...(fees ?? { fee_payers: 0, fee_payments: 0, fee_received: 0, proposed_fee: 0, fee_enrollments: 0, fee_enrollments_unknown: 0 }), fee_window: feeWin,
       },
       stages, stages_revised: stagesRevised, ic_status: icStatus, tat: { created: tatShape('created'), touch: tatShape('touch') },
       touch_point: touchPoint, source, class_raw: classRaw, reason, lm_reason: lmReason, medium, campaign, staff, daily,
@@ -244,6 +273,8 @@ overview.get('/overview', (c) =>
         converted: pp
           ? `Payment-date filter ON: leads in the selection that have a valid payment (payment_method 0, not deleted, is_success, payment_success) dated between ${pp.from} and ${pp.to}.`
           : 'Distinct leads in the selection that have ANY valid payment (payment_method 0, not deleted, is_success, payment_success) dated on/after one of their touch days. Payments are matched to leads on the phone number (last 10 digits): the own phone of the paying app account, or its alternative number.',
+        proposed_fee: 'Proposed fee = fee minus discount of the enrollments that received a payment inside the date range (the payment-date window when it is switched on), each enrollment counted once. Only payments of the app accounts linked to the leads in the selection (own phone or alternative number), valid and payment_method 0. It is the agreed price, so it is larger than the fee received while instalments are still open.',
+        fee_received: 'Fee received = sum of the payment amounts dated inside the same date range, for the same leads and accounts (valid payments, payment_method 0).',
         tat: 'Turnaround time of the converted leads in the selection (Total converted rule), in calendar days. "Lead created → paid": from the day the lead was created to the day of its FIRST valid payment; "before lead created" = the phone already had a payment before the lead existed. "Last touch → paid": from the latest lead touch on or before that payment day to the payment day; "no prior touch" = the first payment came before any touch (the lead counts as converted because a later payment followed a touch). Median = half the leads were faster. Click a band to list those leads.',
         stages_revised: 'Same leads as the Lead funnel, but a lead in Not Willing Now, Disqualified, Not Connected or P2 Completed that received a lead touch AFTER it entered that stage is counted under New (it is active again). Leads with no touch after the stage change stay in their stage. The stage moment comes from the Salesforce field-history log; leads with no logged change since 1 March 2026 use their creation date, or 1 March 2026 if older.',
         new_leads: 'Salesforce leads created (IST) inside the date range, whether or not they have a touch yet - the only figure on this page that includes leads without a touch. Deleted leads are excluded; duplicates are excluded unless toggled on. Lead filters (class, lead source, stage, LM reason, owner …) apply to the lead itself; touch filters (touch point, source, campaign, medium, staff) keep only leads with at least one such touch on any date. "With a touch" = at least one lead touch on record, any date.',
