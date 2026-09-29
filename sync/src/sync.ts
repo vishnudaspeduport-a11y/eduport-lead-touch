@@ -289,12 +289,12 @@ const APP_TABLES: AppTableSpec[] = [
   {
     name: 'home_customuser', stampCol: 'updated_at',
     select: (src, since) => (since
-      ? src`SELECT u.id, u.phone, u.is_deleted, u.created, u.updated_at
+      ? src`SELECT u.id, u.phone, u.alternative_number, u.is_deleted, u.created, u.updated_at
             FROM public.home_customuser u
             WHERE u.id IN (SELECT p.user_id FROM public.home_payment p WHERE p.created > ${since}::timestamptz - interval '45 days')
                OR (u.updated_at > ${since}::timestamptz AND EXISTS (SELECT 1 FROM public.home_payment p WHERE p.user_id = u.id AND p.is_success = true))
             ORDER BY u.id`.cursor(5000)
-      : src.unsafe(`SELECT u.id, u.phone, u.is_deleted, u.created, u.updated_at
+      : src.unsafe(`SELECT u.id, u.phone, u.alternative_number, u.is_deleted, u.created, u.updated_at
             FROM public.home_customuser u
             WHERE u.id IN (SELECT p.user_id FROM public.home_payment p WHERE ${VALID}) ORDER BY u.id`).cursor(5000)),
   },
