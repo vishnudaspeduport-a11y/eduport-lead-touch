@@ -24,9 +24,10 @@ const yesNo = (v: unknown) => (v ? 'Yes' : 'No');
 const USER_COLS: Col<Row>[] = [
   { key: 'user_id', header: 'EPS ID' }, { key: 'lead_name', header: 'Lead ID' },
   { key: 'first_name', header: 'Name', render: (v, r) => `${v ?? ''} ${r.last_name ?? ''}`.trim() || '–' }, { key: 'mobile', header: 'Phone' },
-  { key: 'lead_stage', header: 'Stage' }, { key: 'class_raw', header: 'Lead class' }, { key: 'grades', header: 'Purchased grade' }, { key: 'courses', header: 'Course / batch' },
-  { key: 'payments', header: 'Payments', align: 'right' }, { key: 'first_payment_date', header: 'First payment' }, { key: 'last_payment_date', header: 'Last payment' },
-  { key: 'revenue', header: 'Revenue', render: (v) => fmtINR(v as number) },
+  { key: 'lead_stage', header: 'Stage' }, { key: 'class_raw', header: 'Lead class' }, { key: 'grades', header: 'Purchased grade (in range)' }, { key: 'courses', header: 'Course / batch (in range)' },
+  { key: 'payments', header: 'Payments (in range)', align: 'right' }, { key: 'first_payment_date', header: 'First payment (in range)' }, { key: 'last_payment_date', header: 'Last payment (in range)' },
+  { key: 'revenue', header: 'Revenue (in range)', render: (v) => fmtINR(v as number) },
+  { key: 'payments_all_time', header: 'Payments (all time)', align: 'right' }, { key: 'revenue_all_time', header: 'Revenue (all time)', render: (v) => fmtINR(v as number) }, { key: 'first_payment_ever', header: 'First ever payment' },
   { key: 'last_touch_point', header: 'Last touch point' }, { key: 'last_touch_source', header: 'Last touch source' }, { key: 'last_touch_medium', header: 'Last touch medium' },
   { key: 'last_touch_campaign', header: 'Last touch campaign' }, { key: 'last_touch_staff', header: 'Last touch staff' },
   { key: 'last_touch_at', header: 'Last touch time', render: (v) => fmtDateTime(v as string) }, { key: 'touches_before_payment', header: 'Touches before payment', align: 'right' },

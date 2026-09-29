@@ -149,7 +149,7 @@ converted.get('/converted', (c) =>
         grade: 'Grade of the course that was bought, not the class recorded on the lead.',
         stage: 'Lead stage of the user\'s most recently created Salesforce lead (one lead per user).',
         revenue: 'Sum of payment amounts of the users in the row (all their valid payments, any method, any date).',
-        pm: 'Payment method: "All" counts every successful payment; "Method 0" counts payment_method 0 only, the rule the Overview uses; "Method 1" is the rest (gateway EMI instalments). The per-user columns payments / revenue / courses always cover every method.',
+        pm: 'Payment method: "All" counts every successful payment; "Method 0" counts payment_method 0 only, the rule the Overview uses; "Method 1" is the rest (gateway EMI instalments). In the user list, course / grade / payments / revenue cover the payments inside the selected dates; the all-time columns cover every payment of the user.',
       },
     };
   }),
@@ -157,7 +157,7 @@ converted.get('/converted', (c) =>
 
 // ---------------------------------------------------------------- payer list (drill-down + CSV)
 const SORTABLE: Record<string, string> = { last_payment_date: 'last_payment_date', first_payment_date: 'first_payment_date', revenue: 'revenue', payments: 'payments', touches_before_payment: 'touches_before_payment', last_touch_at: 'last_touch_at', lead_name: 'lead_name', lead_stage: 'lead_stage', class_raw: 'class_raw' };
-const COLS = ['user_id', 'lead_name', 'first_name', 'last_name', 'mobile', 'email', 'lead_stage', 'class_raw', 'lead_source', 'owner_name', 'courses', 'grades', 'payments', 'first_payment_date', 'last_payment_date', 'revenue',
+const COLS = ['user_id', 'lead_name', 'first_name', 'last_name', 'mobile', 'email', 'lead_stage', 'class_raw', 'lead_source', 'owner_name', 'courses', 'grades', 'payments', 'first_payment_date', 'last_payment_date', 'revenue', 'payments_all_time', 'revenue_all_time', 'first_payment_ever',
   'last_touch_point', 'last_touch_source', 'last_touch_medium', 'last_touch_campaign', 'last_touch_staff', 'last_touch_at', 'touches_before_payment', 'no_lead', 'lead_id'];
 
 function maskRow(r: Rec, role: Role): Rec {
@@ -175,17 +175,33 @@ function listQuery(sql: Sql, f: Filters, p: Period, q: Record<string, string>, p
   const w = payerWhere(sql, f, p, q);
   const sortCol = SORTABLE[q.sort ?? ''] ?? 'last_payment_date';
   const dir = q.dir === 'asc' ? sql`ASC NULLS FIRST` : sql`DESC NULLS LAST`;
+  // courses / grades / payments / dates / revenue = the user's payments INSIDE the selected dates (payment method switch and purchased grade /
+  // course selection applied); the *_all_time columns keep the lifetime figures, so a returning customer is still recognisable
   return sql<Rec[]>`
-    SELECT m.user_id, m.lead_name, l.first_name__c AS first_name, l.last_name__c AS last_name, u.phone AS mobile, l.email__c AS email,
-           m.lead_stage, m.class_raw, m.lead_source, m.owner_name, m.courses, m.grades, m.payments,
-           m.first_payment_date::text AS first_payment_date, m.last_payment_date::text AS last_payment_date, m.revenue::float8 AS revenue,
-           m.last_touch_point, m.last_touch_source, m.last_touch_medium, m.last_touch_campaign, m.last_touch_staff, m.last_touch_at::text AS last_touch_at,
-           m.touches_before_payment, m.no_lead, m.lead_id, count(*) OVER ()::int AS total_rows
-    FROM analytics.mv_payer m
-    LEFT JOIN salesforce.lead_master__c l ON l.id = m.lead_id
-    LEFT JOIN app.home_customuser u ON u.id = m.user_id
-    WHERE ${w} AND ${searchCond(sql, q.q ?? '')}
-    ORDER BY m.${sql(sortCol)} ${dir}, m.user_id
+    SELECT x.user_id, x.lead_name, x.first_name, x.last_name, x.mobile, x.email, x.lead_stage, x.class_raw, x.lead_source, x.owner_name,
+           x.courses, x.grades, x.payments, x.first_payment_date::text AS first_payment_date, x.last_payment_date::text AS last_payment_date, x.revenue,
+           x.payments_all_time, x.revenue_all_time, x.first_payment_ever::text AS first_payment_ever,
+           x.last_touch_point, x.last_touch_source, x.last_touch_medium, x.last_touch_campaign, x.last_touch_staff, x.last_touch_at::text AS last_touch_at,
+           x.touches_before_payment, x.no_lead, x.lead_id, count(*) OVER ()::int AS total_rows
+    FROM (
+      SELECT m.user_id, m.lead_name, l.first_name__c AS first_name, l.last_name__c AS last_name, u.phone AS mobile, l.email__c AS email,
+             m.lead_stage, m.class_raw, m.lead_source, m.owner_name,
+             pw.courses, pw.grades, pw.payments, pw.first_payment_date, pw.last_payment_date, pw.revenue,
+             m.payments AS payments_all_time, m.revenue::float8 AS revenue_all_time, m.first_payment_date AS first_payment_ever,
+             m.last_touch_point, m.last_touch_source, m.last_touch_medium, m.last_touch_campaign, m.last_touch_staff, m.last_touch_at,
+             m.touches_before_payment, m.no_lead, m.lead_id
+      FROM analytics.mv_payer m
+      LEFT JOIN salesforce.lead_master__c l ON l.id = m.lead_id
+      LEFT JOIN app.home_customuser u ON u.id = m.user_id
+      LEFT JOIN LATERAL (
+        SELECT string_agg(DISTINCT COALESCE(b.title, 'batch ' || hp.batch_id::text), ' | ') AS courses,
+               string_agg(DISTINCT COALESCE(b.grade_title, 'No Grade On Batch'), ' | ') AS grades,
+               count(*)::int AS payments, min(hp.payment_date) AS first_payment_date, max(hp.payment_date) AS last_payment_date, sum(hp.amount)::float8 AS revenue
+        FROM app.home_payment hp LEFT JOIN app.core_batch b ON b.id = hp.batch_id
+        WHERE hp.user_id = m.user_id AND ${VALID(sql, payMethod(q))} AND hp.payment_date BETWEEN ${p.from} AND ${p.to} AND ${payRestrict(sql, q)}) pw ON true
+      WHERE ${w} AND ${searchCond(sql, q.q ?? '')}
+    ) x
+    ORDER BY x.${sql(sortCol)} ${dir}, x.user_id
     ${page ? sql`LIMIT ${page.limit} OFFSET ${page.offset}` : sql``}`;
 }
 
