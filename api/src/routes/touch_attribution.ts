@@ -20,7 +20,7 @@ export const touchAttribution = new Hono<AppEnv>();
 
 export interface AttrRow { key: string; touches: number; leads: number; converted: number; attributed: number; conv_pct: number | null; attr_pct: number | null; share_pct: number | null }
 
-async function byDim(sql: Sql, w: Frag, col: string, flag: Frag, conv: Frag, limit = 40): Promise<AttrRow[]> {
+async function byDim(sql: Sql, w: Frag, col: string, flag: Frag, conv: Frag, limit = 2000): Promise<AttrRow[]> {
   const rows = await sql<{ key: string; touches: number; leads: number; converted: number; attributed: number }[]>`
     SELECT COALESCE(t.${sql(col)}::text, '(null)') AS key, count(*)::int AS touches, count(DISTINCT t.lead_id)::int AS leads,
            count(DISTINCT t.lead_id) FILTER (WHERE ${conv})::int AS converted,

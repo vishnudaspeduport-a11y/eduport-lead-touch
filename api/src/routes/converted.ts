@@ -83,7 +83,7 @@ function payerWhere(sql: Sql, f: Filters, p: Period, q: Record<string, string>, 
 }
 
 export interface PayerDim { key: string; users: number; touches: number; revenue: number; new_users: number; share_pct: number | null }
-async function byDim(sql: Sql, w: Frag, col: string, p: Period, limit = 40): Promise<PayerDim[]> {
+async function byDim(sql: Sql, w: Frag, col: string, p: Period, limit = 2000): Promise<PayerDim[]> {
   const rows = await sql<Omit<PayerDim, 'share_pct'>[]>`
     SELECT COALESCE(m.${sql(col)}::text, '(null)') AS key, count(*)::int AS users, COALESCE(sum(m.touches_before_payment), 0)::int AS touches,
            COALESCE(sum(m.revenue), 0)::float8 AS revenue, count(*) FILTER (WHERE m.first_payment_date BETWEEN ${p.from} AND ${p.to})::int AS new_users
@@ -117,7 +117,7 @@ converted.get('/converted', (c) =>
                COALESCE(sum(hp.amount), 0)::float8 AS revenue, 0::int AS new_users, NULL::float8 AS share_pct
         FROM app.home_payment hp LEFT JOIN app.core_batch b ON b.id = COALESCE(hp.enrollment_batch_id, hp.batch_id)
         WHERE ${V} AND ${payRestrict(sql, q, 'course')} AND hp.payment_date BETWEEN ${p.from} AND ${p.to} AND hp.user_id IN (SELECT m.user_id FROM analytics.mv_payer m WHERE ${wx('course')})
-        GROUP BY 1 ORDER BY users DESC LIMIT 200`,
+        GROUP BY 1 ORDER BY users DESC LIMIT 2000`,
       sql<PayerDim[]>`
         SELECT COALESCE(b.grade_title, 'No Grade On Batch') AS key, count(DISTINCT hp.user_id)::int AS users, count(*)::int AS touches,
                COALESCE(sum(hp.amount), 0)::float8 AS revenue, 0::int AS new_users, NULL::float8 AS share_pct
