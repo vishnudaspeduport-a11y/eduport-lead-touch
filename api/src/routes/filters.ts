@@ -17,7 +17,7 @@ filters.get('/filters', (c) =>
     if (!dim || !(isLeadDim(dim) || isTouchDim(dim))) {
       throw Object.assign(new Error(`unknown dim "${dim ?? ''}"`), { status: 400 });
     }
-    const limit = intParam(q, 'limit', 100, 1, 500);
+    const limit = intParam(q, 'limit', 100, 1, 5000);   // the pickers ask for everything
     const search = (q.q ?? '').trim().toLowerCase();
     const p = periods.current;
     const d = dim as Dim;
@@ -46,7 +46,7 @@ filters.get('/filters', (c) =>
         const outside = await sql<{ value: string; leads: number; first_touch: string; last_touch: string }[]>`
           SELECT ${ref} AS value, count(DISTINCT t.lead_id)::int AS leads, min(t.touch_date)::text AS first_touch, max(t.touch_date)::text AS last_touch
           FROM analytics.mv_touch_flat t WHERE lower(${ref}) LIKE ${'%' + search + '%'}
-          GROUP BY 1 ORDER BY 2 DESC, 1 LIMIT 30`;
+          GROUP BY 1 ORDER BY 2 DESC, 1 LIMIT 500`;
         const seen = new Set(rows.map((r) => r.value));
         return { dim: d, options: [...rows, ...outside.filter((o) => !seen.has(o.value)).map((o) => ({ value: o.value, leads: 0, converted: 0, outside: true, leads_all: o.leads, first_touch: o.first_touch, last_touch: o.last_touch }))] };
       }

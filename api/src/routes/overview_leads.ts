@@ -298,7 +298,7 @@ overviewLeads.get('/overview/leads/summary', (c) =>
       const s = SPLITS.find((x) => x.dim === dim) ?? { dim, label: dim === 'campaign' ? 'Campaign' : 'Staff', kind: 'touch' as const };
       const list = rows.filter((r) => r.dim === s.dim).map((r) => ({ key: r.key ?? '(blank)', leads: r.leads, revenue: r.revenue })).sort((a, b) => b.leads - a.leads);
       const label = afterStage && s.kind === 'touch' ? `${s.label} · after the stage change` : afterStage && s.dim === 'lead_stage' ? 'Closed stage the lead sits in' : s.label;
-      return { ...s, label, rows: list.slice(0, 40), distinct: list.length };
+      return { ...s, label, rows: list, distinct: list.length };   // every value: the table scrolls, nothing is cut off
     });
     return {
       mode: afterStage ? 'after_stage' : 'window', leads: total?.leads ?? 0, revenue: total?.revenue ?? 0, touches: touches?.leads ?? 0, payers: payers?.leads ?? 0, payment_window: pp, splits,

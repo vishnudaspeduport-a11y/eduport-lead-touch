@@ -13,9 +13,9 @@ export function MultiSelect({ dim, onDone }: { dim: ListDim; onDone?: () => void
   const [q, setQ] = useState('');
   const dq = useDebounce(q);
   const selected = f.lists[dim] ?? [];
-  const { data, isLoading, error } = useApi<FiltersResponse>('/filters', { ...params, dim, q: dq, limit: 150 });
+  const { data, isLoading, error } = useApi<FiltersResponse>('/filters', { ...params, dim, q: dq, limit: 5000 });
   const options = (data?.data.options ?? []) as Opt[];
-  // keep selected values visible even if they fall out of the top-N
+  // every value is listed (no top-N cut); selected values stay visible even when the current filters leave them no leads
   const merged: Opt[] = [...options, ...selected.filter((s) => !options.some((o) => o.value === s)).map((value) => ({ value, leads: 0, converted: 0 }))];
   const inside = merged.filter((o) => !o.outside);
   const toggle = (v: string) => setList(dim, selected.includes(v) ? selected.filter((x) => x !== v) : [...selected, v]);

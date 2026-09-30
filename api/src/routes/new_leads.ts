@@ -247,7 +247,7 @@ newLeads.get('/overview/new_leads/summary', (c) =>
     const one = (dim: string) => rows.find((r) => r.dim === dim);
     const splits = SPLITS.map((s) => {
       const list = rows.filter((r) => r.dim === s.dim).map((r) => ({ key: r.key ?? '(blank)', leads: r.leads, revenue: r.revenue })).sort((a, b) => b.leads - a.leads);
-      return { ...s, rows: list.slice(0, 40), distinct: list.length };
+      return { ...s, rows: list, distinct: list.length };   // every value: the table scrolls, nothing is cut off
     });
     return {
       mode: 'created', scope: q.scope === 'union' ? 'union' : 'created', leads: one('_total')?.leads ?? 0, touched: one('_touched')?.leads ?? 0, touches: one('_touches')?.leads ?? 0,
