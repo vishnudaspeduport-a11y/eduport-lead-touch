@@ -176,19 +176,21 @@ overview.get('/overview', (c) =>
         SELECT count(*)::int AS new_leads,
                count(*) FILTER (WHERE EXISTS (SELECT 1 FROM analytics.mv_touch_flat t WHERE t.lead_id = l.lead_id))::int AS new_leads_touched
         FROM analytics.v_lead_conv l WHERE ${newLeadWhere(sql, f, periods.current)}`,
-      // Revised funnel: a closed-stage lead (Not Willing Now / Disqualified / Not Connected / P2 Completed) that was touched AFTER the stage change
-      // counts under New (it is active again); every other lead keeps its stage. Stage moment = analytics.stage_since (Salesforce field history).
+      // Revised funnel: a lead in Connected, Not Willing Now, Disqualified, Not Connected or P2 Completed that was touched AFTER the stage change
+      // counts under New (it is active again); every other lead keeps its stage. Stage moment = the Salesforce field-history row of the latest
+      // change into the current stage (salesforce.lead_stage, joined once instead of calling analytics.stage_since per lead), else the creation
+      // date / 1 March 2026 - the same rule as stage_since.
       sql<{ key: string; leads: number; converted: number; revived: number }[]>`
         WITH r AS (
           SELECT t.lead_id, max(t.lead_stage) AS stage, max(t.lead_created_date)::timestamptz AS created, bool_or(${conv}) AS converted,
                  (SELECT max(t2.touch_at) FROM analytics.mv_touch_flat t2 WHERE t2.lead_id = t.lead_id) AS last_touch
           FROM analytics.mv_touch_flat t WHERE ${wx('lead_stage')} GROUP BY t.lead_id),
         x AS (
-          SELECT stage, converted,
-                 CASE WHEN stage IN ('Not Willing Now', 'Disqualified', 'Not Connected', 'P2 Completed')
-                      THEN CASE WHEN last_touch > analytics.stage_since(lead_id, stage, created) THEN 'New' ELSE stage END
-                      ELSE stage END AS key
-          FROM r)
+          SELECT r.stage, r.converted,
+                 CASE WHEN r.stage IN ('Connected', 'Not Willing Now', 'Disqualified', 'Not Connected', 'P2 Completed')
+                       AND r.last_touch > COALESCE(ls.changed_at, GREATEST(r.created, '2026-03-01 00:00:00+00'::timestamptz))
+                      THEN 'New' ELSE r.stage END AS key
+          FROM r LEFT JOIN salesforce.lead_stage ls ON ls.lead_id = r.lead_id AND ls.stage = r.stage)
         SELECT key, count(*)::int AS leads, count(*) FILTER (WHERE converted)::int AS converted, count(*) FILTER (WHERE key IS DISTINCT FROM stage)::int AS revived
         FROM x GROUP BY key ORDER BY leads DESC`,
       // Turnaround time of the converted leads in the selection: lead created -> first valid payment day, and latest touch on/before that day -> payment day
@@ -277,7 +279,7 @@ overview.get('/overview', (c) =>
         proposed_fee: 'Proposed fee = fee minus discount of the enrollments that received a payment inside the date range (the payment-date window when it is switched on), each enrollment counted once. Only payments of the app accounts linked to the leads in the selection (own phone or alternative number), valid and payment_method 0. It is the agreed price, so it is larger than the fee received while instalments are still open.',
         fee_received: 'Fee received = sum of the payment amounts dated inside the same date range, for the same leads and accounts (valid payments, payment_method 0).',
         tat: 'Turnaround time of the converted leads in the selection (Total converted rule), in calendar days. "Lead created → paid": from the day the lead was created to the day of its FIRST valid payment; "before lead created" = the phone already had a payment before the lead existed. "Last touch → paid": from the latest lead touch on or before that payment day to the payment day; "no prior touch" = the first payment came before any touch (the lead counts as converted because a later payment followed a touch). Median = half the leads were faster. Click a band to list those leads.',
-        stages_revised: 'Same leads as the Lead funnel, but a lead in Not Willing Now, Disqualified, Not Connected or P2 Completed that received a lead touch AFTER it entered that stage is counted under New (it is active again). Leads with no touch after the stage change stay in their stage. The stage moment comes from the Salesforce field-history log; leads with no logged change since 1 March 2026 use their creation date, or 1 March 2026 if older.',
+        stages_revised: 'Same leads as the Lead funnel, but a lead in Connected, Not Willing Now, Disqualified, Not Connected or P2 Completed that received a lead touch AFTER it entered that stage is counted under New (it is active again). Leads with no touch after the stage change stay in their stage. The stage moment comes from the Salesforce field-history log; leads with no logged change since 1 March 2026 use their creation date, or 1 March 2026 if older.',
         new_leads: 'Salesforce leads created (IST) inside the date range, whether or not they have a touch yet - the only figure on this page that includes leads without a touch. Deleted leads are excluded; duplicates are excluded unless toggled on. Lead filters (class, lead source, stage, LM reason, owner …) apply to the lead itself; touch filters (touch point, source, campaign, medium, staff) keep only leads with at least one such touch on any date. "With a touch" = at least one lead touch on record, any date.',
         leads_basis: f.basis === 'created' ? 'Main window = LEAD CREATED date: leads created in the range (touched or not), with all their touches.' : 'Main window = TOUCH date: touches dated in the range.',
         converted_first: 'Brief definition: touched leads whose FIRST valid payment is on/after one of their touches in the window.',

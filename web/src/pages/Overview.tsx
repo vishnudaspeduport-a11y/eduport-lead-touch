@@ -143,10 +143,10 @@ export default function Overview() {
           help="Current Lead Stage of the distinct leads that have a touch in the window.">
           <Donut data={(d?.stages ?? []).map((s) => ({ key: s.key, value: s.leads, secondary: s.converted, selected: (f.lists.lead_stage ?? []).includes(s.key) }))} valueLabel="Total leads" secondaryLabel="Converted" centerLabel="leads" onClick={(key) => toggleValue('lead_stage', key)} />
         </ChartCard>
-        <ChartCard title="Revised Lead funnel · LM stage" tone="tone-violet" subtitle={`closed-stage leads touched again after the stage change count as New${revived ? ` · ${fmtInt(revived)} moved to New` : ''} · click a slice for the leads`} loading={q.isLoading} error={q.error} rows={d?.stages_revised ?? []} height={240}
+        <ChartCard title="Revised Lead funnel · LM stage" tone="tone-violet" subtitle={`leads in Connected or a closed stage that were touched again after the stage change count as New${revived ? ` · ${fmtInt(revived)} moved to New` : ''} · click a slice for the leads`} loading={q.isLoading} error={q.error} rows={d?.stages_revised ?? []} height={240}
           help={def.stages_revised}>
           <Donut data={(d?.stages_revised ?? []).map((s) => ({ key: s.key, value: s.leads, secondary: s.converted }))} valueLabel="Total leads" secondaryLabel="Converted" centerLabel="leads"
-            onClick={(key) => open('leads', `Revised funnel · ${key}`, 'revised_stage', key, key === 'New' ? 'leads in stage New plus closed-stage leads touched again after the stage change' : ['Not Willing Now', 'Disqualified', 'Not Connected', 'P2 Completed'].includes(key) ? `leads in stage ${key} with no touch after the stage change` : `leads in stage ${key}`)} />
+            onClick={(key) => open('leads', `Revised funnel · ${key}`, 'revised_stage', key, key === 'New' ? 'leads in stage New plus leads in Connected or a closed stage touched again after the stage change' : ['Connected', 'Not Willing Now', 'Disqualified', 'Not Connected', 'P2 Completed'].includes(key) ? `leads in stage ${key} with no touch after the stage change` : `leads in stage ${key}`)} />
         </ChartCard>
         <ChartCard title="Lead funnel · IC status" tone="tone-pink" subtitle="Total leads by Interested Course status · click a bar to filter (IC status)" loading={q.isLoading} error={q.error} rows={d?.ic_status ?? []} height={240}
           help="Interested Course status for the leads touched in the window, blank status excluded. A lead with several interested courses appears under each status.">

@@ -56,8 +56,8 @@ function dimCond(sql: Sql, q: Record<string, string>): Frag {
     return sql`(t.converted_at IS NOT NULL AND ${tatBucket(sql, days)} = ${value})`;
   }
   if (dim === 'revised_stage') {
-    // Revised funnel slice: closed-stage leads touched after the stage change count as New; the rest keep their stage
-    const closed = ['Not Willing Now', 'Disqualified', 'Not Connected', 'P2 Completed'];
+    // Revised funnel slice: leads in these stages touched after the stage change count as New; the rest keep their stage
+    const closed = ['Connected', 'Not Willing Now', 'Disqualified', 'Not Connected', 'P2 Completed'];
     const react = sql`EXISTS (SELECT 1 FROM analytics.mv_touch_flat t3 WHERE t3.lead_id = t.lead_id AND t3.touch_at > analytics.stage_since(t.lead_id, t.lead_stage, t.lead_created_date::timestamptz))`;
     if (value === 'New') return sql`(t.lead_stage = 'New' OR (t.lead_stage IN ${sql(closed)} AND ${react}))`;
     if (closed.includes(value)) return sql`(t.lead_stage = ${value} AND NOT ${react})`;
