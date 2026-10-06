@@ -67,6 +67,11 @@ export async function endSession(c: Context<AppEnv>, sql: Sql): Promise<void> {
   deleteCookie(c, COOKIE, { path: '/' });
 }
 
+/** Requests the Worker makes to itself (cache warm-up from the cron) carry this per-isolate token; it never leaves the isolate. */
+let internalToken: string | null = null;   // created lazily: random values are not allowed at module scope on Workers
+export const INTERNAL_TOKEN = () => (internalToken ??= crypto.randomUUID());
+export const INTERNAL_HEADER = 'x-lt-internal';
+
 const PUBLIC = new Set(['/api/auth/status', '/api/auth/login', '/api/auth/setup', '/api/health']);
 
 export const authMiddleware = createMiddleware<AppEnv>(async (c, next) => {
@@ -82,6 +87,7 @@ export const authMiddleware = createMiddleware<AppEnv>(async (c, next) => {
     if (site && site !== 'same-origin' && site !== 'none') return c.json({ error: { code: 'forbidden', message: 'cross-site request blocked' } }, 403);
   }
   if (PUBLIC.has(new URL(c.req.url).pathname)) { await next(); return; }
+  if (c.req.header(INTERNAL_HEADER) === INTERNAL_TOKEN()) { c.set('user', { email: 'warm-up', role: 'analyst' }); await next(); return; }
 
   const token = getCookie(c, COOKIE);
   if (!token) return c.json({ error: { code: 'unauthenticated', message: 'Sign in required' } }, 401);

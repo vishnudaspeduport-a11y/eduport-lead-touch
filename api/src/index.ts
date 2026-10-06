@@ -1,7 +1,8 @@
 import { Hono } from 'hono';
 import { ZodError } from 'zod';
 import type { AppEnv, Env } from './env';
-import { authMiddleware } from './auth';
+import { authMiddleware, INTERNAL_HEADER, INTERNAL_TOKEN } from './auth';
+import { forgetVersion, memStats } from './cache';
 import { getSql } from './db';
 import { meta } from './routes/meta';
 import { filters } from './routes/filters';
@@ -33,7 +34,15 @@ for (const r of [authRoutes, meta, filters, leads, syncRoute, overview, overview
 api.post('/admin/refresh', async (c) => {
   if (c.get('user').role !== 'admin') return c.json({ error: { code: 'forbidden', message: 'admin only' } }, 403);
   const out = await refreshViews(c.env);
+  forgetVersion();
   return c.json({ data: out });
+});
+
+// Admin: cache warm-up on demand (the cron does the same every 20 minutes) + a peek at the memory layer
+api.post('/admin/warm', async (c) => {
+  if (c.get('user').role !== 'admin') return c.json({ error: { code: 'forbidden', message: 'admin only' } }, 403);
+  const out = await warmCache(c.env, c.executionCtx);
+  return c.json({ data: { warmed: out, memory: memStats() } });
 });
 
 app.route('/api', api);
@@ -68,13 +77,49 @@ async function refreshViews(env: Env) {
   }
 }
 
+// ---------------------------------------------------------------- cache warm-up
+// The default view of every page (last 30 days IST, both bases, the quick-picker lists) is requested through the
+// Worker itself so the answers sit in the cache before the first visitor arrives. Sequential on purpose: the
+// database is the bottleneck, and when the data version has not changed every request is a cache hit anyway.
+const ymd = (d: Date) => d.toISOString().slice(0, 10);
+export function warmUrls(): string[] {
+  const nowIst = new Date(Date.now() + 5.5 * 3600 * 1000);
+  const to = ymd(nowIst); const from = ymd(new Date(nowIst.getTime() - 29 * 86400 * 1000));
+  const base = (basis: 'created' | 'touch') => `from=${from}&to=${to}&basis=${basis}&compare=none`;
+  const urls = [
+    `/api/overview?${base('created')}&stale_days=5`,
+    `/api/converted?${base('created')}&pm=all`,
+    `/api/touch-attribution?${base('created')}`,
+    ...['class_group', 'touch_point', 'source', 'campaign', 'medium'].map((dim) => `/api/filters?${base('created')}&dim=${dim}&limit=5000`),
+    `/api/overview?${base('touch')}&stale_days=5`,
+    `/api/converted?${base('touch')}&pm=all`,
+  ];
+  return urls;
+}
+
+type FetchCtx = Parameters<typeof app.fetch>[2];
+export async function warmCache(env: Env, ctx: FetchCtx): Promise<{ url: string; status: number; cache: string; ms: number }[]> {
+  const out: { url: string; status: number; cache: string; ms: number }[] = [];
+  for (const url of warmUrls()) {
+    const t0 = Date.now();
+    try {
+      const res = await app.fetch(new Request(`https://warm.internal${url}`, { headers: { [INTERNAL_HEADER]: INTERNAL_TOKEN(), accept: 'application/json' } }), env, ctx);
+      await res.arrayBuffer();   // drain so the body is not kept open
+      out.push({ url, status: res.status, cache: res.headers.get('X-LT-Cache') ?? '-', ms: Date.now() - t0 });
+    } catch (e) {
+      out.push({ url, status: 0, cache: e instanceof Error ? e.message.slice(0, 120) : String(e), ms: Date.now() - t0 });
+    }
+  }
+  return out;
+}
+
 export default {
   fetch: app.fetch,
   async scheduled(_controller: ScheduledController, env: Env, ctx: ExecutionContext) {
     ctx.waitUntil(
-      refreshViews(env)
-        .then((rows) => console.log('refresh_all', JSON.stringify(rows)))
-        .catch((e) => console.error('refresh_all failed', e)),
+      warmCache(env, ctx)
+        .then((rows) => console.log('warm', JSON.stringify(rows)))
+        .catch((e) => console.error('warm failed', e)),
     );
   },
 } satisfies ExportedHandler<Env>;

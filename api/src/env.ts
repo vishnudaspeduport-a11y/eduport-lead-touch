@@ -3,6 +3,8 @@ export interface Env {
   HYPERDRIVE?: Hyperdrive;
   DATABASE_URL?: string;
   ASSETS: Fetcher;
+  /** Workers KV namespace for the response cache (cache.ts); optional, the app works without it (memory layer only) */
+  CACHE?: KVNamespace;
   /** password = login page, accounts managed in-app (app_auth.*); none = no login (everyone gets PUBLIC_ROLE) */
   AUTH_MODE: 'password' | 'none';
   PUBLIC_ROLE?: 'admin' | 'analyst' | 'viewer';

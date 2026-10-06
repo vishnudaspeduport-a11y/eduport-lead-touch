@@ -35,7 +35,7 @@ meta.get('/meta', (c) =>
       },
       definitions: DEFINITIONS,
     };
-  }, 30),
+  }, 30, { ttl: 120, perUser: true }),
 );
 
 meta.get('/definitions', (c) => c.json({ data: DEFINITIONS }));

@@ -26,10 +26,16 @@ run_worker_first = ["/api/*"]
 binding = "HYPERDRIVE"
 id = "c6890bf7a94c409e88a2fbcb42ee9bf6"
 
-# --- Materialized-view refresh: done by the sync job (GitHub Actions) every 30 min. The Worker cron was
-# removed: a refresh through the pooled connection can be cut mid-transaction and leave the views locked.
+# --- Response cache (api/src/cache.ts): answers keyed on the data version; shared across isolates through KV
+[[kv_namespaces]]
+binding = "CACHE"
+id = "cdb9b0b1bde44c7f90613ea02870a1c5"
+
+# --- Materialized-view refresh is done by the sync job (GitHub Actions), never by the Worker: a refresh through
+# the pooled connection can be cut mid-transaction and leave the views locked. The Worker cron only WARMS the
+# response cache (default views of every page) so the first visitor after a sync does not wait for the database.
 [triggers]
-crons = []
+crons = ["*/20 * * * *"]
 
 # --- Non-secret config ---------------------------------------------------------
 [vars]
