@@ -16,11 +16,14 @@
  *   SOURCE_DATABASE_URL     source  = Eduport production Postgres (read-only user is enough)
  *   LEAD_SINCE              initial Lead_Master__c / Interested_Course__c lower bound (default 2025-04-01)
  *   TASK_SINCE              initial Task lower bound (default 2026-01-01)
- *   SYNC_OBJECTS            optional comma list to restrict (e.g. Lead_Touch__c,home_payment)
+ *   SYNC_OBJECTS            optional comma list to restrict (e.g. Lead_Touch__c,home_payment,ujra_payment)
+ *   UJRA_DATABASE_URL       second payment source: the Ujra Postgres (residential Integrated programmes); read-only user is enough.
+ *                           When unset, the CSV exports in sync/seed/ujra/ (taken from Metabase) are loaded instead - a snapshot, not a live feed.
  *   REFRESH_AFTER_SYNC=1    run analytics.refresh_all() at the end (default 1)
  *
  * Idempotent (INSERT ... ON CONFLICT DO UPDATE). Run from GitHub Actions every 30 min.
  */
+import fs from 'node:fs';
 import postgres, { type Sql } from 'postgres';
 import { OBJECTS, type ObjectSpec } from './objects.js';
 import { txPooler } from './sync-url.js';
@@ -313,12 +316,88 @@ const APP_TABLES: AppTableSpec[] = [
   },
 ];
 
+// ---------------------------------------------------------------- Ujra (residential Integrated programmes) -> app.ujra_*
+// Everything is small (~5k students, ~5k bookings, ~30k payments), so each table is copied whole on the first run and by a
+// 45-day updated_at tail afterwards. Validity (status success, not deleted, category) is decided in analytics.v_ujra_payment.
+const UJRA_TABLES: AppTableSpec[] = [
+  {
+    name: 'ujra_student', stampCol: 'updated_at',
+    select: (src, since) => src`
+      SELECT s.id, s.name, s.number, s.whatsapp, s.parent_number, s.alternate_number, s.alternate_number_two, s.eps_id, s.is_deleted, s.created_at, s.updated_at
+      FROM public.core_student s
+      WHERE ${since ? src`s.updated_at > ${since}::timestamptz - interval '45 days'` : src`true`}
+      ORDER BY s.id`.cursor(2000),
+  },
+  {
+    name: 'ujra_booking', stampCol: 'updated_at',
+    select: (src, since) => src`
+      SELECT b.id, b.student_id, b.status, c.title AS course_title, ca.title AS campus_title, b.advance_amount,
+             d.proposed_course_fee, d.proposed_registration_fee, d.proposed_material_fee, d.proposed_hostel_fee,
+             b.is_deleted, b.created_at, GREATEST(b.updated_at, d.updated_at) AS updated_at
+      FROM public.booking_booking b
+      LEFT JOIN public.hostel_room_course c ON c.id = b.course_id
+      LEFT JOIN public.hostel_room_campus ca ON ca.id = b.campus_id
+      LEFT JOIN LATERAL (SELECT d.* FROM public.payment_paymentdetails d WHERE d.booking_id = b.id AND d.is_deleted = false ORDER BY d.updated_at DESC NULLS LAST, d.id DESC LIMIT 1) d ON true
+      WHERE ${since ? src`GREATEST(b.updated_at, d.updated_at) > ${since}::timestamptz - interval '45 days'` : src`true`}
+      ORDER BY b.id`.cursor(2000),
+  },
+  {
+    name: 'ujra_payment', stampCol: 'updated_at',
+    select: (src, since) => src`
+      SELECT p.id, p.student_id, p.booking_id, p.amount, p.payment_date, p.payment_status, p.payment_category, p.payment_mode, p.payment_success,
+             p.refund_amount, p.academic_year_id, p.is_deleted, p.created_at, p.updated_at
+      FROM public.payment_payment p
+      WHERE ${since ? src`(p.updated_at > ${since}::timestamptz - interval '45 days' OR p.payment_date >= ${since}::timestamptz - interval '45 days')` : src`true`}
+      ORDER BY p.id`.cursor(2000),
+  },
+];
+
 async function syncAppTables(): Promise<void> {
-  const url = process.env.SOURCE_DATABASE_URL;
-  if (!url) { console.log('[app] SOURCE_DATABASE_URL not set - skipping app tables'); return; }
+  await syncFrom('SOURCE_DATABASE_URL', APP_TABLES, 'app');
+  if (process.env.UJRA_DATABASE_URL) await syncFrom('UJRA_DATABASE_URL', UJRA_TABLES, 'ujra');
+  else await seedUjraFromFiles();
+}
+
+/** minimal RFC 4180 reader: quoted fields, doubled quotes, newlines inside quotes; empty = NULL */
+function parseCsv(text: string): Record<string, string | null>[] {
+  const rows: string[][] = []; let row: string[] = []; let field = ''; let inQ = false;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (inQ) {
+      if (ch === '"') { if (text[i + 1] === '"') { field += '"'; i++; } else inQ = false; }
+      else field += ch;
+    } else if (ch === '"') inQ = true;
+    else if (ch === ',') { row.push(field); field = ''; }
+    else if (ch === '\n' || ch === '\r') { if (ch === '\r' && text[i + 1] === '\n') i++; row.push(field); field = ''; rows.push(row); row = []; }
+    else field += ch;
+  }
+  if (field.length || row.length) { row.push(field); rows.push(row); }
+  const header = rows.shift() ?? [];
+  return rows.filter((r) => r.length === header.length && r.some((v) => v !== '')).map((r) => Object.fromEntries(header.map((h, i) => [h, r[i] === '' ? null : r[i]])));
+}
+
+/** Ujra snapshot from sync/seed/ujra/*.csv (Metabase exports): used while no UJRA_DATABASE_URL is configured */
+async function seedUjraFromFiles(): Promise<void> {
+  const dir = process.env.UJRA_SEED_DIR ?? new URL('../seed/ujra/', import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1');
+  for (const t of ['ujra_student', 'ujra_booking', 'ujra_payment']) {
+    if (!wanted(t)) continue;
+    const file = `${dir}${t}.csv`;
+    if (!fs.existsSync(file)) { console.log(`[ujra] no seed file ${file} - skipping`); continue; }
+    const t0 = Date.now();
+    const rows: Record<string, unknown>[] = parseCsv(fs.readFileSync(file, 'utf8')).map((r) => ({ ...r, _synced_at: new Date() }));
+    for (let i = 0; i < rows.length; i += BATCH) await upsert(`app.${t}`, rows.slice(i, i + BATCH));
+    const maxStamp = rows.reduce<Date | null>((m, r) => { const d = r.updated_at ? new Date(r.updated_at as string) : null; return d && (!m || d > m) ? d : m; }, null);
+    await setState(t, maxStamp ?? new Date(), rows.length, null);
+    console.log(`[ujra] ${t}: ${rows.length} rows from the seed file in ${((Date.now() - t0) / 1000).toFixed(1)}s`);
+  }
+}
+
+async function syncFrom(urlEnv: string, tables: AppTableSpec[], label: string): Promise<void> {
+  const url = process.env[urlEnv];
+  if (!url) { console.log(`[${label}] ${urlEnv} not set - skipping`); return; }
   const src = postgres(url, { max: 2, idle_timeout: 30, connection: { application_name: 'lead-touch-sync-ro' } });
   try {
-    for (const t of APP_TABLES) {
+    for (const t of tables) {
       if (!wanted(t.name)) continue;
       const since = await getState(t.name);
       console.log(`[${t.name}] ${since ? `incremental since ${since.toISOString()}` : 'FULL copy'}`);

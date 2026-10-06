@@ -35,9 +35,9 @@ const DIMS: Record<string, string> = {
 
 /** payments-in-window semi-join (+ optional grade / course restriction) */
 function payWindow(sql: Sql, p: Period, grades: string[], courses: string[], pm: PayMethod = 'all'): Frag {
-  const gradeCond = grades.length ? sql`AND COALESCE(b.grade_title, 'No Grade On Batch') IN ${sql(grades)}` : sql``;
-  const courseCond = courses.length ? sql`AND analytics.course_label(b.title, b.course_title, COALESCE(hp.enrollment_batch_id, hp.batch_id)) IN ${sql(courses)}` : sql``;
-  return sql`EXISTS (SELECT 1 FROM app.home_payment hp LEFT JOIN app.core_batch b ON b.id = COALESCE(hp.enrollment_batch_id, hp.batch_id)
+  const gradeCond = grades.length ? sql`AND COALESCE(hp.grade_label, b.grade_title, 'No Grade On Batch') IN ${sql(grades)}` : sql``;
+  const courseCond = courses.length ? sql`AND COALESCE(hp.course_label, analytics.course_label(b.title, b.course_title, COALESCE(hp.enrollment_batch_id, hp.batch_id))) IN ${sql(courses)}` : sql``;
+  return sql`EXISTS (SELECT 1 FROM analytics.v_payment_all hp LEFT JOIN app.core_batch b ON b.id = COALESCE(hp.enrollment_batch_id, hp.batch_id)
                      WHERE hp.user_id = m.user_id AND ${VALID(sql, pm)} AND hp.payment_date BETWEEN ${p.from} AND ${p.to} ${gradeCond} ${courseCond})`;
 }
 
@@ -49,8 +49,8 @@ function payRestrict(sql: Sql, q: Record<string, string>, skip?: string): Frag {
   if (q.dim === 'grade' && q.value !== undefined) grades.push(q.value);
   if (q.dim === 'course' && q.value !== undefined) courses.push(q.value);
   const c: Frag[] = [];
-  if (grades.length) c.push(sql`COALESCE(b.grade_title, 'No Grade On Batch') IN ${sql(grades)}`);
-  if (courses.length) c.push(sql`analytics.course_label(b.title, b.course_title, COALESCE(hp.enrollment_batch_id, hp.batch_id)) IN ${sql(courses)}`);
+  if (grades.length) c.push(sql`COALESCE(hp.grade_label, b.grade_title, 'No Grade On Batch') IN ${sql(grades)}`);
+  if (courses.length) c.push(sql`COALESCE(hp.course_label, analytics.course_label(b.title, b.course_title, COALESCE(hp.enrollment_batch_id, hp.batch_id))) IN ${sql(courses)}`);
   return c.reduce((a, x) => sql`${a} AND ${x}`, sql`true`);
 }
 
@@ -108,25 +108,25 @@ converted.get('/converted', (c) =>
         FROM analytics.mv_payer m WHERE ${w}`,
       sql<{ payments_all: number; revenue_all: number }[]>`
         SELECT count(*)::int AS payments_all, COALESCE(sum(hp.amount), 0)::float8 AS revenue_all
-        FROM app.home_payment hp LEFT JOIN app.core_batch b ON b.id = COALESCE(hp.enrollment_batch_id, hp.batch_id) WHERE ${V} AND ${R} AND hp.payment_date BETWEEN ${p.from} AND ${p.to}
+        FROM analytics.v_payment_all hp LEFT JOIN app.core_batch b ON b.id = COALESCE(hp.enrollment_batch_id, hp.batch_id) WHERE ${V} AND ${R} AND hp.payment_date BETWEEN ${p.from} AND ${p.to}
           AND hp.user_id IN (SELECT m.user_id FROM analytics.mv_payer m WHERE ${w})`,
       byDim(sql, wx('lead_stage'), 'lead_stage', p), byDim(sql, wx('touch_point'), 'last_touch_point', p), byDim(sql, wx('source'), 'last_touch_source', p), byDim(sql, wx('medium'), 'last_touch_medium', p),
       byDim(sql, wx('campaign'), 'last_touch_campaign', p), byDim(sql, wx('staff'), 'last_touch_staff', p),
       sql<PayerDim[]>`
-        SELECT analytics.course_label(b.title, b.course_title, COALESCE(hp.enrollment_batch_id, hp.batch_id)) AS key, count(DISTINCT hp.user_id)::int AS users, count(*)::int AS touches,
+        SELECT COALESCE(hp.course_label, analytics.course_label(b.title, b.course_title, COALESCE(hp.enrollment_batch_id, hp.batch_id))) AS key, count(DISTINCT hp.user_id)::int AS users, count(*)::int AS touches,
                COALESCE(sum(hp.amount), 0)::float8 AS revenue, 0::int AS new_users, NULL::float8 AS share_pct
-        FROM app.home_payment hp LEFT JOIN app.core_batch b ON b.id = COALESCE(hp.enrollment_batch_id, hp.batch_id)
+        FROM analytics.v_payment_all hp LEFT JOIN app.core_batch b ON b.id = COALESCE(hp.enrollment_batch_id, hp.batch_id)
         WHERE ${V} AND ${payRestrict(sql, q, 'course')} AND hp.payment_date BETWEEN ${p.from} AND ${p.to} AND hp.user_id IN (SELECT m.user_id FROM analytics.mv_payer m WHERE ${wx('course')})
         GROUP BY 1 ORDER BY users DESC LIMIT 2000`,
       sql<PayerDim[]>`
-        SELECT COALESCE(b.grade_title, 'No Grade On Batch') AS key, count(DISTINCT hp.user_id)::int AS users, count(*)::int AS touches,
+        SELECT COALESCE(hp.grade_label, b.grade_title, 'No Grade On Batch') AS key, count(DISTINCT hp.user_id)::int AS users, count(*)::int AS touches,
                COALESCE(sum(hp.amount), 0)::float8 AS revenue, 0::int AS new_users, NULL::float8 AS share_pct
-        FROM app.home_payment hp LEFT JOIN app.core_batch b ON b.id = COALESCE(hp.enrollment_batch_id, hp.batch_id)
+        FROM analytics.v_payment_all hp LEFT JOIN app.core_batch b ON b.id = COALESCE(hp.enrollment_batch_id, hp.batch_id)
         WHERE ${V} AND ${payRestrict(sql, q, 'grade')} AND hp.payment_date BETWEEN ${p.from} AND ${p.to} AND hp.user_id IN (SELECT m.user_id FROM analytics.mv_payer m WHERE ${wx('grade')})
         GROUP BY 1 ORDER BY users DESC`,
       sql<{ d: string; users: number; payments: number; revenue: number }[]>`
         SELECT hp.payment_date::text AS d, count(DISTINCT hp.user_id)::int AS users, count(*)::int AS payments, COALESCE(sum(hp.amount), 0)::float8 AS revenue
-        FROM app.home_payment hp LEFT JOIN app.core_batch b ON b.id = COALESCE(hp.enrollment_batch_id, hp.batch_id) WHERE ${V} AND ${R} AND hp.payment_date BETWEEN ${p.from} AND ${p.to} AND hp.user_id IN (SELECT m.user_id FROM analytics.mv_payer m WHERE ${w})
+        FROM analytics.v_payment_all hp LEFT JOIN app.core_batch b ON b.id = COALESCE(hp.enrollment_batch_id, hp.batch_id) WHERE ${V} AND ${R} AND hp.payment_date BETWEEN ${p.from} AND ${p.to} AND hp.user_id IN (SELECT m.user_id FROM analytics.mv_payer m WHERE ${w})
         GROUP BY 1 ORDER BY 1`,
       sql<{ key: string }[]>`SELECT DISTINCT COALESCE(grade_title, 'No Grade On Batch') AS key FROM app.core_batch ORDER BY 1`,
     ]);
@@ -195,10 +195,10 @@ function listQuery(sql: Sql, f: Filters, p: Period, q: Record<string, string>, p
       LEFT JOIN salesforce.lead_master__c l ON l.id = m.lead_id
       LEFT JOIN app.home_customuser u ON u.id = m.user_id
       LEFT JOIN LATERAL (
-        SELECT string_agg(DISTINCT COALESCE(b.title, 'batch ' || COALESCE(hp.enrollment_batch_id, hp.batch_id)::text), ' | ') AS courses,
-               string_agg(DISTINCT COALESCE(b.grade_title, 'No Grade On Batch'), ' | ') AS grades,
+        SELECT string_agg(DISTINCT COALESCE(b.title, hp.course_label, 'batch ' || COALESCE(hp.enrollment_batch_id, hp.batch_id)::text), ' | ') AS courses,
+               string_agg(DISTINCT COALESCE(hp.grade_label, b.grade_title, 'No Grade On Batch'), ' | ') AS grades,
                count(*)::int AS payments, min(hp.payment_date) AS first_payment_date, max(hp.payment_date) AS last_payment_date, sum(hp.amount)::float8 AS revenue
-        FROM app.home_payment hp LEFT JOIN app.core_batch b ON b.id = COALESCE(hp.enrollment_batch_id, hp.batch_id)
+        FROM analytics.v_payment_all hp LEFT JOIN app.core_batch b ON b.id = COALESCE(hp.enrollment_batch_id, hp.batch_id)
         WHERE hp.user_id = m.user_id AND ${VALID(sql, payMethod(q))} AND hp.payment_date BETWEEN ${p.from} AND ${p.to} AND ${payRestrict(sql, q)}) pw ON true
       WHERE ${w} AND ${searchCond(sql, q.q ?? '')}
     ) x

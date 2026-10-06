@@ -29,7 +29,7 @@ export const FLAT_COLS: Partial<Record<(typeof LIST_KEYS)[number], string>> = {
 export function convCond(sql: Sql, f: Filters): Frag {
   const pp = paymentPeriod(f);
   if (!pp) return sql`t.tab_converted`;
-  return sql`EXISTS (SELECT 1 FROM app.home_payment hp WHERE hp.user_id = t.app_user_id AND hp.payment_method = 0 AND hp.deleted = false
+  return sql`EXISTS (SELECT 1 FROM analytics.v_payment_all hp WHERE hp.user_id = t.app_user_id AND hp.payment_method = 0 AND hp.deleted = false
                      AND hp.is_success = true AND hp.payment_success = true AND hp.payment_date BETWEEN ${pp.from} AND ${pp.to}
                      AND hp.payment_date >= t.touch_date)`;   // still on/after the touch day, as in the workbook
 }
@@ -214,7 +214,7 @@ overview.get('/overview', (c) =>
         WITH hp0 AS (
           -- start from the payments of the window (a few thousand rows), then keep those whose account belongs to a lead of the selection
           SELECT hp.id, hp.user_id, hp.amount, hp.enrollment_id, hp.enrollment_fee, hp.enrollment_discount
-          FROM app.home_payment hp
+          FROM analytics.v_payment_all hp
           WHERE hp.payment_method = 0 AND hp.deleted = false AND hp.is_success = true AND hp.payment_success = true
             AND hp.payment_date BETWEEN ${feeWin.from} AND ${feeWin.to}),
         uk AS (

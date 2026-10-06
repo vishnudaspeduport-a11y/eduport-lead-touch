@@ -64,7 +64,7 @@ export function LeadDrawer({ leadId, onClose }: { leadId: string; onClose: () =>
                 <SimpleTable rows={d.ics} cols={['course_name', 'status', 'is_enrolled', 'ic_created_at']} />
               </Section>
               <Section title={`Valid payments (${d.payments.length})`}>
-                <SimpleTable rows={d.payments} cols={['payment_date', 'course', 'batch', 'amount', 'discount', 'refund_amount', 'total', 'batch_id', 'sales_person_id']} />
+                <SimpleTable rows={d.payments} cols={['payment_date', 'source', 'course', 'batch', 'amount', 'discount', 'refund_amount', 'total', 'batch_id', 'sales_person_id']} />
               </Section>
               <Section title={d.call_summary ? `Calls (${fmtInt(Number(d.call_summary.calls))} since May 2026)` : 'Calls'}>
                 {d.call_summary ? (

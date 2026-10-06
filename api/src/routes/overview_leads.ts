@@ -68,8 +68,8 @@ function dimCond(sql: Sql, q: Record<string, string>): Frag {
   }
   if (dim === 'course' || dim === 'grade') {
     // purchased course / grade: any valid payment of the lead's app user on that batch
-    const keyExpr = dim === 'course' ? sql`analytics.course_label(b.title, b.course_title, COALESCE(hp.enrollment_batch_id, hp.batch_id))` : sql`COALESCE(b.grade_title, 'No Grade On Batch')`;
-    return sql`EXISTS (SELECT 1 FROM app.home_payment hp LEFT JOIN app.core_batch b ON b.id = COALESCE(hp.enrollment_batch_id, hp.batch_id)
+    const keyExpr = dim === 'course' ? sql`COALESCE(hp.course_label, analytics.course_label(b.title, b.course_title, COALESCE(hp.enrollment_batch_id, hp.batch_id)))` : sql`COALESCE(hp.grade_label, b.grade_title, 'No Grade On Batch')`;
+    return sql`EXISTS (SELECT 1 FROM analytics.v_payment_all hp LEFT JOIN app.core_batch b ON b.id = COALESCE(hp.enrollment_batch_id, hp.batch_id)
                        WHERE hp.user_id = t.app_user_id AND ${VALID_PAY(sql)} AND ${keyExpr} = ${value})`;
   }
   const col = FLAT_COLS[dim as keyof typeof FLAT_COLS] ?? (dim === 'touch_date' ? 'touch_date' : undefined);
@@ -130,7 +130,7 @@ const feeWindow = (f: Filters, p: Period): Period => paymentPeriod(f) ?? p;
 function feeLeads(sql: Sql, win: Period): Frag {
   return sql`t.lead_id IN (
     SELECT m.id
-    FROM app.home_payment hp
+    FROM analytics.v_payment_all hp
     JOIN app.home_customuser u ON u.id = hp.user_id AND u.is_deleted = false
     CROSS JOIN LATERAL (VALUES (analytics.phone_key(u.phone)),
                                (CASE WHEN analytics.phone_key_valid(u.alternative_number) THEN analytics.phone_key(u.alternative_number) END)) AS v(pk)
@@ -195,7 +195,7 @@ function leadQuery(sql: Sql, f: Filters, periods: { current: Period }, q: Record
              COALESCE(sum(x.prop) FILTER (WHERE x.rn = 1), 0)::float8 AS proposed_fee
       FROM (SELECT hp.amount, hp.enrollment_fee - COALESCE(hp.enrollment_discount, 0) AS prop,
                    row_number() OVER (PARTITION BY COALESCE(hp.enrollment_id::text, 'p' || hp.id::text) ORDER BY hp.id) AS rn
-            FROM analytics.v_user_phone up JOIN app.home_payment hp ON hp.user_id = up.user_id
+            FROM analytics.v_user_phone up JOIN analytics.v_payment_all hp ON hp.user_id = up.user_id
             WHERE up.phone_key = analytics.phone_key(l.mobile_number__c) AND ${VALID_PAY(sql)}
               AND hp.payment_date BETWEEN ${feeWindow(f, periods.current).from} AND ${feeWindow(f, periods.current).to}) x) fp ON true
     JOIN LATERAL (
@@ -254,8 +254,8 @@ overviewLeads.get('/overview/leads/summary', (c) =>
         : sql`sum(touches_in_window)::int`} AS leads, NULL::float8 AS revenue FROM sel
       UNION ALL
       SELECT '_paid_after' AS dim, NULL AS key, count(*)::int AS leads,
-             (SELECT sum(hp.amount) FROM sel s2 JOIN app.home_payment hp ON hp.user_id = s2.app_user_id WHERE ${VALID_PAY(sql)} AND hp.payment_date >= s2.since::date)::float8 AS revenue
-      FROM sel s WHERE EXISTS (SELECT 1 FROM app.home_payment hp WHERE hp.user_id = s.app_user_id AND ${VALID_PAY(sql)} AND hp.payment_date >= s.since::date)
+             (SELECT sum(hp.amount) FROM sel s2 JOIN analytics.v_payment_all hp ON hp.user_id = s2.app_user_id WHERE ${VALID_PAY(sql)} AND hp.payment_date >= s2.since::date)::float8 AS revenue
+      FROM sel s WHERE EXISTS (SELECT 1 FROM analytics.v_payment_all hp WHERE hp.user_id = s.app_user_id AND ${VALID_PAY(sql)} AND hp.payment_date >= s.since::date)
       UNION ALL
       SELECT '_called_after' AS dim, NULL AS key, count(*)::int AS leads, NULL::float8 AS revenue
       FROM sel s WHERE EXISTS (SELECT 1 FROM salesforce.lead_calls c WHERE c.lead_id = s.lead_id AND c.last_call_at > s.since)
@@ -266,7 +266,7 @@ overviewLeads.get('/overview/leads/summary', (c) =>
       WHERE x.first_after IS NOT NULL
       UNION ALL
       SELECT '_payers' AS dim, NULL AS key, count(*)::int AS leads, NULL::float8 AS revenue FROM sel s
-      WHERE EXISTS (SELECT 1 FROM app.home_payment hp WHERE hp.user_id = s.app_user_id AND ${VALID_PAY(sql)} ${payWin})
+      WHERE EXISTS (SELECT 1 FROM analytics.v_payment_all hp WHERE hp.user_id = s.app_user_id AND ${VALID_PAY(sql)} ${payWin})
       UNION ALL
       SELECT d.dim, d.key, count(DISTINCT t.lead_id)::int AS leads, NULL::float8 AS revenue
       FROM analytics.mv_touch_flat t JOIN sel s ON ${touchJoin} LEFT JOIN salesforce.lead_calls c ON c.lead_id = t.lead_id
@@ -278,12 +278,12 @@ overviewLeads.get('/overview/leads/summary', (c) =>
       UNION ALL
       SELECT p.dim, p.key, count(DISTINCT p.lead_id)::int AS leads, sum(p.amount)::float8 AS revenue
       FROM (
-        SELECT s.lead_id, hp.amount, 'course' AS dim, analytics.course_label(b.title, b.course_title, COALESCE(hp.enrollment_batch_id, hp.batch_id)) AS key
-        FROM sel s JOIN app.home_payment hp ON hp.user_id = s.app_user_id LEFT JOIN app.core_batch b ON b.id = COALESCE(hp.enrollment_batch_id, hp.batch_id)
+        SELECT s.lead_id, hp.amount, 'course' AS dim, COALESCE(hp.course_label, analytics.course_label(b.title, b.course_title, COALESCE(hp.enrollment_batch_id, hp.batch_id))) AS key
+        FROM sel s JOIN analytics.v_payment_all hp ON hp.user_id = s.app_user_id LEFT JOIN app.core_batch b ON b.id = COALESCE(hp.enrollment_batch_id, hp.batch_id)
         WHERE ${VALID_PAY(sql)} ${payWin}
         UNION ALL
-        SELECT s.lead_id, hp.amount, 'grade' AS dim, COALESCE(b.grade_title, 'No Grade On Batch') AS key
-        FROM sel s JOIN app.home_payment hp ON hp.user_id = s.app_user_id LEFT JOIN app.core_batch b ON b.id = COALESCE(hp.enrollment_batch_id, hp.batch_id)
+        SELECT s.lead_id, hp.amount, 'grade' AS dim, COALESCE(hp.grade_label, b.grade_title, 'No Grade On Batch') AS key
+        FROM sel s JOIN analytics.v_payment_all hp ON hp.user_id = s.app_user_id LEFT JOIN app.core_batch b ON b.id = COALESCE(hp.enrollment_batch_id, hp.batch_id)
         WHERE ${VALID_PAY(sql)} ${payWin}
       ) p
       GROUP BY p.dim, p.key`;

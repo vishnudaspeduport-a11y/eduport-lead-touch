@@ -147,7 +147,7 @@ leads.get('/leads/:id{[a-zA-Z0-9]+}', (c) =>
       sql<Rec[]>`SELECT ic_id, course_name, status, is_enrolled, ic_created_at::text
                  FROM analytics.v_ic_base WHERE lead_id = ${id} ORDER BY ic_created_at`,
       phoneKey
-        ? sql<Rec[]>`SELECT vp.payment_id, vp.payment_date::text, b.course_title AS course, b.title AS batch, vp.amount::float8, vp.total::float8, vp.discount::float8, vp.refund_amount::float8,
+        ? sql<Rec[]>`SELECT vp.payment_id, vp.payment_date::text, COALESCE(b.course_title, vp.course_label) AS course, COALESCE(b.title, CASE WHEN vp.source = 'ujra' THEN 'Ujra (' || vp.matched_by || ')' END) AS batch, vp.source, vp.amount::float8, vp.total::float8, vp.discount::float8, vp.refund_amount::float8,
                             vp.payment_time::text, vp.course_new_id, vp.batch_id, vp.sales_person_id, vp.enrollment_id, vp.payment_type
                      FROM analytics.v_valid_payment_x vp LEFT JOIN app.core_batch b ON b.id = vp.batch_id
                      WHERE vp.phone_key = ${phoneKey} ORDER BY vp.payment_date, vp.payment_id LIMIT 100`

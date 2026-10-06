@@ -41,10 +41,10 @@ analysis.post('/analysis/phones', async (c) => {
       pay AS (
         SELECT p.phone_key, min(cu.user_id) AS eps_id, min(hp.payment_date) AS first_payment_date, max(hp.payment_date) AS last_payment_date,
                count(*)::int AS payments, sum(hp.amount)::float8 AS revenue,
-               string_agg(DISTINCT COALESCE(b.title, 'batch ' || COALESCE(hp.enrollment_batch_id, hp.batch_id)::text), ' | ') AS courses
+               string_agg(DISTINCT COALESCE(b.title, hp.course_label, 'batch ' || COALESCE(hp.enrollment_batch_id, hp.batch_id)::text), ' | ') AS courses
         -- the paying account's own phone or its alternative number
         FROM p JOIN analytics.v_user_phone cu ON cu.phone_key = p.phone_key
-        JOIN app.home_payment hp ON hp.user_id = cu.user_id AND hp.payment_method = 0 AND hp.deleted = false AND hp.is_success = true AND hp.payment_success = true
+        JOIN analytics.v_payment_all hp ON hp.user_id = cu.user_id AND hp.payment_method = 0 AND hp.deleted = false AND hp.is_success = true AND hp.payment_success = true
         LEFT JOIN app.core_batch b ON b.id = COALESCE(hp.enrollment_batch_id, hp.batch_id)
         GROUP BY 1),
       tch AS (
