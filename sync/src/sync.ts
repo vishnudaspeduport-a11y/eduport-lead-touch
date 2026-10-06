@@ -411,7 +411,7 @@ async function syncUjraViaMetabase(): Promise<void> {
 }
 
 /** minimal RFC 4180 reader: quoted fields, doubled quotes, newlines inside quotes; empty = NULL */
-function parseCsv(text: string): Record<string, string | null>[] {
+function parseCsv(text: string): Record<string, string | boolean | null>[] {
   const rows: string[][] = []; let row: string[] = []; let field = ''; let inQ = false;
   for (let i = 0; i < text.length; i++) {
     const ch = text[i];
@@ -425,7 +425,8 @@ function parseCsv(text: string): Record<string, string | null>[] {
   }
   if (field.length || row.length) { row.push(field); rows.push(row); }
   const header = rows.shift() ?? [];
-  return rows.filter((r) => r.length === header.length && r.some((v) => v !== '')).map((r) => Object.fromEntries(header.map((h, i) => [h, r[i] === '' ? null : r[i]])));
+  const cell = (v: string): string | boolean | null => (v === '' ? null : v === 'true' ? true : v === 'false' ? false : v);
+  return rows.filter((r) => r.length === header.length && r.some((v) => v !== '')).map((r) => Object.fromEntries(header.map((h, i) => [h, cell(r[i])])));
 }
 
 /** Ujra snapshot from sync/seed/ujra/*.csv (Metabase exports): used while no UJRA_DATABASE_URL is configured */
