@@ -1,6 +1,7 @@
 import { useRef, useState, type ReactNode } from 'react';
 import { EmptyState, ErrorBoundary, ErrorNote, Icon, Popover, Skeleton } from './ui';
 import { downloadText, toCsv } from '../lib/format';
+import { useExportGate, verifyExportPassword } from '../lib/exportGate';
 import { DataTable, type Col } from './DataTable';
 
 export interface ChartCardProps<Row extends object> {
@@ -27,6 +28,7 @@ export interface ChartCardProps<Row extends object> {
 /** Every chart lives in a ChartCard: title, "?" help, show-table toggle, PNG/CSV download, skeleton, empty + error states. */
 export function ChartCard<Row extends object>(p: ChartCardProps<Row>) {
   const [table, setTable] = useState(false);
+  const requestExport = useExportGate();
   const ref = useRef<HTMLDivElement>(null);
   const name = (p.fileName ?? p.title).replace(/[^a-z0-9]+/gi, '_').toLowerCase();
   const h = p.height ?? 220;
@@ -91,7 +93,7 @@ export function ChartCard<Row extends object>(p: ChartCardProps<Row>) {
             {(close) => (
               <div className="flex flex-col gap-1">
                 <button className="btn justify-start" onClick={() => { downloadPng().catch((e) => alert(String(e))); close(); }}>PNG image</button>
-                <button className="btn justify-start" disabled={!p.rows?.length} onClick={() => { downloadText(`${name}.csv`, toCsv((p.rows ?? []) as unknown as Record<string, unknown>[], p.columns?.map((c) => String(c.key)))); close(); }}>CSV data</button>
+                <button className="btn justify-start" disabled={!p.rows?.length} onClick={() => { close(); requestExport({ title: `${p.title} (CSV)`, run: async (pw) => { await verifyExportPassword(pw, `${name}.csv`); downloadText(`${name}.csv`, toCsv((p.rows ?? []) as unknown as Record<string, unknown>[], p.columns?.map((c) => String(c.key)))); } }); }}>CSV data</button>
               </div>
             )}
           </Popover>

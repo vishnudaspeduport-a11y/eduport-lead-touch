@@ -6,10 +6,12 @@ import { fmtDateTime, fmtINRfull, fmtInt, fmtPct } from '../lib/format';
 import { DataTable } from '../components/DataTable';
 import { Icon, Note, PageHeader, Skeleton, useDebounce } from '../components/ui';
 import { LeadDrawer } from '../components/LeadDrawer';
+import { useExportGate } from '../lib/exportGate';
 
 const SORTS = [['created_at', 'Created'], ['converted_at', 'Converted at'], ['revenue', 'Revenue'], ['total_touches', 'Touches'], ['days_to_convert', 'Days to convert'], ['response_hours', 'Response time'], ['last_touch_any_at', 'Last touch'], ['lead_name', 'Name']];
 
 export default function LeadExplorer() {
+  const requestExport = useExportGate();
   const { params } = useFilters();
   const [q, setQ] = useState('');
   const dq = useDebounce(q, 350);
@@ -24,7 +26,7 @@ export default function LeadExplorer() {
   return (
     <div className="space-y-3">
       <PageHeader title="Lead explorer" subtitle={d ? `${fmtInt(d.total)} leads match · ${d.masked ? 'phone/email masked' : 'full details'}` : 'loading…'}
-        right={<button className="btn" title="Server-streamed CSV of the current view (capped at 50,000 rows)" onClick={() => downloadWithAuth('/leads/export.csv', { ...params, q: dq, sort, dir }, `leads_${params.from}_${params.to}.csv`).catch((e) => alert(String(e)))}><Icon.Download /> Export CSV</button>} />
+        right={<button className="btn" title="Server-streamed CSV of the current view (capped at 50,000 rows)" onClick={() => requestExport({ title: `Lead explorer · leads_${params.from}_${params.to}.csv`, run: (pw) => downloadWithAuth('/leads/export.csv', { ...params, q: dq, sort, dir }, `leads_${params.from}_${params.to}.csv`, pw) })}><Icon.Download /> Export CSV</button>} />
       <div className="flex flex-wrap items-center gap-2">
         <input className="input w-72" placeholder="Search name, LM-number, phone (≥5 digits), email…" value={q} onChange={(e) => { setQ(e.target.value); setPage(1); }} />
         <select className="input" value={sort} onChange={(e) => setSort(e.target.value)}>{SORTS.map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select>

@@ -42,9 +42,9 @@ export function downloadUrl(path: string, params: Params): string {
 }
 
 /** Download via fetch so errors surface as JSON instead of a broken file. */
-export async function downloadWithAuth(path: string, params: Params, filename: string): Promise<void> {
-  const res = await fetch(`/api${path}${qs(params)}`, { credentials: 'same-origin' });
-  if (!res.ok) throw new ApiError(res.status, res.statusText);
+export async function downloadWithAuth(path: string, params: Params, filename: string, exportPassword?: string): Promise<void> {
+  const res = await fetch(`/api${path}${qs(params)}`, { credentials: 'same-origin', headers: exportPassword ? { 'x-export-password': exportPassword } : {} });
+  if (!res.ok) { const j = (await res.json().catch(() => ({}))) as { error?: { message?: string } }; throw new ApiError(res.status, j.error?.message ?? res.statusText); }
   const blob = await res.blob();
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob); a.download = filename; a.click();

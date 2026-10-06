@@ -15,6 +15,7 @@ import { touchAttribution } from './routes/touch_attribution';
 import { converted } from './routes/converted';
 import { analysis } from './routes/analysis';
 import { authRoutes } from './routes/auth_routes';
+import { exportRoutes, requireExportPassword } from './routes/export_auth';
 
 const app = new Hono<AppEnv>();
 
@@ -28,7 +29,9 @@ app.use('/api/*', async (c, next) => {
 app.use('/api/*', authMiddleware);
 
 const api = new Hono<AppEnv>();
-for (const r of [authRoutes, meta, filters, leads, syncRoute, overview, overviewLeads, newLeads, touchAttribution, converted, analysis]) api.route('/', r);
+// every streamed CSV asks for the shared export password (routes/export_auth.ts)
+for (const csv of ['/leads/export.csv', '/converted/users.csv', '/overview/new_leads.csv', '/overview/leads.csv']) api.use(csv, requireExportPassword);
+for (const r of [authRoutes, exportRoutes, meta, filters, leads, syncRoute, overview, overviewLeads, newLeads, touchAttribution, converted, analysis]) api.route('/', r);
 
 // Admin-only manual refresh (the Cron Trigger calls the same function)
 api.post('/admin/refresh', async (c) => {

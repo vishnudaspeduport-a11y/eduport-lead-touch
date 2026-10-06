@@ -6,6 +6,7 @@ import { LeadDrawer } from '../components/LeadDrawer';
 import { Icon, Note, PageHeader, Segmented, Skeleton } from '../components/ui';
 import { ChartCard } from '../components/ChartCard';
 import { HBars } from '../charts';
+import { useExportGate, verifyExportPassword } from '../lib/exportGate';
 
 type Row = Record<string, unknown>;
 interface Parsed { headers: string[]; rows: Row[]; fileName: string; sheet: string }
@@ -24,6 +25,7 @@ export default function Analysis() {
   const [results, setResults] = useState<Row[] | null>(null);
   const [view, setView] = useState<'all' | 'matched' | 'unmatched' | 'converted' | 'multi'>('all');
   const [stages, setStages] = useState<string[]>([]);
+  const requestExport = useExportGate();
   const [leadId, setLeadId] = useState<string | null>(null);
 
   const onFile = async (file: File) => {
@@ -205,7 +207,7 @@ export default function Analysis() {
                 {stages.length > 0 && <button className="chip" onClick={() => setStages([])} title="Clear the stage filter">Stage: {stages.join(', ')} ×</button>}
                 <span className="text-[11px] text-ink-3">one row per lead · a number with several leads appears more than once · click a row for the full record</span>
               </div>
-              <button className="btn" onClick={() => downloadText(`analysis_${(parsed?.fileName ?? 'phones').replace(/\.[^.]+$/, '')}.csv`, toCsv(shown as Record<string, unknown>[], cols.map((c) => String(c.key))))}><Icon.Download /> CSV ({fmtInt(shown.length)} rows)</button>
+              <button className="btn" onClick={() => { const file = `analysis_${(parsed?.fileName ?? 'phones').replace(/\.[^.]+$/, '')}.csv`; requestExport({ title: `${file} · ${fmtInt(shown.length)} rows`, run: async (pw) => { await verifyExportPassword(pw, file); downloadText(file, toCsv(shown as Record<string, unknown>[], cols.map((c) => String(c.key)))); } }); }}><Icon.Download /> CSV ({fmtInt(shown.length)} rows)</button>
             </div>
             <div style={{ height: 520 }}>
               <DataTable rows={shown} columns={cols} compact maxHeight="100%" rowKey={(r) => `${r.phone_key}-${r.lead_id ?? 'x'}`} onRowClick={(r) => { if (r.lead_id) setLeadId(String(r.lead_id)); }} />

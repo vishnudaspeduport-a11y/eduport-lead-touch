@@ -14,13 +14,15 @@ export default function Access() {
   const [audit, setAudit] = useState<Audit[]>([]);
   const [err, setErr] = useState<string | null>(null);
   const [q, setQ] = useState('');
-  const [modal, setModal] = useState<{ kind: 'new' } | { kind: 'password'; row: Row } | null>(null);
+  const [modal, setModal] = useState<{ kind: 'new' } | { kind: 'password'; row: Row } | { kind: 'export' } | null>(null);
+  const [exp, setExp] = useState<{ configured: boolean; updated_at: string | null; updated_by: string | null } | null>(null);
+  const loadExport = async () => { try { setExp(await authCall('/export/status')); } catch { /* shown as unknown */ } };
 
   const load = async () => {
     try { const d = await authCall<{ users: Row[]; audit: Audit[] }>('/auth/users'); setRows(d.users); setAudit(d.audit); setErr(null); }
     catch (e) { setErr((e as Error).message); }
   };
-  useEffect(() => { if (me?.role === 'admin') load(); }, [me?.role]);
+  useEffect(() => { if (me?.role === 'admin') { load(); loadExport(); } }, [me?.role]);
   if (me?.role !== 'admin') return <Navigate to="/" replace />;
 
   const act = async (fn: () => Promise<unknown>) => { try { await fn(); await load(); } catch (e) { alert((e as Error).message); } };
@@ -83,6 +85,19 @@ export default function Access() {
       </div>
 
       <div className="card">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <h3 className="text-[13px] font-semibold">CSV export password</h3>
+            <div className="mt-1 text-xs text-ink-2">
+              Every CSV download on every page asks for this one shared password, and each download is written to the activity list below with who exported what.
+              {exp === null ? ' Checking…' : exp.configured ? <> Set {fmtDateTime(exp.updated_at)}{exp.updated_by ? ` by ${exp.updated_by}` : ''}.</> : <b className="text-red-600"> Not set yet: all CSV downloads are refused until you set one.</b>}
+            </div>
+          </div>
+          <button className={`btn ${exp && !exp.configured ? 'btn-primary' : ''}`} onClick={() => setModal({ kind: 'export' })}>{exp?.configured ? 'Change export password' : 'Set export password'}</button>
+        </div>
+      </div>
+
+      <div className="card">
         <h3 className="mb-3 text-[13px] font-semibold">Recent activity</h3>
         {audit.length === 0 ? <div className="text-xs text-ink-3">Nothing yet</div> : (
           <div className="max-h-64 overflow-auto">
@@ -95,6 +110,7 @@ export default function Access() {
       </div>
 
       {modal?.kind === 'new' && <NewAccount onClose={() => setModal(null)} onDone={() => { setModal(null); load(); }} />}
+      {modal?.kind === 'export' && <SetExportPassword onClose={() => setModal(null)} onDone={() => { setModal(null); loadExport(); load(); }} />}
       {modal?.kind === 'password' && <SetPassword row={modal.row} self={modal.row.id === me.id} onClose={() => setModal(null)} onDone={() => { setModal(null); load(); }} />}
     </div>
   );
@@ -160,6 +176,24 @@ function NewAccount({ onClose, onDone }: { onClose: () => void; onDone: () => vo
         <div className="text-[11px] font-medium text-ink-3">Password<div className="mt-1"><PasswordField value={password} onChange={setPassword} /></div></div>
         {err && <div className="text-xs text-red-600">{err}</div>}
         <div className="flex justify-end gap-2"><button type="button" className="btn" onClick={onClose}>Cancel</button><button className="btn btn-primary" disabled={busy}>{busy ? 'Creating…' : 'Create account'}</button></div>
+      </form>
+    </Modal>
+  );
+}
+
+function SetExportPassword({ onClose, onDone }: { onClose: () => void; onDone: () => void }) {
+  const [password, setPassword] = useState(generatePassword()); const [busy, setBusy] = useState(false); const [err, setErr] = useState<string | null>(null);
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault(); setBusy(true); setErr(null);
+    try { await authCall('/export/password', { method: 'PUT', body: { password } }); onDone(); } catch (x) { setErr((x as Error).message); } finally { setBusy(false); }
+  };
+  return (
+    <Modal title="CSV export password" onClose={onClose}>
+      <form className="space-y-3" onSubmit={submit}>
+        <PasswordField value={password} onChange={setPassword} />
+        <div className="text-[11px] text-ink-3">Share it only with the people allowed to take data out of the dashboard. Changing it takes effect within a minute; nobody is signed out.</div>
+        {err && <div className="text-xs text-red-600">{err}</div>}
+        <div className="flex justify-end gap-2"><button type="button" className="btn" onClick={onClose}>Cancel</button><button className="btn btn-primary" disabled={busy}>{busy ? 'Saving…' : 'Save password'}</button></div>
       </form>
     </Modal>
   );
