@@ -69,6 +69,7 @@ function ExportDialog({ req, onClose }: { req: ExportRequest; onClose: () => voi
           <button type="button" className="btn" onClick={() => setShow((s) => !s)}>{show ? 'Hide' : 'Show'}</button>
         </div>
         {err && <div className="text-xs text-red-600">{err}</div>}
+        {busy && <div className="text-[11px] text-ink-3">Building the file on the server. Large exports take a minute or two on the current database; keep this tab open.</div>}
         <div className="flex justify-end gap-2">
           <button type="button" className="btn" onClick={onClose} disabled={busy}>Cancel</button>
           <button className="btn btn-primary" disabled={busy || !password}><Icon.Download /> {busy ? 'Preparing…' : 'Download'}</button>
