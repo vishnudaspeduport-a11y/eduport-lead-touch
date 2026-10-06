@@ -181,23 +181,14 @@ export default function Analysis() {
             ))}
           </div>
 
-          <div className="grid gap-4 xl:grid-cols-2">
-            <ChartCard title="Lead stage" tone="tone-blue" height={Math.max(150, Math.min(360, stageRows.length * 24 + 20))} rows={stageRows} fileName="analysis_lead_stage"
+          <ChartCard title="Lead stage" tone="tone-blue" height={Math.max(150, Math.min(360, stageRows.length * 24 + 20))} rows={stageRows} fileName="analysis_lead_stage"
               subtitle={`${fmtInt(summary.leads)} lead records found in the file · bar = leads in that stage · click a bar to filter the results (multi-select)${stages.length ? ` · ${stages.length} selected` : ''}`}
               help={<div>Every lead found for the numbers in the file, counted by its current LM stage. The same number can have several leads, so the bars add up to the lead records, not to the numbers. "Converted" inside a stage means the lead's number has a valid payment in the app or in Ujra. Switch to the table (⊞) for numbers, converted share and average touches per stage.</div>}
               columns={[{ key: 'stage', header: 'Stage' }, { key: 'leads', header: 'Leads', align: 'right' }, { key: 'numbers', header: 'Numbers', align: 'right' }, { key: 'converted', header: 'Converted', align: 'right' }, { key: 'conversion_pct', header: 'Conversion %', align: 'right', render: (v) => fmtPct(v as number) }, { key: 'avg_touches', header: 'Avg touches', align: 'right' }]}
               empty={!stageRows.length} emptyHint="No leads found for these numbers"
               actions={stages.length ? <button className="btn" onClick={() => setStages([])}>Clear stages</button> : null}>
               <HBars data={stageRows.map((r) => ({ key: r.stage, value: r.leads, secondary: r.conversion_pct, selected: stages.includes(r.stage), extra: { Converted: fmtInt(r.converted), Numbers: fmtInt(r.numbers), 'Avg touches': r.avg_touches } }))} valueLabel="Leads" secondaryLabel="Converted" onClick={toggleStage} colorful />
-            </ChartCard>
-            <ChartCard title="Converted by lead stage" tone="tone-green" height={Math.max(150, Math.min(360, stageRows.length * 24 + 20))} rows={stageRows} fileName="analysis_converted_by_stage"
-              subtitle={`${fmtInt(stageRows.reduce((a, r) => a + r.converted, 0))} converted lead records · bar = converted leads in that stage, tooltip shows the share · click to filter`}
-              help={<div>Converted lead records per LM stage: how many of the file's leads in each stage already paid. A high count in "New" or "Not Connected" means payments arrived without the stage being updated in Salesforce.</div>}
-              columns={[{ key: 'stage', header: 'Stage' }, { key: 'converted', header: 'Converted', align: 'right' }, { key: 'leads', header: 'Leads', align: 'right' }, { key: 'conversion_pct', header: 'Conversion %', align: 'right', render: (v) => fmtPct(v as number) }]}
-              empty={!stageRows.length} emptyHint="No leads found for these numbers">
-              <HBars data={[...stageRows].sort((a, b) => b.converted - a.converted).map((r) => ({ key: r.stage, value: r.converted, secondary: r.conversion_pct, selected: stages.includes(r.stage), extra: { 'Leads in stage': fmtInt(r.leads) } }))} valueLabel="Converted" secondaryLabel="Share of stage" onClick={toggleStage} />
-            </ChartCard>
-          </div>
+          </ChartCard>
 
           <div className="card flex flex-col gap-2">
             <div className="flex flex-wrap items-center justify-between gap-2">
