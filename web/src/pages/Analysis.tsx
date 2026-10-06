@@ -4,6 +4,8 @@ import { downloadText, fmtDateTime, fmtINR, fmtInt, fmtPct, toCsv } from '../lib
 import { DataTable, type Col } from '../components/DataTable';
 import { LeadDrawer } from '../components/LeadDrawer';
 import { Icon, Note, PageHeader, Segmented, Skeleton } from '../components/ui';
+import { ChartCard } from '../components/ChartCard';
+import { HBars } from '../charts';
 
 type Row = Record<string, unknown>;
 interface Parsed { headers: string[]; rows: Row[]; fileName: string; sheet: string }
@@ -21,6 +23,7 @@ export default function Analysis() {
   const [error, setError] = useState<string | null>(null);
   const [results, setResults] = useState<Row[] | null>(null);
   const [view, setView] = useState<'all' | 'matched' | 'unmatched' | 'converted'>('all');
+  const [stages, setStages] = useState<string[]>([]);
   const [leadId, setLeadId] = useState<string | null>(null);
 
   const onFile = async (file: File) => {
@@ -67,6 +70,7 @@ export default function Analysis() {
       const byPhone = new Map<string, Row>();
       for (const r of parsed.rows) { const k = normalise(r[phoneCol]); if (k && !byPhone.has(k)) byPhone.set(k, r); }
       const extra = parsed.headers.filter((h) => h !== phoneCol);
+      setStages([]);
       setResults(out.map((r) => { const src = byPhone.get(String(r.phone_key)) ?? {}; const o: Row = { input_phone: src[phoneCol] ?? r.phone_key, ...r }; for (const h of extra) o[`file: ${h}`] = src[h]; return o; }));
     } catch (e) { setError((e as Error).message); }
     finally { setBusy(null); }
@@ -82,13 +86,30 @@ export default function Analysis() {
     return { phones: phonesSeen.size, matched: matchedPhones.size, leads: leads.length, converted: converted.size, revenue };
   }, [results]);
 
+  // lead stage of every lead record found (one row per lead); converted share inside each stage
+  const stageRows = useMemo(() => {
+    if (!results) return [];
+    const m = new Map<string, { stage: string; leads: number; converted: number; phones: Set<string>; touches: number }>();
+    for (const r of results) {
+      if (!r.matched) continue;
+      const k = (r.lead_stage as string | null) || '(no stage)';
+      const e = m.get(k) ?? { stage: k, leads: 0, converted: 0, phones: new Set<string>(), touches: 0 };
+      e.leads += 1; if (r.converted) e.converted += 1; e.phones.add(String(r.phone_key)); e.touches += Number(r.touches) || 0;
+      m.set(k, e);
+    }
+    return [...m.values()].sort((a, b) => b.leads - a.leads).map((e) => ({ stage: e.stage, leads: e.leads, numbers: e.phones.size, converted: e.converted, conversion_pct: e.leads ? Math.round((e.converted / e.leads) * 10000) / 100 : 0, avg_touches: e.leads ? Math.round((e.touches / e.leads) * 10) / 10 : 0 }));
+  }, [results]);
+  const toggleStage = (k: string) => setStages((cur) => (cur.includes(k) ? cur.filter((x) => x !== k) : [...cur, k]));
+
   const shown = useMemo(() => {
     if (!results) return [];
-    if (view === 'matched') return results.filter((r) => r.matched);
-    if (view === 'unmatched') return results.filter((r) => !r.matched);
-    if (view === 'converted') return results.filter((r) => r.converted);
-    return results;
-  }, [results, view]);
+    let out = results;
+    if (view === 'matched') out = out.filter((r) => r.matched);
+    else if (view === 'unmatched') out = out.filter((r) => !r.matched);
+    else if (view === 'converted') out = out.filter((r) => r.converted);
+    if (stages.length) out = out.filter((r) => r.matched && stages.includes((r.lead_stage as string | null) || '(no stage)'));
+    return out;
+  }, [results, view, stages]);
 
   const extraCols: Col<Row>[] = (parsed?.headers ?? []).filter((h) => h !== phoneCol).map((h) => ({ key: `file: ${h}`, header: `File · ${h}` }));
   const cols: Col<Row>[] = [
@@ -160,11 +181,30 @@ export default function Analysis() {
             ))}
           </div>
 
+          <div className="grid gap-4 xl:grid-cols-2">
+            <ChartCard title="Lead stage" tone="tone-blue" height={Math.max(150, Math.min(360, stageRows.length * 24 + 20))} rows={stageRows} fileName="analysis_lead_stage"
+              subtitle={`${fmtInt(summary.leads)} lead records found in the file · bar = leads in that stage · click a bar to filter the results (multi-select)${stages.length ? ` · ${stages.length} selected` : ''}`}
+              help={<div>Every lead found for the numbers in the file, counted by its current LM stage. The same number can have several leads, so the bars add up to the lead records, not to the numbers. "Converted" inside a stage means the lead's number has a valid payment in the app or in Ujra. Switch to the table (⊞) for numbers, converted share and average touches per stage.</div>}
+              columns={[{ key: 'stage', header: 'Stage' }, { key: 'leads', header: 'Leads', align: 'right' }, { key: 'numbers', header: 'Numbers', align: 'right' }, { key: 'converted', header: 'Converted', align: 'right' }, { key: 'conversion_pct', header: 'Conversion %', align: 'right', render: (v) => fmtPct(v as number) }, { key: 'avg_touches', header: 'Avg touches', align: 'right' }]}
+              empty={!stageRows.length} emptyHint="No leads found for these numbers"
+              actions={stages.length ? <button className="btn" onClick={() => setStages([])}>Clear stages</button> : null}>
+              <HBars data={stageRows.map((r) => ({ key: r.stage, value: r.leads, secondary: r.conversion_pct, selected: stages.includes(r.stage), extra: { Converted: fmtInt(r.converted), Numbers: fmtInt(r.numbers), 'Avg touches': r.avg_touches } }))} valueLabel="Leads" secondaryLabel="Converted" onClick={toggleStage} colorful />
+            </ChartCard>
+            <ChartCard title="Converted by lead stage" tone="tone-green" height={Math.max(150, Math.min(360, stageRows.length * 24 + 20))} rows={stageRows} fileName="analysis_converted_by_stage"
+              subtitle={`${fmtInt(stageRows.reduce((a, r) => a + r.converted, 0))} converted lead records · bar = converted leads in that stage, tooltip shows the share · click to filter`}
+              help={<div>Converted lead records per LM stage: how many of the file's leads in each stage already paid. A high count in "New" or "Not Connected" means payments arrived without the stage being updated in Salesforce.</div>}
+              columns={[{ key: 'stage', header: 'Stage' }, { key: 'converted', header: 'Converted', align: 'right' }, { key: 'leads', header: 'Leads', align: 'right' }, { key: 'conversion_pct', header: 'Conversion %', align: 'right', render: (v) => fmtPct(v as number) }]}
+              empty={!stageRows.length} emptyHint="No leads found for these numbers">
+              <HBars data={[...stageRows].sort((a, b) => b.converted - a.converted).map((r) => ({ key: r.stage, value: r.converted, secondary: r.conversion_pct, selected: stages.includes(r.stage), extra: { 'Leads in stage': fmtInt(r.leads) } }))} valueLabel="Converted" secondaryLabel="Share of stage" onClick={toggleStage} />
+            </ChartCard>
+          </div>
+
           <div className="card flex flex-col gap-2">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div className="flex items-center gap-2">
                 <h3 className="text-xs font-bold">Results</h3>
                 <Segmented size="xs" value={view} onChange={setView} options={[{ value: 'all', label: `All (${fmtInt(results.length)})` }, { value: 'matched', label: 'Leads found' }, { value: 'unmatched', label: 'Not found' }, { value: 'converted', label: 'Converted' }]} />
+                {stages.length > 0 && <button className="chip" onClick={() => setStages([])} title="Clear the stage filter">Stage: {stages.join(', ')} ×</button>}
                 <span className="text-[11px] text-ink-3">one row per lead · a number with several leads appears more than once · click a row for the full record</span>
               </div>
               <button className="btn" onClick={() => downloadText(`analysis_${(parsed?.fileName ?? 'phones').replace(/\.[^.]+$/, '')}.csv`, toCsv(shown as Record<string, unknown>[], cols.map((c) => String(c.key))))}><Icon.Download /> CSV ({fmtInt(shown.length)} rows)</button>
