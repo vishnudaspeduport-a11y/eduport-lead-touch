@@ -6,7 +6,8 @@
 DROP MATERIALIZED VIEW IF EXISTS analytics.mv_payer_new;
 CREATE MATERIALIZED VIEW analytics.mv_payer_new AS
 WITH pay AS (
-  SELECT vp.user_id, vp.phone_key,
+  -- one row per app user: a student who pays in both systems has two phone keys; keep the app phone first
+  SELECT vp.user_id, (array_agg(vp.phone_key ORDER BY (vp.source = 'app') DESC, vp.phone_key))[1] AS phone_key,
          min(vp.payment_date) AS first_payment_date, max(vp.payment_date) AS last_payment_date,
          max(CASE WHEN vp.payment_time IS NOT NULL THEN vp.payment_time
                   WHEN (vp.payment_created AT TIME ZONE 'Asia/Kolkata')::date = vp.payment_date THEN vp.payment_created
@@ -19,7 +20,8 @@ WITH pay AS (
          string_agg(DISTINCT COALESCE(b.grade_title, vp.grade_label, 'No Grade On Batch'), ' | ') AS grades,
          bool_or(vp.source = 'ujra') AS has_ujra, bool_or(vp.source = 'app') AS has_app
   FROM analytics.v_paid_any vp LEFT JOIN app.core_batch b ON b.id = vp.batch_id
-  GROUP BY 1, 2),
+  WHERE vp.user_id IS NOT NULL
+  GROUP BY 1),
 leads AS (
   SELECT c.lead_id, c.phone_key, c.lead_name, c.lead_stage, c.class_raw, c.class_group, c.lead_source, c.owner_name, c.created_at
   FROM analytics.v_lead_conv c WHERE c.phone_key IS NOT NULL),
