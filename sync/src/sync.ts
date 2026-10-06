@@ -18,7 +18,9 @@
  *   TASK_SINCE              initial Task lower bound (default 2026-01-01)
  *   SYNC_OBJECTS            optional comma list to restrict (e.g. Lead_Touch__c,home_payment,ujra_payment)
  *   UJRA_DATABASE_URL       second payment source: the Ujra Postgres (residential Integrated programmes); read-only user is enough.
- *                           When unset, the CSV exports in sync/seed/ujra/ (taken from Metabase) are loaded instead - a snapshot, not a live feed.
+ *                           When unset but METABASE_URL + METABASE_API_KEY are set, the same tables are read through Metabase's CSV export API
+ *                           (the key's group needs native-query and download permission on the Ujra database). Otherwise the CSV
+ *                           snapshot in sync/seed/ujra/ is loaded - a one-time copy, not a live feed.
  *   REFRESH_AFTER_SYNC=1    run analytics.refresh_all() at the end (default 1)
  *
  * Idempotent (INSERT ... ON CONFLICT DO UPDATE). Run from GitHub Actions every 30 min.
@@ -355,7 +357,57 @@ const UJRA_TABLES: AppTableSpec[] = [
 async function syncAppTables(): Promise<void> {
   await syncFrom('SOURCE_DATABASE_URL', APP_TABLES, 'app');
   if (process.env.UJRA_DATABASE_URL) await syncFrom('UJRA_DATABASE_URL', UJRA_TABLES, 'ujra');
+  else if (process.env.METABASE_URL && process.env.METABASE_API_KEY) await syncUjraViaMetabase();
   else await seedUjraFromFiles();
+}
+
+// ---------------------------------------------------------------- Ujra through Metabase (no direct database login)
+// Metabase database id of "Ujra" and the SQL per table; {{since}} is replaced by a 45-day tail on the watermark
+const METABASE_UJRA_DB = Number(process.env.METABASE_UJRA_DB ?? 13371346);
+const UJRA_METABASE_SQL: Record<string, string> = {
+  ujra_student: `SELECT s.id, s.name, s.number, s.whatsapp, s.parent_number, s.alternate_number, s.alternate_number_two, s.eps_id, s.is_deleted, s.created_at, s.updated_at
+    FROM core_student s WHERE {{since:s.updated_at}} ORDER BY s.id`,
+  ujra_booking: `SELECT b.id, b.student_id, b.status, c.title AS course_title, ca.title AS campus_title, b.advance_amount,
+           d.proposed_course_fee, d.proposed_registration_fee, d.proposed_material_fee, d.proposed_hostel_fee,
+           b.is_deleted, b.created_at, GREATEST(b.updated_at, d.updated_at) AS updated_at
+    FROM booking_booking b
+    LEFT JOIN hostel_room_course c ON c.id = b.course_id
+    LEFT JOIN hostel_room_campus ca ON ca.id = b.campus_id
+    LEFT JOIN LATERAL (SELECT d.* FROM payment_paymentdetails d WHERE d.booking_id = b.id AND d.is_deleted = false ORDER BY d.updated_at DESC NULLS LAST, d.id DESC LIMIT 1) d ON true
+    WHERE {{since:GREATEST(b.updated_at, d.updated_at)}} ORDER BY b.id`,
+  ujra_payment: `SELECT p.id, p.student_id, p.booking_id, p.amount, p.payment_date, p.payment_status, p.payment_category, p.payment_mode, p.payment_success,
+           p.refund_amount, p.academic_year_id, p.is_deleted, p.created_at, p.updated_at
+    FROM payment_payment p WHERE {{since:p.updated_at}} ORDER BY p.id`,
+};
+
+async function syncUjraViaMetabase(): Promise<void> {
+  const base = (process.env.METABASE_URL ?? '').replace(/\/$/, '');
+  for (const t of Object.keys(UJRA_METABASE_SQL)) {
+    if (!wanted(t)) continue;
+    const since = await getState(t);
+    const t0 = Date.now();
+    const tail = since ? new Date(since.getTime() - 45 * 86400 * 1000).toISOString() : null;
+    const sqlText = UJRA_METABASE_SQL[t].replace(/\{\{since:([^}]+)\}\}/g, (_m, col) => (tail ? `${col} > '${tail}'::timestamptz` : 'true'));
+    console.log(`[ujra] ${t} via Metabase ${since ? `incremental since ${since.toISOString()}` : 'FULL copy'}`);
+    const body = new URLSearchParams({ query: JSON.stringify({ database: METABASE_UJRA_DB, type: 'native', native: { query: sqlText } }) });
+    const res = await fetch(`${base}/api/dataset/csv`, { method: 'POST', headers: { 'X-API-KEY': process.env.METABASE_API_KEY ?? '', 'Content-Type': 'application/x-www-form-urlencoded' }, body });
+    const text = await res.text();
+    if (!res.ok || text.startsWith('{')) {
+      const msg = `Metabase export failed for ${t}: HTTP ${res.status} ${text.slice(0, 300)}`;
+      await setState(t, null, 0, msg);
+      throw new Error(msg);
+    }
+    try {
+      const rows: Record<string, unknown>[] = parseCsv(text).map((r) => ({ ...r, _synced_at: new Date() }));
+      for (let i = 0; i < rows.length; i += BATCH) await upsert(`app.${t}`, rows.slice(i, i + BATCH));
+      const maxStamp = rows.reduce<Date | null>((m, r) => { const d = r.updated_at ? new Date(r.updated_at as string) : null; return d && (!m || d > m) ? d : m; }, since);
+      await setState(t, maxStamp ?? new Date(), rows.length, null);
+      console.log(`[ujra] ${t}: ${rows.length} rows in ${((Date.now() - t0) / 1000).toFixed(1)}s`);
+    } catch (e) {
+      await setState(t, null, 0, e instanceof Error ? e.message : String(e));
+      throw e;
+    }
+  }
 }
 
 /** minimal RFC 4180 reader: quoted fields, doubled quotes, newlines inside quotes; empty = NULL */
