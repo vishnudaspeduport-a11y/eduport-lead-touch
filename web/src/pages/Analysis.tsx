@@ -22,7 +22,7 @@ export default function Analysis() {
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [results, setResults] = useState<Row[] | null>(null);
-  const [view, setView] = useState<'all' | 'matched' | 'unmatched' | 'converted'>('all');
+  const [view, setView] = useState<'all' | 'matched' | 'unmatched' | 'converted' | 'multi'>('all');
   const [stages, setStages] = useState<string[]>([]);
   const [leadId, setLeadId] = useState<string | null>(null);
 
@@ -83,7 +83,12 @@ export default function Analysis() {
     const leads = results.filter((r) => r.matched);
     const converted = new Set(results.filter((r) => r.converted).map((r) => r.phone_key));
     const revenue = [...new Map(results.filter((r) => r.converted).map((r) => [r.phone_key, Number(r.revenue) || 0])).values()].reduce((a, b) => a + b, 0);
-    return { phones: phonesSeen.size, matched: matchedPhones.size, leads: leads.length, converted: converted.size, revenue };
+    // numbers that own more than one lead record (duplicates in Salesforce)
+    const perPhone = new Map<string, number>();
+    for (const r of leads) perPhone.set(String(r.phone_key), (perPhone.get(String(r.phone_key)) ?? 0) + 1);
+    const multiPhones = [...perPhone.entries()].filter(([, n]) => n > 1);
+    const multiLeads = multiPhones.reduce((a, [, n]) => a + n, 0);
+    return { phones: phonesSeen.size, matched: matchedPhones.size, leads: leads.length, converted: converted.size, revenue, multiPhones: multiPhones.length, multiLeads, maxLeads: Math.max(0, ...multiPhones.map(([, n]) => n)) };
   }, [results]);
 
   // lead stage of every lead record found (one row per lead); converted share inside each stage
@@ -107,6 +112,7 @@ export default function Analysis() {
     if (view === 'matched') out = out.filter((r) => r.matched);
     else if (view === 'unmatched') out = out.filter((r) => !r.matched);
     else if (view === 'converted') out = out.filter((r) => r.converted);
+    else if (view === 'multi') { const n = new Map<string, number>(); for (const r of results) if (r.matched) n.set(String(r.phone_key), (n.get(String(r.phone_key)) ?? 0) + 1); out = out.filter((r) => r.matched && (n.get(String(r.phone_key)) ?? 0) > 1); }
     if (stages.length) out = out.filter((r) => r.matched && stages.includes((r.lead_stage as string | null) || '(no stage)'));
     return out;
   }, [results, view, stages]);
@@ -167,11 +173,12 @@ export default function Analysis() {
 
       {summary && results && (
         <>
-          <div className="grid grid-cols-2 gap-4 sm:grid-cols-5">
+          <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 xl:grid-cols-6">
             {([
               ['Numbers in file', fmtInt(summary.phones), 'unique, valid · click to show all', 'all'],
               ['Leads found', fmtInt(summary.matched), `${fmtPct(summary.phones ? Math.round((summary.matched / summary.phones) * 10000) / 100 : null)} of numbers · ${fmtInt(summary.leads)} lead records`, 'matched'],
               ['Not in the dashboard database', fmtInt(summary.phones - summary.matched), 'no lead here: created before Mar 2026 with no touch, or not in Salesforce', 'unmatched'],
+              ['Numbers with several leads', fmtInt(summary.multiPhones), summary.multiPhones ? `${fmtInt(summary.multiLeads)} lead records on these numbers (up to ${fmtInt(summary.maxLeads)} per number) · ${fmtInt(summary.leads - summary.matched)} extra records in total` : 'every number has a single lead', 'multi'],
               ['Converted', fmtInt(summary.converted), `${fmtPct(summary.phones ? Math.round((summary.converted / summary.phones) * 10000) / 100 : null)} of numbers have a valid payment`, 'converted'],
               ['Revenue', fmtINR(summary.revenue), 'all valid payments of these numbers', 'converted'],
             ] as [string, string, string, typeof view][]).map(([t, v, sub, target]) => (
@@ -194,7 +201,7 @@ export default function Analysis() {
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div className="flex items-center gap-2">
                 <h3 className="text-xs font-bold">Results</h3>
-                <Segmented size="xs" value={view} onChange={setView} options={[{ value: 'all', label: `All (${fmtInt(results.length)})` }, { value: 'matched', label: 'Leads found' }, { value: 'unmatched', label: 'Not found' }, { value: 'converted', label: 'Converted' }]} />
+                <Segmented size="xs" value={view} onChange={setView} options={[{ value: 'all', label: `All (${fmtInt(results.length)})` }, { value: 'matched', label: 'Leads found' }, { value: 'unmatched', label: 'Not found' }, { value: 'converted', label: 'Converted' }, { value: 'multi', label: 'Several leads' }]} />
                 {stages.length > 0 && <button className="chip" onClick={() => setStages([])} title="Clear the stage filter">Stage: {stages.join(', ')} ×</button>}
                 <span className="text-[11px] text-ink-3">one row per lead · a number with several leads appears more than once · click a row for the full record</span>
               </div>
