@@ -1,7 +1,7 @@
 import type { Context } from 'hono';
 import type { Sql } from 'postgres';
 import type { AppEnv, Role } from './env';
-import { withSql } from './db';
+import { getSql, release, withSql } from './db';
 import { parseFilters, resolvePeriods, type Filters, type Periods } from './filters';
 import { cacheGet, cacheKey, cachePut, dataVersion, KV_TTL_VERSIONED, wantsFresh } from './cache';
 
@@ -69,4 +69,41 @@ export function maskName(v: string | null | undefined, role: Role): string | nul
   if (v == null) return null;
   if (role !== 'viewer') return v;
   return v.split(/\s+/).map((p) => (p.length ? `${p[0]}${'•'.repeat(Math.min(6, Math.max(1, p.length - 1)))}` : p)).join(' ');
+}
+
+// ---------------------------------------------------------------- CSV export, streamed in pages
+/**
+ * Streams a CSV while fetching the rows in pages of `pageSize` through `fetchPage(sql, limit, offset)`. One statement per
+ * page keeps every query far below the 90 s statement timeout of the pooled connection (one statement for the whole
+ * export timed out on the throttled database and produced an empty file). The header row is sent first, so the
+ * browser sees the download start immediately. Rows beyond `cap` are dropped and noted in a trailing comment line.
+ */
+export function csvStream<R extends Record<string, unknown>>(c: Context<AppEnv>, o: {
+  cols: readonly string[]; cap: number; filename: string; mask: (r: R) => Record<string, unknown>;
+  fetchPage: (sql: Sql, limit: number, offset: number) => Promise<R[]>; pageSize?: number;
+}): Response {
+  const sql = getSql(c.env);
+  const enc = new TextEncoder();
+  const size = Math.max(50, o.pageSize ?? 500);
+  const esc = (v: unknown) => { if (v == null) return ''; const s = v instanceof Date ? v.toISOString() : String(v); return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; };
+  const stream = new ReadableStream<Uint8Array>({
+    async start(controller) {
+      try {
+        controller.enqueue(enc.encode(o.cols.join(',') + '\n'));
+        let n = 0; let offset = 0;
+        while (n < o.cap) {
+          const limit = Math.min(size, o.cap - n);
+          const rows = await o.fetchPage(sql, limit, offset);
+          let chunk = '';
+          for (const r of rows) { const m = o.mask(r); chunk += o.cols.map((k) => esc(m[k])).join(',') + '\n'; }
+          if (chunk) controller.enqueue(enc.encode(chunk));
+          n += rows.length; offset += rows.length;
+          if (rows.length < limit) break;
+        }
+        if (n >= o.cap) controller.enqueue(enc.encode(`# truncated at ${o.cap} rows\n`));
+        controller.close();
+      } catch (e) { controller.error(e); } finally { release(sql, c.executionCtx); }
+    },
+  });
+  return new Response(stream, { headers: { 'content-type': 'text/csv; charset=utf-8', 'content-disposition': `attachment; filename="${o.filename}"`, 'cache-control': 'private, no-store' } });
 }

@@ -1,9 +1,8 @@
 import { Hono } from 'hono';
 import type { Sql } from 'postgres';
 import type { AppEnv, Role } from '../env';
-import { handle, intParam, maskEmail, maskName, maskPhone } from '../http';
+import { handle, intParam, maskEmail, maskName, maskPhone, csvStream } from '../http';
 import { parseFilters, resolvePeriods, type Filters, type Frag, type Period } from '../filters';
-import { getSql, release } from '../db';
 import { flatWhere, FLAT_COLS, convCond, convFirstCond, tatBucket } from './overview';
 import { paymentPeriod } from '../filters';
 
@@ -313,21 +312,6 @@ overviewLeads.get('/overview/leads.csv', async (c) => {
   const periods = resolvePeriods(f);
   const role = c.get('user').role;
   const cap = Number.parseInt(c.env.EXPORT_ROW_CAP ?? '50000', 10) || 50000;
-  const sql = getSql(c.env);
-  const enc = new TextEncoder();
-  const esc = (v: unknown) => { if (v == null) return ''; const s = String(v); return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; };
-  const stream = new ReadableStream<Uint8Array>({
-    async start(controller) {
-      try {
-        controller.enqueue(enc.encode(COLS.join(',') + '\n'));
-        const rows = await leadQuery(sql, f, periods, q, { limit: cap, offset: 0 });
-        let chunk = '';
-        for (const r of rows) { const m = maskRow(r, role); chunk += COLS.map((k) => esc(m[k])).join(',') + '\n'; if (chunk.length > 65536) { controller.enqueue(enc.encode(chunk)); chunk = ''; } }
-        if (rows.length >= cap) chunk += `# truncated at ${cap} rows\n`;
-        if (chunk) controller.enqueue(enc.encode(chunk));
-        controller.close();
-      } catch (e) { controller.error(e); } finally { release(sql, c.executionCtx); }
-    },
-  });
-  return new Response(stream, { headers: { 'content-type': 'text/csv; charset=utf-8', 'content-disposition': `attachment; filename="leads_${q.metric ?? 'leads'}_${periods.current.from}_${periods.current.to}.csv"`, 'cache-control': 'private, no-store' } });
+  return csvStream(c, { cols: COLS, cap, filename: `leads_${q.metric ?? 'leads'}_${periods.current.from}_${periods.current.to}.csv`, mask: (r) => maskRow(r, role),
+    fetchPage: (sql, limit, offset) => leadQuery(sql, f, periods, q, { limit, offset }) });
 });

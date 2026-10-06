@@ -1,9 +1,8 @@
 import { Hono } from 'hono';
 import type { Sql } from 'postgres';
 import type { AppEnv, Role } from '../env';
-import { handle, intParam, maskEmail, maskName, maskPhone } from '../http';
+import { handle, intParam, maskEmail, maskName, maskPhone, csvStream } from '../http';
 import { activeDimKeys, parseFilters, resolvePeriods, type Frag } from '../filters';
-import { getSql, release } from '../db';
 import { newLeadWhere } from './new_leads';
 
 export const leads = new Hono<AppEnv>();
@@ -173,43 +172,8 @@ leads.get('/leads/export.csv', async (c) => {
   const periods = resolvePeriods(f);
   const role = c.get('user').role;
   const cap = Number.parseInt(c.env.EXPORT_ROW_CAP ?? '50000', 10) || 50000;
-  const sql = getSql(c.env);
   const sortCol = SORTABLE[q.sort ?? ''] ?? 'created_at';
-  const dir = q.dir === 'asc' ? sql`ASC NULLS FIRST` : sql`DESC NULLS LAST`;
-  void periods;
-  const where = sql`${newLeadWhere(sql, f, null, { validPay: true })} AND ${searchCond(sql, q.q ?? '')}`;
-  const cols = LIST_COLS;
-  const enc = new TextEncoder();
-  const esc = (v: unknown) => {
-    if (v == null) return '';
-    const s = v instanceof Date ? v.toISOString() : String(v);
-    return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
-  };
-  const stream = new ReadableStream<Uint8Array>({
-    async start(controller) {
-      try {
-        controller.enqueue(enc.encode(cols.join(',') + '\n'));
-        let n = 0;
-        const cursor = explorerQuery(sql, where, sortCol, dir, { limit: cap, offset: 0 }, q.dir === 'asc').cursor(500);
-        for await (const batch of cursor) {
-          let chunk = '';
-          for (const r of batch) { const m = maskRow(r, role); chunk += cols.map((k) => esc(m[k])).join(',') + '\n'; n++; }
-          controller.enqueue(enc.encode(chunk));
-        }
-        if (n >= cap) controller.enqueue(enc.encode(`# truncated at ${cap} rows\n`));
-        controller.close();
-      } catch (e) {
-        controller.error(e);
-      } finally {
-        release(sql, c.executionCtx);
-      }
-    },
-  });
-  return new Response(stream, {
-    headers: {
-      'content-type': 'text/csv; charset=utf-8',
-      'content-disposition': `attachment; filename="leads_${periods.current.from}_${periods.current.to}.csv"`,
-      'cache-control': 'no-store',
-    },
-  });
+  const asc = q.dir === 'asc';
+  return csvStream(c, { cols: LIST_COLS, cap, filename: `leads_${periods.current.from}_${periods.current.to}.csv`, mask: (r) => maskRow(r, role),
+    fetchPage: (sql, limit, offset) => explorerQuery(sql, sql`${newLeadWhere(sql, f, null, { validPay: true })} AND ${searchCond(sql, q.q ?? '')}`, sortCol, asc ? sql`ASC NULLS FIRST` : sql`DESC NULLS LAST`, { limit, offset }, asc) });
 });
