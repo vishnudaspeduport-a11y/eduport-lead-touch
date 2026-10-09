@@ -133,16 +133,69 @@ leads.get('/leads/:id{[a-zA-Z0-9]+}', (c) =>
   handle(c, async ({ sql, role }) => {
     const id = c.req.param('id');
     if (!/^[a-zA-Z0-9]{15,18}$/.test(id)) throw Object.assign(new Error('bad lead id'), { status: 400 });
-    const [lead] = await sql<Rec[]>`SELECT * FROM analytics.v_lead_base l WHERE l.lead_id = ${id}`;
+    // One lead = indexed lookups only. v_lead_base / v_touch_base recompute aggregates over EVERY lead and touch before
+    // filtering, which took 30-80 s on the throttled database; here each statement touches only this lead's rows.
+    const [lead] = await sql<Rec[]>`
+      WITH l AS (
+        SELECT l.id AS lead_id, l.name AS lead_name, l.createddate AS created_at, analytics.ist_date(l.createddate) AS created_date,
+               l.first_name__c AS first_name, l.last_name__c AS last_name, l.mobile_number__c AS mobile, l.email__c AS email,
+               analytics.phone_key(l.mobile_number__c) AS phone_key, analytics.phone_key_valid(l.mobile_number__c) AS phone_valid,
+               l.class__c AS class_raw, analytics.class_group(l.class__c) AS class_group,
+               COALESCE(NULLIF(btrim(l.lead_source__c), ''), '(blank)') AS lead_source,
+               COALESCE(NULLIF(btrim(l.lead_stage__c), ''), '(blank)') AS lead_stage, l.lead_type__c AS lead_type, l.priority__c AS priority,
+               l.district__c AS district, l.city__c AS city, l.ownerid AS owner_id, COALESCE(u.name, l.ownerid::text) AS owner_name,
+               l.touch_count__c AS sf_touch_count, COALESCE(l.is_converted__c, false) AS sf_is_converted, l.best_ic_status__c AS best_ic_status,
+               COALESCE(l.is_duplicate__c, false) AS is_duplicate, l.parent_lead_master__c AS parent_lead_id, l.lm_reason__c AS lm_reason
+        FROM salesforce.lead_master__c l LEFT JOIN salesforce."user" u ON u.id::text = l.ownerid::text
+        WHERE l.id = ${id} AND COALESCE(l.is_deleted__c, false) = false AND COALESCE(l.isdeleted, false) = false),
+      p AS (
+        SELECT min(vp.payment_date) AS converted_at, count(*)::int AS payment_count, COALESCE(sum(vp.amount), 0)::float8 AS revenue,
+               max(vp.payment_date) AS last_payment_date, min(vp.user_id)::int AS app_user_id
+        FROM l JOIN analytics.v_valid_payment_x vp ON vp.phone_key = l.phone_key AND l.phone_valid),
+      t AS (
+        SELECT count(*)::int AS total_touches, count(*) FILTER (WHERE m.is_pre_conversion)::int AS valid_touches,
+               min(m.touch_at) AS first_touch_at, max(m.touch_at) AS last_touch_any_at
+        FROM analytics.mv_touch_flat m WHERE m.lead_id = ${id})
+      SELECT l.*, (p.payment_count > 0) AS converted, p.converted_at::text, p.payment_count, p.revenue, p.last_payment_date::text, p.app_user_id,
+             (p.converted_at - l.created_date) AS days_to_convert, (p.converted_at < l.created_date) AS pre_existing_customer,
+             t.total_touches, t.valid_touches, t.first_touch_at::text, t.last_touch_any_at::text
+      FROM l CROSS JOIN p CROSS JOIN t`;
     if (!lead) throw Object.assign(new Error('lead not found'), { status: 404 });
-    const phoneKey = lead.phone_key as string | null;
+    const phoneKey = lead.phone_valid ? (lead.phone_key as string | null) : null;
+    const converted = !!lead.converted;
+    const convertedAt = (lead.converted_at as string | null) ?? null;
     const [touches, ics, payments, calls, siblings] = await Promise.all([
+      // this lead's touches straight from the touch table (index on lead + date); sequence, gaps and credits computed over these rows only
       sql<Rec[]>`
+        WITH t AS (
+          SELECT t.id AS touch_id, t.touch_date__c AS touch_at, analytics.ist_date(t.touch_date__c) AS touch_date,
+                 COALESCE(NULLIF(btrim(t.touch_point__c), ''), '(blank)') AS touch_point, COALESCE(NULLIF(btrim(t.source__c), ''), '(blank)') AS source,
+                 COALESCE(NULLIF(btrim(t.medium__c), ''), '(blank)') AS medium, COALESCE(NULLIF(btrim(t.campaign__c), ''), '(blank)') AS campaign,
+                 t.adset_name__c AS adset_name, t.ad_name__c AS ad_name, t.platform_id__c AS platform_id, NULLIF(btrim(t.staff__c), '') AS staff,
+                 t.is_first_touch__c AS sf_is_first_touch, t.is_last_touch__c AS sf_is_last_touch, COALESCE(t.is_converted__c, false) AS sf_is_converted,
+                 COALESCE(t.was_customer_at_touch__c, false) AS sf_was_customer_at_touch, t.ic_status__c AS ic_status, t.ic_course__c AS touch_ic_course,
+                 analytics.is_paid_touch(t.touch_point__c, t.source__c, t.medium__c) AS is_paid_touch,
+                 (${convertedAt}::date IS NULL OR analytics.ist_date(t.touch_date__c) <= ${convertedAt}::date) AS is_pre_conversion
+          FROM salesforce.lead_touch__c t
+          WHERE t.lead_master__c = ${id} AND COALESCE(t.isdeleted, false) = false AND t.touch_date__c IS NOT NULL),
+        s AS (
+          SELECT t.*, row_number() OVER w AS touch_seq_all, lag(touch_at) OVER w AS prev_touch_at,
+                 CASE WHEN is_pre_conversion THEN row_number() OVER (PARTITION BY is_pre_conversion ORDER BY touch_at, touch_id) END AS touch_seq,
+                 CASE WHEN is_pre_conversion THEN count(*) OVER (PARTITION BY is_pre_conversion) END AS n_pre_touches
+          FROM t WINDOW w AS (ORDER BY touch_at, touch_id))
         SELECT touch_id, touch_at::text, touch_date::text, touch_point, source, medium, campaign, adset_name, ad_name, platform_id, staff,
-               is_pre_conversion, touch_seq, touch_seq_all, is_first_touch, is_last_touch, gap_hours_from_prev, gap_bucket,
-               credit_first, credit_last, credit_linear, credit_position, sf_is_first_touch, sf_is_last_touch, sf_is_converted,
-               sf_was_customer_at_touch, ic_status, touch_ic_course, is_paid_touch
-        FROM analytics.v_touch_base t WHERE t.lead_id = ${id} ORDER BY touch_at, touch_id`,
+               is_pre_conversion, touch_seq::int, touch_seq_all::int, (touch_seq = 1) AS is_first_touch, (touch_seq = n_pre_touches) AS is_last_touch,
+               round((EXTRACT(epoch FROM touch_at - prev_touch_at) / 3600)::numeric, 2)::float8 AS gap_hours_from_prev,
+               analytics.gap_bucket((EXTRACT(epoch FROM touch_at - prev_touch_at) / 3600)::numeric) AS gap_bucket,
+               CASE WHEN ${converted} AND is_pre_conversion AND touch_seq = 1 THEN 1.0 ELSE 0 END::float8 AS credit_first,
+               CASE WHEN ${converted} AND is_pre_conversion AND touch_seq = n_pre_touches THEN 1.0 ELSE 0 END::float8 AS credit_last,
+               CASE WHEN ${converted} AND is_pre_conversion THEN 1.0 / n_pre_touches ELSE 0 END::float8 AS credit_linear,
+               CASE WHEN ${converted} AND is_pre_conversion THEN
+                      CASE WHEN n_pre_touches = 1 THEN 1.0 WHEN n_pre_touches = 2 THEN 0.5
+                           WHEN touch_seq = 1 OR touch_seq = n_pre_touches THEN 0.4 ELSE 0.2 / (n_pre_touches - 2) END
+                    ELSE 0 END::float8 AS credit_position,
+               sf_is_first_touch, sf_is_last_touch, sf_is_converted, sf_was_customer_at_touch, ic_status, touch_ic_course, is_paid_touch
+        FROM s ORDER BY touch_at, touch_id`,
       sql<Rec[]>`SELECT ic_id, course_name, status, is_enrolled, ic_created_at::text
                  FROM analytics.v_ic_base WHERE lead_id = ${id} ORDER BY ic_created_at`,
       phoneKey
@@ -154,13 +207,18 @@ leads.get('/leads/:id{[a-zA-Z0-9]+}', (c) =>
       // per-lead call summary (salesforce.lead_calls, reduced from the Salesforce call log since May 2026)
       sql<Rec[]>`SELECT c.calls, c.first_call_at::text AS first_call_at, c.last_call_at::text AS last_call_at, c.last_reason, c.last_comment, c.last_call_status, c.last_subject, u.name AS last_owner
                  FROM salesforce.lead_calls c LEFT JOIN salesforce."user" u ON u.id = c.last_owner_id WHERE c.lead_id = ${id}`,
+      // other leads on the same number (expression index lead_master_phone_key); they share the payer, so the converted flag is the same
       phoneKey
-        ? sql<Rec[]>`SELECT lead_id, lead_name, created_date::text, lead_source, lead_stage, is_duplicate, converted FROM analytics.v_lead_base
-                     WHERE phone_key = ${phoneKey} AND lead_id <> ${id} ORDER BY created_at LIMIT 20`
+        ? sql<Rec[]>`SELECT l.id AS lead_id, l.name AS lead_name, analytics.ist_date(l.createddate)::text AS created_date,
+                            COALESCE(NULLIF(btrim(l.lead_source__c), ''), '(blank)') AS lead_source, COALESCE(NULLIF(btrim(l.lead_stage__c), ''), '(blank)') AS lead_stage,
+                            COALESCE(l.is_duplicate__c, false) AS is_duplicate, ${converted} AS converted
+                     FROM salesforce.lead_master__c l
+                     WHERE analytics.phone_key(l.mobile_number__c) = ${phoneKey} AND l.id <> ${id}
+                       AND COALESCE(l.is_deleted__c, false) = false AND COALESCE(l.isdeleted, false) = false
+                     ORDER BY l.createddate LIMIT 20`
         : Promise.resolve([] as Rec[]),
     ]);
     const l = maskRow(lead, role);
-    // stringify timestamps (postgres.js hands Date objects when types are known; with fetch_types=false they are strings already)
     return { lead: l, touches, ics, payments, calls: [] as Rec[], call_summary: calls[0] ?? null, siblings, masked: role === 'viewer' };
   }, 0),
 );
