@@ -135,7 +135,10 @@ leads.get('/leads/:id{[a-zA-Z0-9]+}', (c) =>
     if (!/^[a-zA-Z0-9]{15,18}$/.test(id)) throw Object.assign(new Error('bad lead id'), { status: 400 });
     // One lead = indexed lookups only. v_lead_base / v_touch_base recompute aggregates over EVERY lead and touch before
     // filtering, which took 30-80 s on the throttled database; here each statement touches only this lead's rows.
-    const [lead] = await sql<Rec[]>`
+    // the lead's phone key and first valid payment, as fragments, so all six statements can run at the same time
+    const pk = sql`(SELECT analytics.phone_key(mobile_number__c) FROM salesforce.lead_master__c WHERE id = ${id} AND analytics.phone_key_valid(mobile_number__c))`;
+    const convAt = sql`(SELECT min(vp.payment_date) FROM analytics.v_valid_payment_x vp WHERE vp.phone_key = ${pk})`;
+    const leadQ = sql<Rec[]>`
       WITH l AS (
         SELECT l.id AS lead_id, l.name AS lead_name, l.createddate AS created_at, analytics.ist_date(l.createddate) AS created_date,
                l.first_name__c AS first_name, l.last_name__c AS last_name, l.mobile_number__c AS mobile, l.email__c AS email,
@@ -160,14 +163,12 @@ leads.get('/leads/:id{[a-zA-Z0-9]+}', (c) =>
              (p.converted_at - l.created_date) AS days_to_convert, (p.converted_at < l.created_date) AS pre_existing_customer,
              t.total_touches, t.valid_touches, t.first_touch_at::text, t.last_touch_any_at::text
       FROM l CROSS JOIN p CROSS JOIN t`;
-    if (!lead) throw Object.assign(new Error('lead not found'), { status: 404 });
-    const phoneKey = lead.phone_valid ? (lead.phone_key as string | null) : null;
-    const converted = !!lead.converted;
-    const convertedAt = (lead.converted_at as string | null) ?? null;
-    const [touches, ics, payments, calls, siblings] = await Promise.all([
+    const [leadRows, touches, ics, payments, calls, siblings] = await Promise.all([
+      leadQ,
       // this lead's touches straight from the touch table (index on lead + date); sequence, gaps and credits computed over these rows only
       sql<Rec[]>`
-        WITH t AS (
+        WITH c AS (SELECT ${convAt} AS converted_at),
+        t AS (
           SELECT t.id AS touch_id, t.touch_date__c AS touch_at, analytics.ist_date(t.touch_date__c) AS touch_date,
                  COALESCE(NULLIF(btrim(t.touch_point__c), ''), '(blank)') AS touch_point, COALESCE(NULLIF(btrim(t.source__c), ''), '(blank)') AS source,
                  COALESCE(NULLIF(btrim(t.medium__c), ''), '(blank)') AS medium, COALESCE(NULLIF(btrim(t.campaign__c), ''), '(blank)') AS campaign,
@@ -175,9 +176,10 @@ leads.get('/leads/:id{[a-zA-Z0-9]+}', (c) =>
                  t.is_first_touch__c AS sf_is_first_touch, t.is_last_touch__c AS sf_is_last_touch, COALESCE(t.is_converted__c, false) AS sf_is_converted,
                  COALESCE(t.was_customer_at_touch__c, false) AS sf_was_customer_at_touch, t.ic_status__c AS ic_status, t.ic_course__c AS touch_ic_course,
                  analytics.is_paid_touch(t.touch_point__c, t.source__c, t.medium__c) AS is_paid_touch,
-                 (${convertedAt}::date IS NULL OR analytics.ist_date(t.touch_date__c) <= ${convertedAt}::date) AS is_pre_conversion
-          FROM salesforce.lead_touch__c t
-          WHERE t.lead_master__c = ${id} AND COALESCE(t.isdeleted, false) = false AND t.touch_date__c IS NOT NULL),
+                 (c.converted_at IS NULL OR analytics.ist_date(t.touch_date__c) <= c.converted_at) AS is_pre_conversion,
+                 (c.converted_at IS NOT NULL) AS converted
+          FROM salesforce.lead_touch__c t CROSS JOIN c
+          WHERE t.lead_master__c = ${id} AND t.isdeleted = false AND t.touch_date__c IS NOT NULL),   -- isdeleted = false matches the partial index lead_touch_lead_date; COALESCE() would not
         s AS (
           SELECT t.*, row_number() OVER w AS touch_seq_all, lag(touch_at) OVER w AS prev_touch_at,
                  CASE WHEN is_pre_conversion THEN row_number() OVER (PARTITION BY is_pre_conversion ORDER BY touch_at, touch_id) END AS touch_seq,
@@ -187,37 +189,38 @@ leads.get('/leads/:id{[a-zA-Z0-9]+}', (c) =>
                is_pre_conversion, touch_seq::int, touch_seq_all::int, (touch_seq = 1) AS is_first_touch, (touch_seq = n_pre_touches) AS is_last_touch,
                round((EXTRACT(epoch FROM touch_at - prev_touch_at) / 3600)::numeric, 2)::float8 AS gap_hours_from_prev,
                analytics.gap_bucket((EXTRACT(epoch FROM touch_at - prev_touch_at) / 3600)::numeric) AS gap_bucket,
-               CASE WHEN ${converted} AND is_pre_conversion AND touch_seq = 1 THEN 1.0 ELSE 0 END::float8 AS credit_first,
-               CASE WHEN ${converted} AND is_pre_conversion AND touch_seq = n_pre_touches THEN 1.0 ELSE 0 END::float8 AS credit_last,
-               CASE WHEN ${converted} AND is_pre_conversion THEN 1.0 / n_pre_touches ELSE 0 END::float8 AS credit_linear,
-               CASE WHEN ${converted} AND is_pre_conversion THEN
+               CASE WHEN converted AND is_pre_conversion AND touch_seq = 1 THEN 1.0 ELSE 0 END::float8 AS credit_first,
+               CASE WHEN converted AND is_pre_conversion AND touch_seq = n_pre_touches THEN 1.0 ELSE 0 END::float8 AS credit_last,
+               CASE WHEN converted AND is_pre_conversion THEN 1.0 / n_pre_touches ELSE 0 END::float8 AS credit_linear,
+               CASE WHEN converted AND is_pre_conversion THEN
                       CASE WHEN n_pre_touches = 1 THEN 1.0 WHEN n_pre_touches = 2 THEN 0.5
                            WHEN touch_seq = 1 OR touch_seq = n_pre_touches THEN 0.4 ELSE 0.2 / (n_pre_touches - 2) END
                     ELSE 0 END::float8 AS credit_position,
                sf_is_first_touch, sf_is_last_touch, sf_is_converted, sf_was_customer_at_touch, ic_status, touch_ic_course, is_paid_touch
         FROM s ORDER BY touch_at, touch_id`,
-      sql<Rec[]>`SELECT ic_id, course_name, status, is_enrolled, ic_created_at::text
-                 FROM analytics.v_ic_base WHERE lead_id = ${id} ORDER BY ic_created_at`,
-      phoneKey
-        ? sql<Rec[]>`SELECT vp.payment_id, vp.payment_date::text, COALESCE(b.course_title, vp.course_label) AS course, COALESCE(b.title, CASE WHEN vp.source = 'ujra' THEN 'Ujra (' || vp.matched_by || ')' END) AS batch, vp.source, vp.amount::float8, vp.total::float8, vp.discount::float8, vp.refund_amount::float8,
+      // interested courses straight from the table: the partial index interested_course_lead needs isdeleted = false (v_ic_base uses COALESCE and scans)
+      sql<Rec[]>`SELECT ic.id AS ic_id, COALESCE(NULLIF(ic.course_name__c, ''), cr.name, ic.course__c) AS course_name,
+                        COALESCE(NULLIF(btrim(ic.status__c), ''), '(blank)') AS status, COALESCE(ic.is_enrolled__c, false) AS is_enrolled, ic.createddate::text AS ic_created_at
+                 FROM salesforce.interested_course__c ic LEFT JOIN salesforce.course__c cr ON cr.id = ic.course__c
+                 WHERE ic.lead_master__c = ${id} AND ic.isdeleted = false ORDER BY ic.createddate`,
+      sql<Rec[]>`SELECT vp.payment_id, vp.payment_date::text, COALESCE(b.course_title, vp.course_label) AS course, COALESCE(b.title, CASE WHEN vp.source = 'ujra' THEN 'Ujra (' || vp.matched_by || ')' END) AS batch, vp.source, vp.amount::float8, vp.total::float8, vp.discount::float8, vp.refund_amount::float8,
                             vp.payment_time::text, vp.course_new_id, vp.batch_id, vp.sales_person_id, vp.enrollment_id, vp.payment_type
                      FROM analytics.v_valid_payment_x vp LEFT JOIN app.core_batch b ON b.id = vp.batch_id
-                     WHERE vp.phone_key = ${phoneKey} ORDER BY vp.payment_date, vp.payment_id LIMIT 100`
-        : Promise.resolve([] as Rec[]),
+                     WHERE vp.phone_key = ${pk} ORDER BY vp.payment_date, vp.payment_id LIMIT 100`,
       // per-lead call summary (salesforce.lead_calls, reduced from the Salesforce call log since May 2026)
       sql<Rec[]>`SELECT c.calls, c.first_call_at::text AS first_call_at, c.last_call_at::text AS last_call_at, c.last_reason, c.last_comment, c.last_call_status, c.last_subject, u.name AS last_owner
                  FROM salesforce.lead_calls c LEFT JOIN salesforce."user" u ON u.id = c.last_owner_id WHERE c.lead_id = ${id}`,
       // other leads on the same number (expression index lead_master_phone_key); they share the payer, so the converted flag is the same
-      phoneKey
-        ? sql<Rec[]>`SELECT l.id AS lead_id, l.name AS lead_name, analytics.ist_date(l.createddate)::text AS created_date,
+      sql<Rec[]>`SELECT l.id AS lead_id, l.name AS lead_name, analytics.ist_date(l.createddate)::text AS created_date,
                             COALESCE(NULLIF(btrim(l.lead_source__c), ''), '(blank)') AS lead_source, COALESCE(NULLIF(btrim(l.lead_stage__c), ''), '(blank)') AS lead_stage,
-                            COALESCE(l.is_duplicate__c, false) AS is_duplicate, ${converted} AS converted
+                            COALESCE(l.is_duplicate__c, false) AS is_duplicate, (${convAt} IS NOT NULL) AS converted
                      FROM salesforce.lead_master__c l
-                     WHERE analytics.phone_key(l.mobile_number__c) = ${phoneKey} AND l.id <> ${id}
+                     WHERE analytics.phone_key(l.mobile_number__c) = ${pk} AND l.id <> ${id}
                        AND COALESCE(l.is_deleted__c, false) = false AND COALESCE(l.isdeleted, false) = false
-                     ORDER BY l.createddate LIMIT 20`
-        : Promise.resolve([] as Rec[]),
+                     ORDER BY l.createddate LIMIT 20`,
     ]);
+    const lead = leadRows[0];
+    if (!lead) throw Object.assign(new Error('lead not found'), { status: 404 });
     const l = maskRow(lead, role);
     return { lead: l, touches, ics, payments, calls: [] as Rec[], call_summary: calls[0] ?? null, siblings, masked: role === 'viewer' };
   }, 0),
