@@ -12,7 +12,7 @@ import { FLAT_COLS } from './overview';
  *   GET /api/overview/new_leads.csv      same rows, streamed, capped by EXPORT_ROW_CAP
  *   GET /api/overview/new_leads/summary  headline figures + split tables (touched yet?, stage, class, lead source, owner, ..., touch point, purchased grade / course)
  * Purchases are matched on the phone against the payer table (analytics.mv_payer: every successful payment, any payment method),
- * through the paying account's own phone or its alternative number (analytics.v_user_phone).
+ * through the paying account's own phone or its alternative number (analytics.mv_user_phone).
  */
 export const newLeads = new Hono<AppEnv>();
 
@@ -43,11 +43,11 @@ export function newLeadWhere(sql: Sql, f: Filters, p: Period | null, opts: { val
   // validPay: the dashboard's conversion rule (valid payment, payment_method 0); otherwise any successful payment (payer table)
   const paid = opts.validPay
     ? sql`EXISTS (SELECT 1 FROM analytics.v_valid_payment_x vp WHERE vp.phone_key = l.phone_key)`
-    : sql`EXISTS (SELECT 1 FROM analytics.v_user_phone up JOIN analytics.mv_payer m ON m.user_id = up.user_id WHERE up.phone_key = l.phone_key)`;
+    : sql`EXISTS (SELECT 1 FROM analytics.mv_user_phone up JOIN analytics.mv_payer m ON m.user_id = up.user_id WHERE up.phone_key = l.phone_key)`;
   if (f.converted === '1') c.push(paid);
   if (f.converted === '0') c.push(sql`NOT ${paid}`);
   if (f.pre_existing) {
-    const pre = sql`EXISTS (SELECT 1 FROM analytics.v_user_phone up JOIN analytics.mv_payer m ON m.user_id = up.user_id WHERE up.phone_key = l.phone_key AND m.first_payment_date < l.created_date)`;
+    const pre = sql`EXISTS (SELECT 1 FROM analytics.mv_user_phone up JOIN analytics.mv_payer m ON m.user_id = up.user_id WHERE up.phone_key = l.phone_key AND m.first_payment_date < l.created_date)`;
     c.push(f.pre_existing === '1' ? pre : sql`NOT ${pre}`);
   }
   const touch: Frag[] = [];
@@ -101,7 +101,7 @@ function dimCond(sql: Sql, q: Record<string, string>): Frag {
   }
   if (dim === 'course' || dim === 'grade') {
     const keyExpr = dim === 'course' ? sql`COALESCE(hp.course_label, analytics.course_label(b.title, b.course_title, COALESCE(hp.enrollment_batch_id, hp.batch_id)))` : sql`COALESCE(hp.grade_label, b.grade_title, 'No Grade On Batch')`;
-    return sql`EXISTS (SELECT 1 FROM analytics.v_user_phone up JOIN analytics.mv_payer m ON m.user_id = up.user_id JOIN analytics.v_payment_all hp ON hp.user_id = m.user_id LEFT JOIN app.core_batch b ON b.id = COALESCE(hp.enrollment_batch_id, hp.batch_id)
+    return sql`EXISTS (SELECT 1 FROM analytics.mv_user_phone up JOIN analytics.mv_payer m ON m.user_id = up.user_id JOIN analytics.v_payment_all hp ON hp.user_id = m.user_id LEFT JOIN app.core_batch b ON b.id = COALESCE(hp.enrollment_batch_id, hp.batch_id)
                        WHERE up.phone_key = l.phone_key AND ${VALID_ANY(sql)} AND ${keyExpr} = ${value})`;
   }
   const leadCol: Record<string, string> = { lead_stage: 'lead_stage', class_group: 'class_group', lead_source: 'lead_source', owner: 'owner_name', district: 'district', lm_reason: 'lm_reason', class_raw: 'class_raw', city: 'city' };
@@ -162,7 +162,7 @@ function leadQuery(sql: Sql, f: Filters, p: Period, q: Record<string, string>, p
                               string_agg(DISTINCT t.touch_point, ', ') AS touch_points, max(t.app_user_id)::int AS eps_id
                        FROM analytics.mv_touch_flat t WHERE t.lead_id = s.lead_id) ta ON true
     LEFT JOIN (SELECT DISTINCT ON (up.phone_key) up.phone_key, m.user_id, m.first_payment_date, m.last_payment_date, m.revenue, m.courses
-               FROM analytics.v_user_phone up JOIN analytics.mv_payer m ON m.user_id = up.user_id ORDER BY up.phone_key, m.last_payment_date DESC) pm ON pm.phone_key = s.phone_key`;
+               FROM analytics.mv_user_phone up JOIN analytics.mv_payer m ON m.user_id = up.user_id ORDER BY up.phone_key, m.last_payment_date DESC) pm ON pm.phone_key = s.phone_key`;
   const paged = (src: Frag) => sql`
     SELECT s.*, count(*) OVER ()::int AS total_rows FROM (${src}) s
     ORDER BY ${sql(sortCol)} ${dir}, lead_id
@@ -215,7 +215,7 @@ newLeads.get('/overview/new_leads/summary', (c) =>
         FROM analytics.v_lead_conv l WHERE ${where}),
       pay AS (
         SELECT DISTINCT ON (s.lead_id) s.lead_id, m.user_id, m.revenue
-        FROM sel s JOIN analytics.v_user_phone up ON up.phone_key = s.phone_key JOIN analytics.mv_payer m ON m.user_id = up.user_id
+        FROM sel s JOIN analytics.mv_user_phone up ON up.phone_key = s.phone_key JOIN analytics.mv_payer m ON m.user_id = up.user_id
         ORDER BY s.lead_id, m.last_payment_date DESC)
       SELECT '_total' AS dim, NULL::text AS key, count(*)::int AS leads, NULL::float8 AS revenue FROM sel
       UNION ALL

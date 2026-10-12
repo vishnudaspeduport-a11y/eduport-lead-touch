@@ -194,7 +194,7 @@ function leadQuery(sql: Sql, f: Filters, periods: { current: Period }, q: Record
              COALESCE(sum(x.prop) FILTER (WHERE x.rn = 1), 0)::float8 AS proposed_fee
       FROM (SELECT hp.amount, hp.enrollment_fee - COALESCE(hp.enrollment_discount, 0) AS prop,
                    row_number() OVER (PARTITION BY COALESCE(hp.enrollment_id::text, 'p' || hp.id::text) ORDER BY hp.id) AS rn
-            FROM analytics.v_user_phone up JOIN analytics.v_payment_all hp ON hp.user_id = up.user_id
+            FROM analytics.mv_user_phone up JOIN analytics.v_payment_all hp ON hp.user_id = up.user_id
             WHERE up.phone_key = analytics.phone_key(l.mobile_number__c) AND ${VALID_PAY(sql)}
               AND hp.payment_date BETWEEN ${feeWindow(f, periods.current).from} AND ${feeWindow(f, periods.current).to}) x) fp ON true
     JOIN LATERAL (
