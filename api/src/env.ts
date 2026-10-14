@@ -16,6 +16,8 @@ export interface Env {
   GITHUB_TOKEN?: string;
   GITHUB_REPO: string;
   APP_VERSION?: string;
+  /** set per deploy by scripts/deploy.mjs (git sha + time); part of every cache key so a deploy invalidates cached answers */
+  BUILD_ID?: string;
   EXPORT_ROW_CAP?: string;
 }
 

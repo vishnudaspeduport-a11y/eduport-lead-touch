@@ -64,9 +64,9 @@ export async function dataVersion(env: Env, ctx: Ctx): Promise<string> {
 export function forgetVersion(): void { versionMem = null; }
 
 // ---------------------------------------------------------------- key
-export async function cacheKey(parts: { version: string; mask: string; path: string; query: Record<string, string>; user?: string }): Promise<string> {
+export async function cacheKey(parts: { version: string; build: string; mask: string; path: string; query: Record<string, string>; user?: string }): Promise<string> {
   const q = Object.keys(parts.query).filter((k) => k !== 'fresh').sort().map((k) => `${k}=${parts.query[k]}`).join('&');
-  const raw = `${parts.version}|${parts.mask}|${parts.user ?? ''}|${parts.path}?${q}`;
+  const raw = `${parts.build}|${parts.version}|${parts.mask}|${parts.user ?? ''}|${parts.path}?${q}`;
   const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(raw));
   const hex = [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, '0')).join('');
   return `r:${hex.slice(0, 40)}`;

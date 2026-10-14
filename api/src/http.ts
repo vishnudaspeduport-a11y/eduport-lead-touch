@@ -26,8 +26,9 @@ export async function handle<T>(c: Context<AppEnv>, fn: (x: Ctx) => Promise<T>, 
   let key: string | null = null; let ttl = KV_TTL_VERSIONED;
   if (edge && c.req.method === 'GET') {
     const mask = user.role === 'viewer' ? 'viewer' : 'full';
-    if (edge === 'version') key = await cacheKey({ version: await dataVersion(c.env, c.executionCtx), mask, path: c.req.path, query: q });
-    else { ttl = edge.ttl; key = await cacheKey({ version: `ttl${edge.ttl}`, mask, path: c.req.path, query: q, user: edge.perUser ? String(user.id ?? user.email) : undefined }); }
+    const build = c.env.BUILD_ID ?? c.env.APP_VERSION ?? 'dev';   // a new deploy never serves answers computed by the previous code
+    if (edge === 'version') key = await cacheKey({ version: await dataVersion(c.env, c.executionCtx), build, mask, path: c.req.path, query: q });
+    else { ttl = edge.ttl; key = await cacheKey({ version: `ttl${edge.ttl}`, build, mask, path: c.req.path, query: q, user: edge.perUser ? String(user.id ?? user.email) : undefined }); }
     if (!wantsFresh(c.req.raw, q)) {
       const hit = await cacheGet(c.env, key);
       if (hit) return new Response(hit.body, { status: 200, headers: { ...headers, 'Content-Type': 'application/json; charset=UTF-8', 'X-LT-Cache': `hit-${hit.layer}` } });

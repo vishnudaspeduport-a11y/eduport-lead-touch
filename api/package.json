@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "wrangler dev --port 8787",
-    "deploy": "npm run --prefix ../web build && wrangler deploy",
+    "deploy": "npm run --prefix ../web build && node scripts/deploy.mjs",
     "typecheck": "tsc --noEmit",
     "tail": "wrangler tail",
     "refresh:now": "curl -s -X POST http://localhost:8787/api/admin/refresh"
