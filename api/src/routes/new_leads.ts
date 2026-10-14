@@ -55,11 +55,13 @@ export function newLeadWhere(sql: Sql, f: Filters, p: Period | null, opts: { val
     const vals = f[k];
     if (!vals?.length) continue;
     if (k === 'call_reason') {
-      const real = vals.filter((v) => v !== '(no call)' && v !== '(null)'); const noCall = vals.length !== real.length;
+      const real = vals.filter((v) => v !== '(no call)' && v !== '(no reason recorded)' && v !== '(null)');
+      const noCall = vals.includes('(no call)'); const noReason = vals.includes('(no reason recorded)') || vals.includes('(null)');
       const parts: Frag[] = [];
       if (real.length) parts.push(sql`l.lead_id IN (SELECT c.lead_id FROM salesforce.lead_calls c WHERE c.last_reason IN ${sql(real)})`);
-      if (noCall) parts.push(sql`NOT EXISTS (SELECT 1 FROM salesforce.lead_calls c WHERE c.lead_id = l.lead_id AND c.last_reason IS NOT NULL)`);
-      c.push(parts.length === 2 ? sql`(${parts[0]} OR ${parts[1]})` : parts[0]!);
+      if (noCall) parts.push(sql`NOT EXISTS (SELECT 1 FROM salesforce.lead_calls c WHERE c.lead_id = l.lead_id)`);
+      if (noReason) parts.push(sql`EXISTS (SELECT 1 FROM salesforce.lead_calls c WHERE c.lead_id = l.lead_id AND c.last_reason IS NULL)`);
+      c.push(parts.length === 1 ? parts[0]! : sql`(${parts.reduce((acc, p) => sql`${acc} OR ${p}`)})`);
       continue;
     }
     if (k === 'ic_status') {
@@ -90,9 +92,9 @@ function dimCond(sql: Sql, q: Record<string, string>): Frag {
     return value === 'Touched' ? ex : sql`NOT ${ex}`;
   }
   if (dim === 'call_reason') {
-    return value === '(no call)' || blank
-      ? sql`NOT EXISTS (SELECT 1 FROM salesforce.lead_calls c WHERE c.lead_id = l.lead_id AND c.last_reason IS NOT NULL)`
-      : sql`l.lead_id IN (SELECT c.lead_id FROM salesforce.lead_calls c WHERE c.last_reason = ${value})`;
+    if (value === '(no call)') return sql`NOT EXISTS (SELECT 1 FROM salesforce.lead_calls c WHERE c.lead_id = l.lead_id)`;
+    if (value === '(no reason recorded)' || blank) return sql`EXISTS (SELECT 1 FROM salesforce.lead_calls c WHERE c.lead_id = l.lead_id AND c.last_reason IS NULL)`;
+    return sql`l.lead_id IN (SELECT c.lead_id FROM salesforce.lead_calls c WHERE c.last_reason = ${value})`;
   }
   if (dim === 'ic_status') {
     return blank
@@ -230,7 +232,7 @@ newLeads.get('/overview/new_leads/summary', (c) =>
       FROM sel s LEFT JOIN salesforce.lead_calls c ON c.lead_id = s.lead_id
       CROSS JOIN LATERAL (VALUES ('touched', CASE WHEN s.touched THEN 'Touched' ELSE 'No touch yet' END), ('lead_stage', s.lead_stage), ('class_group', s.class_group),
                                  ('lead_source', s.lead_source), ('owner', s.owner_name), ('district', s.district), ('ic_status', s.best_ic_status),
-                                 ('lm_reason', s.lm_reason), ('call_reason', COALESCE(c.last_reason, '(no call)'))) AS d(dim, key)
+                                 ('lm_reason', s.lm_reason), ('call_reason', CASE WHEN c.lead_id IS NULL THEN '(no call)' WHEN c.last_reason IS NULL THEN '(no reason recorded)' ELSE c.last_reason END)) AS d(dim, key)
       GROUP BY d.dim, d.key
       UNION ALL
       SELECT d.dim, d.key, count(DISTINCT t.lead_id)::int, NULL

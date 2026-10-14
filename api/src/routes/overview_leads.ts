@@ -43,9 +43,9 @@ function dimCond(sql: Sql, q: Record<string, string>): Frag {
   const dim = q.dim; const value = q.value;
   if (!dim || value === undefined) return sql`true`;
   if (dim === 'call_reason') {
-    return value === '(no call)' || value === '(null)'
-      ? sql`NOT EXISTS (SELECT 1 FROM salesforce.lead_calls c WHERE c.lead_id = t.lead_id AND c.last_reason IS NOT NULL)`
-      : sql`t.lead_id IN (SELECT c.lead_id FROM salesforce.lead_calls c WHERE c.last_reason = ${value})`;
+    if (value === '(no call)') return sql`NOT EXISTS (SELECT 1 FROM salesforce.lead_calls c WHERE c.lead_id = t.lead_id)`;
+    if (value === '(no reason recorded)' || value === '(null)') return sql`EXISTS (SELECT 1 FROM salesforce.lead_calls c WHERE c.lead_id = t.lead_id AND c.last_reason IS NULL)`;
+    return sql`t.lead_id IN (SELECT c.lead_id FROM salesforce.lead_calls c WHERE c.last_reason = ${value})`;
   }
   if (dim === 'tat_created' || dim === 'tat_touch') {
     // turnaround band of a converted lead: first valid payment day minus the creation day / the latest touch day on or before the payment
@@ -272,7 +272,7 @@ overviewLeads.get('/overview/leads/summary', (c) =>
       CROSS JOIN LATERAL (VALUES ('lead_stage', t.lead_stage), ('class_group', t.class_group), ('lead_source', t.lead_source),
                                  ('touch_point', t.touch_point), ('source', t.source), ('medium', t.medium),
                                  ('owner', t.owner_name), ('district', t.district), ('ic_status', t.best_ic_status), ('lm_reason', t.lm_reason),
-                                 ('campaign', t.campaign), ('staff', t.staff), ('call_reason', COALESCE(c.last_reason, '(no call)'))) AS d(dim, key)
+                                 ('campaign', t.campaign), ('staff', t.staff), ('call_reason', CASE WHEN c.lead_id IS NULL THEN '(no call)' WHEN c.last_reason IS NULL THEN '(no reason recorded)' ELSE c.last_reason END)) AS d(dim, key)
       GROUP BY d.dim, d.key
       UNION ALL
       SELECT p.dim, p.key, count(DISTINCT p.lead_id)::int AS leads, sum(p.amount)::float8 AS revenue

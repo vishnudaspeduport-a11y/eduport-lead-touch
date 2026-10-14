@@ -54,12 +54,15 @@ export function flatWhere(sql: Sql, f: Filters, p: Period | null, skip?: string)
     if (!vals?.length || k === skip) continue;
     if (!col && k !== 'call_reason') continue;
     if (k === 'call_reason') {
-      // reason recorded on the lead's LAST call (salesforce.lead_calls); '(no call)' = no call logged since March 2026
-      const real = vals.filter((v) => v !== '(no call)' && v !== '(null)'); const noCall = vals.length !== real.length;
+      // reason recorded on the lead's LAST call (salesforce.lead_calls); '(no call)' = no call logged since May 2026,
+      // '(no reason recorded)' = the last call exists but its Reason field is empty
+      const real = vals.filter((v) => v !== '(no call)' && v !== '(no reason recorded)' && v !== '(null)');
+      const noCall = vals.includes('(no call)'); const noReason = vals.includes('(no reason recorded)') || vals.includes('(null)');
       const parts: Frag[] = [];
       if (real.length) parts.push(sql`t.lead_id IN (SELECT c.lead_id FROM salesforce.lead_calls c WHERE c.last_reason IN ${sql(real)})`);
-      if (noCall) parts.push(sql`NOT EXISTS (SELECT 1 FROM salesforce.lead_calls c WHERE c.lead_id = t.lead_id AND c.last_reason IS NOT NULL)`);
-      c.push(parts.length === 2 ? sql`(${parts[0]} OR ${parts[1]})` : parts[0]!);
+      if (noCall) parts.push(sql`NOT EXISTS (SELECT 1 FROM salesforce.lead_calls c WHERE c.lead_id = t.lead_id)`);
+      if (noReason) parts.push(sql`EXISTS (SELECT 1 FROM salesforce.lead_calls c WHERE c.lead_id = t.lead_id AND c.last_reason IS NULL)`);
+      c.push(parts.length === 1 ? parts[0]! : sql`(${parts.reduce((acc, p) => sql`${acc} OR ${p}`)})`);
       continue;
     }
     if (k === 'ic_status') {
@@ -152,7 +155,7 @@ overview.get('/overview', (c) =>
           AND ic.lead_master__c IN (SELECT DISTINCT t.lead_id FROM analytics.mv_touch_flat t WHERE ${wx('ic_status')})
         GROUP BY 1 ORDER BY leads DESC`,
       byDim(sql, wx('touch_point'), 'touch_point', conv, convFirst, 2000, f.touch_point ?? []), byDim(sql, wx('source'), 'source', conv, convFirst, 2000, f.source ?? []), byDim(sql, wx('class_raw'), 'class_raw', conv, convFirst, 2000, f.class_raw ?? []), sql<DimRow[]>`
-        SELECT COALESCE(c.last_reason, '(no call)') AS key, count(*)::int AS touches, count(DISTINCT t.lead_id)::int AS leads,
+        SELECT CASE WHEN c.lead_id IS NULL THEN '(no call)' WHEN c.last_reason IS NULL THEN '(no reason recorded)' ELSE c.last_reason END AS key, count(*)::int AS touches, count(DISTINCT t.lead_id)::int AS leads,
                count(DISTINCT t.lead_id) FILTER (WHERE ${conv})::int AS converted, count(DISTINCT t.lead_id) FILTER (WHERE ${convFirst})::int AS converted_first
         FROM analytics.mv_touch_flat t LEFT JOIN salesforce.lead_calls c ON c.lead_id = t.lead_id
         WHERE ${wx('call_reason')} GROUP BY 1 ORDER BY leads DESC LIMIT 500`,
@@ -291,7 +294,7 @@ overview.get('/overview', (c) =>
         avg_touches_window: 'Same as the all-time average, restricted to touches dated inside the window.',
         avg_per_lead: 'Per-lead variant (each converted lead counted once): the honest average number of touches a paying lead received.',
         lm_reason: 'Lead_Master__c.LM_Reason__c: the reason stored on the lead record itself (set by the salesperson on the lead), one value per lead.',
-        reason: 'The Reason recorded on the lead\'s LAST call (Salesforce call log, calls since May 2026). "(no call)" = no call logged in that period. The lead\'s own LM Reason field is a separate card and filter.',
+        reason: 'The Reason recorded on the lead\'s LAST call (Salesforce call log, calls since May 2026). "(no call)" = no call logged in that period; "(no reason recorded)" = the last call was logged without a Reason. The lead\'s own LM Reason field is a separate card and filter.',
         stale_new: `Leads in the selection whose Lead Stage is still "New" although they were created more than ${staleDays} days ago and have had no touch in the last ${staleDays} days (any touch, in any month). "Never touched after creation" = their only touches are from the creation day itself. Only leads with at least one touch exist on this page.`,
         stale_nc: `Same rule for Lead Stage "Not Connected": created more than ${staleDays} days ago and no touch in the last ${staleDays} days.`,
         dim_converted: 'Per row: distinct converted leads having a touch of that value in the window. A lead can appear under several rows.',
