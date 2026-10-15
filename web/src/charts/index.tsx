@@ -237,7 +237,7 @@ export function Donut({ data, valueLabel = 'Value', secondaryLabel, format = fmt
         {data.map((d, i) => (
           <li key={d.key} className={`flex cursor-pointer items-center gap-1.5 rounded-lg px-1.5 py-0.5 hover:bg-surface-2 ${anySel && !d.selected ? 'opacity-50' : ''}`} onClick={() => onClick?.(d.key)} title={d.key}>
             <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: series[i % series.length] }} />
-            <span className="min-w-0 flex-1 truncate text-ink-2">{d.key}</span>
+            <span className="min-w-0 flex-1 break-words leading-tight text-ink-2">{d.key}</span>
             <span className="tabular-nums font-semibold text-ink">{format(d.value)}</span>
             <span className="w-10 text-right tabular-nums text-ink-3">{fmtPct(total ? (d.value / total) * 100 : null)}</span>
           </li>
