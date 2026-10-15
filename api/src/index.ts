@@ -62,7 +62,8 @@ app.onError((err, c) => {
   const status = (err as { status?: number }).status;
   if (status && status >= 400 && status < 500) return c.json({ error: { code: 'bad_request', message: err.message } }, status as 400);
   console.error('unhandled', err);
-  return c.json({ error: { code: 'internal', message: 'internal error', detail: err instanceof Error ? err.message : String(err) } }, 500);
+  const queryTimes = (err as { queryTimes?: Record<string, number> }).queryTimes;
+  return c.json({ error: { code: 'internal', message: 'internal error', detail: err instanceof Error ? err.message : String(err), queryTimes } }, 500);
 });
 
 async function refreshViews(env: Env) {

@@ -42,6 +42,21 @@ export async function handle<T>(c: Context<AppEnv>, fn: (x: Ctx) => Promise<T>, 
   return new Response(body, { status: 200, headers: { ...headers, 'Content-Type': 'application/json; charset=UTF-8', 'X-LT-Cache': key ? 'miss' : 'bypass' } });
 }
 
+/**
+ * Promise.all for a page's query fan-out that records how long each query took. Slow ones (> 3 s) are logged
+ * ("slow queries" in the Worker logs); when one fails, every duration is attached to the error as queryTimes so the
+ * 500 response names the statement that hit the timeout instead of just "internal error".
+ */
+export async function timedAll<T extends readonly unknown[] | []>(names: readonly string[], qs: T): Promise<{ -readonly [P in keyof T]: Awaited<T[P]> }> {
+  const t0 = Date.now(); const times: Record<string, number> = {};
+  const settled = await Promise.allSettled((qs as readonly unknown[]).map((q, i) => Promise.resolve(q).finally(() => { times[names[i] ?? String(i)] = Date.now() - t0; })));
+  const slow = Object.fromEntries(Object.entries(times).filter(([, ms]) => ms > 3000));
+  if (Object.keys(slow).length) console.log('slow queries', JSON.stringify(slow));
+  const failed = settled.find((r): r is PromiseRejectedResult => r.status === 'rejected');
+  if (failed) { const e = failed.reason as { queryTimes?: Record<string, number> }; if (e && typeof e === 'object') e.queryTimes = times; throw failed.reason; }
+  return settled.map((r) => (r as PromiseFulfilledResult<unknown>).value) as unknown as { -readonly [P in keyof T]: Awaited<T[P]> };
+}
+
 export function intParam(q: Record<string, string>, key: string, def: number, min: number, max: number): number {
   const n = Number.parseInt(q[key] ?? '', 10);
   if (Number.isNaN(n)) return def;

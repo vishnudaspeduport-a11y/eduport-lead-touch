@@ -25,7 +25,7 @@ const LEAD_CONV_COLS = new Set(['lead_source', 'lead_stage', 'class_group', 'cla
 const VALID_ANY = (sql: Sql) => sql`hp.deleted = false AND hp.is_success = true AND hp.payment_success = true AND hp.payment_date IS NOT NULL`;
 
 /**
- * WHERE for analytics.v_lead_conv AS l: leads created inside the window, honouring the filter bar.
+ * WHERE for analytics.v_lead_lite (or v_lead_conv) AS l: leads created inside the window, honouring the filter bar.
  * Lead filters apply to the lead itself; touch filters keep leads with at least one matching touch (any date).
  */
 export function newLeadWhere(sql: Sql, f: Filters, p: Period | null, opts: { validPay?: boolean; scope?: string } = {}): Frag {
@@ -33,9 +33,11 @@ export function newLeadWhere(sql: Sql, f: Filters, p: Period | null, opts: { val
   // scope 'union' (Total leads on the lead-created basis): created in the window OR touched in the window
   const c: Frag[] = !p ? []
     : opts.scope === 'union'
-      // two index conditions OR-ed (creation-date index + primary key against the touched ids, computed once): no scan of every lead
-      ? [sql`((l.created_at >= (${p.from}::date)::timestamp AT TIME ZONE 'Asia/Kolkata' AND l.created_at < (${p.to}::date + 1)::timestamp AT TIME ZONE 'Asia/Kolkata')
-              OR l.lead_id = ANY (ARRAY(SELECT DISTINCT t.lead_id::text FROM analytics.mv_touch_flat t WHERE t.touch_date BETWEEN ${p.from} AND ${p.to})))`]
+      // one semi-join against the union of the two id sets. An OR of "created in range" with "= ANY(array of touched ids)" degraded to a
+      // row-by-row array scan once both sides were large (800k leads x 190k ids = 96 s); IN (subquery) at the top level becomes a hash semi-join.
+      ? [sql`l.lead_id IN (SELECT m.id FROM salesforce.lead_master__c m
+                            WHERE m.createddate >= (${p.from}::date)::timestamp AT TIME ZONE 'Asia/Kolkata' AND m.createddate < (${p.to}::date + 1)::timestamp AT TIME ZONE 'Asia/Kolkata'
+                            UNION SELECT t.lead_id FROM analytics.mv_touch_flat t WHERE t.touch_date BETWEEN ${p.from} AND ${p.to})`]
       : [sql`l.created_at >= (${p.from}::date)::timestamp AT TIME ZONE 'Asia/Kolkata' AND l.created_at < (${p.to}::date + 1)::timestamp AT TIME ZONE 'Asia/Kolkata'`];
   if (f.dups !== '1') c.push(sql`l.is_duplicate = false`);
   if (f.paid) c.push(f.paid === 'paid' ? sql`l.is_paid_lead = true` : sql`l.is_paid_lead IS NOT TRUE`);
@@ -154,7 +156,7 @@ function leadQuery(sql: Sql, f: Filters, p: Period, q: Record<string, string>, p
   const base = sql`
     SELECT l.lead_id, l.lead_name, l.first_name, l.last_name, l.mobile, l.email, l.phone_key, l.created_at, l.created_date, l.lead_stage, l.class_raw, l.class_group,
            l.lead_source, l.lead_type, l.priority, l.owner_name, l.district, l.city, l.lm_reason, l.best_ic_status, l.is_duplicate, l.sf_is_converted, l.sf_touch_count
-    FROM analytics.v_lead_conv l WHERE ${where}`;
+    FROM analytics.v_lead_lite l WHERE ${where}`;
   // touches (all dates) + the latest payer account on the phone
   const enrich = (src: Frag) => sql`
     SELECT s.*, ta.n_touches_all, ta.first_touch_any, ta.last_touch_any, ta.touch_points, ta.eps_id,
@@ -214,7 +216,7 @@ newLeads.get('/overview/new_leads/summary', (c) =>
       WITH sel AS (
         SELECT l.lead_id, l.phone_key, l.lead_stage, l.class_group, l.lead_source, l.owner_name, l.district, l.best_ic_status, l.lm_reason,
                EXISTS (SELECT 1 FROM analytics.mv_touch_flat t WHERE t.lead_id = l.lead_id) AS touched
-        FROM analytics.v_lead_conv l WHERE ${where}),
+        FROM analytics.v_lead_lite l WHERE ${where}),
       pay AS (
         SELECT DISTINCT ON (s.lead_id) s.lead_id, m.user_id, m.revenue
         FROM sel s JOIN analytics.mv_user_phone up ON up.phone_key = s.phone_key JOIN analytics.mv_payer m ON m.user_id = up.user_id

@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
 import type { Sql } from 'postgres';
 import type { AppEnv } from '../env';
-import { handle, pct } from '../http';
+import { handle, pct, timedAll } from '../http';
 import { LIST_KEYS, paymentPeriod, type Filters, type Frag, type Period } from '../filters';
 import { newLeadWhere } from './new_leads';
 
@@ -112,7 +112,8 @@ overview.get('/overview', (c) =>
     const pp = paymentPeriod(f);
     const feeWin = pp ?? periods.current;   // payments counted for the fee KPIs: the payment-date window when it is on, else the main date range
     const staleDays = Math.max(1, Math.min(365, Number.parseInt(q.stale_days ?? '5', 10) || 5));
-    const [[k], [stale], [avgWin], [avgAll], stages, icStatus, touchPoint, source, classRaw, reason, medium, campaign, staff, daily, reactRows, lmReason, [newLeads], stagesRevised, tatRows, [leadsUnion], [fees]] = await Promise.all([
+    const QN = ['kpis', 'stale', 'avg_window', 'avg_alltime', 'stages', 'ic_status', 'touch_point', 'source', 'class_raw', 'call_reason', 'medium', 'campaign', 'staff', 'daily', 'stage_react', 'lm_reason', 'new_leads', 'stages_revised', 'tat', 'leads_union', 'fees'];
+    const [[k], [stale], [avgWin], [avgAll], stages, icStatus, touchPoint, source, classRaw, reason, medium, campaign, staff, daily, reactRows, lmReason, [newLeads], stagesRevised, tatRows, [leadsUnion], [fees]] = await timedAll(QN, [
       sql<{ touches: number; leads: number; converted: number; converted_first: number; sf_converted: number; stage_conv_total: number; stage_conv_unpaid: number; paid_other_stage: number; touches_of_converted: number }[]>`
         SELECT count(*)::int AS touches,
                count(DISTINCT t.lead_id)::int AS leads,
@@ -150,9 +151,9 @@ overview.get('/overview', (c) =>
         FROM analytics.mv_touch_flat t WHERE ${wx('lead_stage')} GROUP BY 1 ORDER BY leads DESC`,
       sql<{ key: string; leads: number; ics: number }[]>`
         SELECT btrim(ic.status__c) AS key, count(DISTINCT ic.lead_master__c)::int AS leads, count(*)::int AS ics
-        FROM salesforce.interested_course__c ic
-        WHERE NOT ic.isdeleted AND NULLIF(btrim(ic.status__c),'') IS NOT NULL
-          AND ic.lead_master__c IN (SELECT DISTINCT t.lead_id FROM analytics.mv_touch_flat t WHERE ${wx('ic_status')})
+        FROM (SELECT DISTINCT t.lead_id FROM analytics.mv_touch_flat t WHERE ${wx('ic_status')}) k
+        JOIN salesforce.interested_course__c ic ON ic.lead_master__c = k.lead_id AND ic.isdeleted = false
+        WHERE NULLIF(btrim(ic.status__c),'') IS NOT NULL
         GROUP BY 1 ORDER BY leads DESC`,
       byDim(sql, wx('touch_point'), 'touch_point', conv, convFirst, 2000, f.touch_point ?? []), byDim(sql, wx('source'), 'source', conv, convFirst, 2000, f.source ?? []), byDim(sql, wx('class_raw'), 'class_raw', conv, convFirst, 2000, f.class_raw ?? []), sql<DimRow[]>`
         SELECT CASE WHEN c.lead_id IS NULL THEN '(no call)' WHEN c.last_reason IS NULL THEN '(no reason recorded)' ELSE c.last_reason END AS key, count(*)::int AS touches, count(DISTINCT t.lead_id)::int AS leads,
@@ -178,7 +179,7 @@ overview.get('/overview', (c) =>
       sql<{ new_leads: number; new_leads_touched: number }[]>`
         SELECT count(*)::int AS new_leads,
                count(*) FILTER (WHERE EXISTS (SELECT 1 FROM analytics.mv_touch_flat t WHERE t.lead_id = l.lead_id))::int AS new_leads_touched
-        FROM analytics.v_lead_conv l WHERE ${newLeadWhere(sql, f, periods.current)}`,
+        FROM analytics.v_lead_lite l WHERE ${newLeadWhere(sql, f, periods.current)}`,
       // Revised funnel: a lead in Connected, Not Willing Now, Disqualified, Not Connected or P2 Completed that was touched AFTER the stage change
       // counts under New (it is active again); every other lead keeps its stage. Stage moment = the Salesforce field-history row of the latest
       // change into the current stage (salesforce.lead_stage, joined once instead of calling analytics.stage_since per lead), else the creation
@@ -209,27 +210,20 @@ overview.get('/overview', (c) =>
         SELECT kind, '_all', count(*)::int, avg(days)::float8, percentile_cont(0.5) WITHIN GROUP (ORDER BY days)::float8 FROM d GROUP BY 1`,
       // Total leads on the lead-created basis: leads created in the window OR touched in the window
       f.basis === 'created'
-        ? sql<{ n: number }[]>`SELECT count(*)::int AS n FROM analytics.v_lead_conv l WHERE ${newLeadWhere(sql, f, periods.current, { scope: 'union' })}`
+        ? sql<{ n: number }[]>`SELECT count(*)::int AS n FROM analytics.v_lead_lite l WHERE ${newLeadWhere(sql, f, periods.current, { scope: 'union' })}`
         : Promise.resolve([{ n: 0 }]),
       // Proposed fee / fee received: valid payments (payment_method 0) dated inside the window, made by the app accounts of the leads in the
       // selection (own phone or alternative number). Proposed fee = fee - discount of the enrollments those payments belong to, each once.
       sql<{ fee_payers: number; fee_payments: number; fee_received: number; proposed_fee: number; fee_enrollments: number; fee_enrollments_unknown: number }[]>`
-        WITH hp0 AS (
-          -- start from the payments of the window (a few thousand rows), then keep those whose account belongs to a lead of the selection
+        WITH lk AS (SELECT DISTINCT t.lead_id FROM analytics.mv_touch_flat t WHERE ${w}),
+        -- leads of the selection -> their phone keys -> every app / Ujra account on those numbers (mv_user_phone, indexed) -> valid payments in the window
+        pk AS (SELECT DISTINCT analytics.phone_key(m.mobile_number__c) AS pk FROM lk JOIN salesforce.lead_master__c m ON m.id = lk.lead_id WHERE analytics.phone_key_valid(m.mobile_number__c)),
+        ok AS (SELECT DISTINCT up.user_id FROM pk JOIN analytics.mv_user_phone up ON up.phone_key = pk.pk),
+        pay AS (
           SELECT hp.id, hp.user_id, hp.amount, hp.enrollment_id, hp.enrollment_fee, hp.enrollment_discount
-          FROM analytics.v_payment_all hp
+          FROM ok JOIN analytics.v_payment_all hp ON hp.user_id = ok.user_id
           WHERE hp.payment_method = 0 AND hp.deleted = false AND hp.is_success = true AND hp.payment_success = true
             AND hp.payment_date BETWEEN ${feeWin.from} AND ${feeWin.to}),
-        uk AS (
-          SELECT u.id AS user_id, analytics.phone_key(u.phone) AS pk1,
-                 CASE WHEN analytics.phone_key_valid(u.alternative_number) THEN analytics.phone_key(u.alternative_number) END AS pk2
-          FROM app.home_customuser u WHERE u.is_deleted = false AND u.id IN (SELECT user_id FROM hp0)),
-        ok AS (
-          SELECT DISTINCT uk.user_id
-          FROM uk CROSS JOIN LATERAL (VALUES (uk.pk1), (uk.pk2)) AS v(pk)
-          JOIN salesforce.lead_master__c m ON analytics.phone_key(m.mobile_number__c) = v.pk
-          WHERE v.pk IS NOT NULL AND EXISTS (SELECT 1 FROM analytics.mv_touch_flat t WHERE t.lead_id = m.id AND ${w})),
-        pay AS (SELECT hp0.* FROM hp0 WHERE hp0.user_id IN (SELECT user_id FROM ok)),
         enr AS (
           SELECT DISTINCT ON (COALESCE(enrollment_id::text, 'p' || id::text)) enrollment_id, enrollment_fee, enrollment_discount
           FROM pay ORDER BY COALESCE(enrollment_id::text, 'p' || id::text))
