@@ -13,6 +13,10 @@ export interface Ctx { sql: Sql; f: Filters; periods: Periods; q: Record<string,
  *   { ttl, perUser }  keyed on time instead (for answers that depend on more than the data, e.g. /meta)
  *   false             never cached
  */
+// wrangler dev has no BUILD_ID: use a token minted once per isolate so a code reload never reads answers of the previous code
+let devBuild: string | null = null;
+const devBuildId = () => (devBuild ??= `dev-${crypto.randomUUID().slice(0, 8)}`);
+
 export type EdgePolicy = 'version' | false | { ttl: number; perUser?: boolean };
 
 /** Parse filters, open a DB client, run `fn`, JSON-envelope the result. Successful GET answers are cached (see cache.ts). */
@@ -26,7 +30,7 @@ export async function handle<T>(c: Context<AppEnv>, fn: (x: Ctx) => Promise<T>, 
   let key: string | null = null; let ttl = KV_TTL_VERSIONED;
   if (edge && c.req.method === 'GET') {
     const mask = user.role === 'viewer' ? 'viewer' : 'full';
-    const build = c.env.BUILD_ID ?? c.env.APP_VERSION ?? 'dev';   // a new deploy never serves answers computed by the previous code
+    const build = c.env.BUILD_ID ?? devBuildId();   // a new deploy never serves answers computed by the previous code; in `wrangler dev` every restart starts clean
     if (edge === 'version') key = await cacheKey({ version: await dataVersion(c.env, c.executionCtx), build, mask, path: c.req.path, query: q });
     else { ttl = edge.ttl; key = await cacheKey({ version: `ttl${edge.ttl}`, build, mask, path: c.req.path, query: q, user: edge.perUser ? String(user.id ?? user.email) : undefined }); }
     if (!wantsFresh(c.req.raw, q)) {
