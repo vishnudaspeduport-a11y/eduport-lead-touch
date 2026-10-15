@@ -44,6 +44,15 @@
         "web/mock/dev.mjs"
       ],
       "port": 5173
+    },
+    {
+      "name": "web-local-api-8788",
+      "runtimeExecutable": "cmd",
+      "runtimeArgs": [
+        "/c",
+        "set API_PROXY=http://127.0.0.1:8788&& npm run dev:local --prefix web"
+      ],
+      "port": 5173
     }
   ]
 }

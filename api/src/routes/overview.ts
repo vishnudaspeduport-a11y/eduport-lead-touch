@@ -26,6 +26,9 @@ export const FLAT_COLS: Partial<Record<(typeof LIST_KEYS)[number], string>> = {
 
 /** "Converted" for the current filters: workbook rule (any valid payment on/after the touch day), or - when the
  *  payment-date window is switched on - a valid payment dated inside that window and on/after the touch day. */
+/** IC statuses that count as "parked": a later touch on the lead revives the interested course (Revised IC funnel) */
+export const IC_PARKED = ['Not Interested', 'May Buy Later'];
+
 export function convCond(sql: Sql, f: Filters): Frag {
   const pp = paymentPeriod(f);
   if (!pp) return sql`t.tab_converted`;
@@ -112,8 +115,8 @@ overview.get('/overview', (c) =>
     const pp = paymentPeriod(f);
     const feeWin = pp ?? periods.current;   // payments counted for the fee KPIs: the payment-date window when it is on, else the main date range
     const staleDays = Math.max(1, Math.min(365, Number.parseInt(q.stale_days ?? '5', 10) || 5));
-    const QN = ['kpis', 'stale', 'avg_window', 'avg_alltime', 'stages', 'ic_status', 'touch_point', 'source', 'class_raw', 'call_reason', 'medium', 'campaign', 'staff', 'daily', 'stage_react', 'lm_reason', 'new_leads', 'stages_revised', 'tat', 'leads_union', 'fees'];
-    const [[k], [stale], [avgWin], [avgAll], stages, icStatus, touchPoint, source, classRaw, reason, medium, campaign, staff, daily, reactRows, lmReason, [newLeads], stagesRevised, tatRows, [leadsUnion], [fees]] = await timedAll(QN, [
+    const QN = ['kpis', 'stale', 'avg_window', 'avg_alltime', 'stages', 'ic_status', 'touch_point', 'source', 'class_raw', 'call_reason', 'medium', 'campaign', 'staff', 'daily', 'stage_react', 'lm_reason', 'new_leads', 'stages_revised', 'tat', 'leads_union', 'fees', 'ic_status_revised'];
+    const [[k], [stale], [avgWin], [avgAll], stages, icStatus, touchPoint, source, classRaw, reason, medium, campaign, staff, daily, reactRows, lmReason, [newLeads], stagesRevised, tatRows, [leadsUnion], [fees], icStatusRevised] = await timedAll(QN, [
       sql<{ touches: number; leads: number; converted: number; converted_first: number; sf_converted: number; stage_conv_total: number; stage_conv_unpaid: number; paid_other_stage: number; touches_of_converted: number }[]>`
         SELECT count(*)::int AS touches,
                count(DISTINCT t.lead_id)::int AS leads,
@@ -232,6 +235,22 @@ overview.get('/overview', (c) =>
                (SELECT COALESCE(sum(enrollment_fee - COALESCE(enrollment_discount, 0)), 0) FROM enr)::float8 AS proposed_fee,
                (SELECT count(*) FROM enr WHERE enrollment_fee IS NOT NULL)::int AS fee_enrollments,
                (SELECT count(*) FROM enr WHERE enrollment_fee IS NULL)::int AS fee_enrollments_unknown`,
+      // Revised IC funnel: an interested course in Not Interested / May Buy Later whose lead was touched AFTER the status change counts as New
+      // (the lead is active again); every other IC keeps its status. Status moment = latest field-history change into the current status
+      // (salesforce.ic_status), else the IC's creation date / 1 March 2026.
+      sql<{ key: string; leads: number; ics: number; revived: number }[]>`
+        WITH lk AS (SELECT DISTINCT t.lead_id FROM analytics.mv_touch_flat t WHERE ${wx('ic_status')}),
+        lt AS (SELECT lk.lead_id, (SELECT max(t2.touch_at) FROM analytics.mv_touch_flat t2 WHERE t2.lead_id = lk.lead_id) AS last_touch FROM lk),
+        x AS (
+          SELECT ic.lead_master__c AS lead_id, btrim(ic.status__c) AS status,
+                 CASE WHEN btrim(ic.status__c) IN ${sql(IC_PARKED)}
+                       AND lt.last_touch > COALESCE(h.changed_at, GREATEST(ic.createddate, '2026-03-01 00:00:00+00'::timestamptz))
+                      THEN 'New' ELSE btrim(ic.status__c) END AS key
+          FROM lt JOIN salesforce.interested_course__c ic ON ic.lead_master__c = lt.lead_id AND ic.isdeleted = false
+          LEFT JOIN salesforce.ic_status h ON h.ic_id = ic.id AND h.status = btrim(ic.status__c)
+          WHERE NULLIF(btrim(ic.status__c), '') IS NOT NULL)
+        SELECT key, count(DISTINCT lead_id)::int AS leads, count(*)::int AS ics, count(DISTINCT lead_id) FILTER (WHERE key IS DISTINCT FROM status)::int AS revived
+        FROM x GROUP BY key ORDER BY leads DESC`,
     ]);
     const tatShape = (kind: 'created' | 'touch') => {
       const all = tatRows.find((r) => r.kind === kind && r.key === '_all');
@@ -263,7 +282,7 @@ overview.get('/overview', (c) =>
         new_leads: newLeads?.new_leads ?? 0, new_leads_touched: newLeads?.new_leads_touched ?? 0,
         ...(fees ?? { fee_payers: 0, fee_payments: 0, fee_received: 0, proposed_fee: 0, fee_enrollments: 0, fee_enrollments_unknown: 0 }), fee_window: feeWin,
       },
-      stages, stages_revised: stagesRevised, ic_status: icStatus, tat: { created: tatShape('created'), touch: tatShape('touch') },
+      stages, stages_revised: stagesRevised, ic_status: icStatus, ic_status_revised: icStatusRevised, tat: { created: tatShape('created'), touch: tatShape('touch') },
       touch_point: touchPoint, source, class_raw: classRaw, reason, lm_reason: lmReason, medium, campaign, staff, daily,
       definitions: {
         leads: f.basis === 'created'
@@ -276,6 +295,7 @@ overview.get('/overview', (c) =>
         proposed_fee: 'Proposed fee = fee minus discount of the enrollments that received a payment inside the date range (the payment-date window when it is switched on), each enrollment counted once. Only payments of the app accounts linked to the leads in the selection (own phone or alternative number), valid and payment_method 0. It is the agreed price, so it is larger than the fee received while instalments are still open.',
         fee_received: 'Fee received = sum of the payment amounts dated inside the same date range, for the same leads and accounts (valid payments, payment_method 0).',
         tat: 'Turnaround time of the converted leads in the selection (Total converted rule), in calendar days. "Lead created → paid": from the day the lead was created to the day of its FIRST valid payment; "before lead created" = the phone already had a payment before the lead existed. "Last touch → paid": from the latest lead touch on or before that payment day to the payment day; "no prior touch" = the first payment came before any touch (the lead counts as converted because a later payment followed a touch). Median = half the leads were faster. Click a band to list those leads.',
+        ic_status_revised: 'Same leads and interested courses as the IC-status funnel, but an interested course in Not Interested or May Buy Later whose lead was touched again AFTER the status change counts as New (the lead is active again). Follow Up is an active status, so a later touch is expected there and it is not moved. The status moment is the latest Salesforce field-history change into the current status (history from 1 March 2026); without one, the later of the IC creation date and 1 March 2026. "moved to New" = leads moved by this rule.',
         stages_revised: 'Same leads as the Lead funnel, but a lead in Connected, Not Willing Now, Disqualified, Not Connected or P2 Completed that received a lead touch AFTER it entered that stage is counted under New (it is active again). Leads with no touch after the stage change stay in their stage. The stage moment comes from the Salesforce field-history log; leads with no logged change since 1 March 2026 use their creation date, or 1 March 2026 if older.',
         new_leads: 'Salesforce leads created (IST) inside the date range, whether or not they have a touch yet - the only figure on this page that includes leads without a touch. Deleted leads are excluded; duplicates are excluded unless toggled on. Lead filters (class, lead source, stage, LM reason, owner …) apply to the lead itself; touch filters (touch point, source, campaign, medium, staff) keep only leads with at least one such touch on any date. "With a touch" = at least one lead touch on record, any date.',
         leads_basis: f.basis === 'created' ? 'Main window = LEAD CREATED date: leads created in the range (touched or not), with all their touches.' : 'Main window = TOUCH date: touches dated in the range.',

@@ -27,6 +27,7 @@ interface OverviewResponse {
   stages_revised: { key: string; leads: number; converted: number; revived: number }[];
   tat: Record<'created' | 'touch', { leads: number; avg_days: number | null; median_days: number | null; buckets: { key: string; leads: number }[] }>;
   ic_status: { key: string; leads: number; ics: number }[];
+  ic_status_revised: { key: string; leads: number; ics: number; revived: number }[];
   touch_point: DimRow[]; source: DimRow[]; class_raw: DimRow[]; reason: DimRow[]; lm_reason: DimRow[]; medium: DimRow[]; campaign: DimRow[]; staff: DimRow[];
   daily: { d: string; touches: number; leads: number; converted: number }[];
   definitions: Record<string, string>;
@@ -90,6 +91,7 @@ export default function Overview() {
     { stage: 'Not Connected', metric: 'stale_not_connected', total: k.nc_total, stale: k.stale_nc, share: k.nc_total ? (k.stale_nc / k.nc_total) * 100 : null, untouched: k.stale_nc_untouched },
   ] : [];
   const revived = d?.stages_revised?.find((s) => s.key === 'New')?.revived ?? 0;
+  const revivedIc = d?.ic_status_revised?.find((s) => s.key === 'New')?.revived ?? 0;
   const open = (metric: DrillMetric, title: string, dim?: string, value?: string, subtitle?: string) => setDrill({ metric, title, dim, value, subtitle, summary: !dim });
   const openFee = (title: string) => setDrill({ metric: 'fee_paid', title, columns: FEE_COLS, summary: true,
     subtitle: `leads of the selection whose app account paid ${k?.fee_window.from ?? f.from} → ${k?.fee_window.to ?? f.to} · fee received and proposed fee per lead` });
@@ -138,7 +140,7 @@ export default function Overview() {
         </>}
       </div>
 
-      <div className="grid gap-4 xl:grid-cols-3">
+      <div className="grid gap-4 xl:grid-cols-2 2xl:grid-cols-4">
         <ChartCard title="Lead funnel · LM stage" tone="tone-brand" subtitle="Total leads by current Lead Stage · click a slice to filter" loading={q.isLoading} error={q.error} rows={d?.stages ?? []} height={240}
           help="Current Lead Stage of the distinct leads that have a touch in the window.">
           <Donut data={(d?.stages ?? []).map((s) => ({ key: s.key, value: s.leads, secondary: s.converted, selected: (f.lists.lead_stage ?? []).includes(s.key) }))} valueLabel="Total leads" secondaryLabel="Converted" centerLabel="leads" onClick={(key) => toggleValue('lead_stage', key)} />
@@ -151,6 +153,11 @@ export default function Overview() {
         <ChartCard title="Lead funnel · IC status" tone="tone-pink" subtitle="Total leads by Interested Course status · click a bar to filter (IC status)" loading={q.isLoading} error={q.error} rows={d?.ic_status ?? []} height={240}
           help="Interested Course status for the leads touched in the window, blank status excluded. A lead with several interested courses appears under each status.">
           <HBars colorful data={(d?.ic_status ?? []).map((s) => ({ key: s.key, value: s.leads, secondary: s.ics }))} valueLabel="Total leads" secondaryLabel="Interested courses" secondaryFormat={fmtInt} onClick={(key) => toggleValue('ic_status', key)} />
+        </ChartCard>
+        <ChartCard title="Revised Lead funnel · IC status" tone="tone-violet" subtitle={`interested courses in Not Interested or May Buy Later whose lead was touched again after the status change count as New${revivedIc ? ` · ${fmtInt(revivedIc)} moved to New` : ''} · click a bar for the leads`} loading={q.isLoading} error={q.error} rows={d?.ic_status_revised ?? []} height={240}
+          help={def.ic_status_revised}>
+          <HBars colorful data={(d?.ic_status_revised ?? []).map((s) => ({ key: s.key, value: s.leads, secondary: s.ics }))} valueLabel="Total leads" secondaryLabel="Interested courses" secondaryFormat={fmtInt}
+            onClick={(key) => open('leads', `Revised IC funnel · ${key}`, 'revised_ic_status', key, key === 'New' ? 'leads with an interested course in New, plus leads whose Not Interested / May Buy Later course was touched again after the status change' : ['Not Interested', 'May Buy Later'].includes(key) ? `leads with an interested course in ${key} and no touch after the status change` : `leads with an interested course in ${key}`)} />
         </ChartCard>
       </div>
 

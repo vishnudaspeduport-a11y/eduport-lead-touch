@@ -213,6 +213,52 @@ async function syncStageHistory(s: SfSession): Promise<void> {
 // Calls are logged either on the lead (What = Lead_Master__c) or, far more often, on one of its Interested Courses
 // (What = Interested_Course__c); TYPEOF resolves both to the lead id.
 // Watermark = Task CreatedDate (new calls only; later edits of an old call's reason are not picked up). A full load truncates first.
+// ---------------------------------------------------------------- Salesforce IC status history -> one row per interested course
+// Interested_Course__History (Field = Status__c) reduced to each IC's LATEST change: salesforce.ic_status (sql/034). Same shape as the
+// lead-stage history. The first (full) load is heavy, so it only runs when IC_HISTORY_INIT=1 (the one-off night job); afterwards every
+// sync pulls the increment by history CreatedDate.
+const IC_HISTORY_KEY = 'Interested_Course__History';
+async function syncIcStatusHistory(s: SfSession): Promise<void> {
+  const since = await getState(IC_HISTORY_KEY);
+  if (!since && process.env.IC_HISTORY_INIT !== '1') { console.log(`[${IC_HISTORY_KEY}] no watermark yet and IC_HISTORY_INIT is not set - skipping (the initial load runs at night)`); return; }
+  const floor = process.env.STAGE_HISTORY_SINCE || '2026-03-01T00:00:00Z';
+  const where = [`Field = 'Status__c'`, since ? `CreatedDate > ${since.toISOString()}` : `CreatedDate >= ${floor}`];
+  const q = `SELECT Id, ParentId, OldValue, NewValue, CreatedDate FROM Interested_Course__History WHERE ${where.join(' AND ')} ORDER BY CreatedDate ASC`;
+  console.log(`[${IC_HISTORY_KEY}] ${since ? `incremental since ${since.toISOString()}` : `FULL load (since ${floor})`}`);
+  let n = 0; let maxStamp: string | null = since?.toISOString() ?? null; const t0 = Date.now();
+  const flush = async (buf: Map<string, Record<string, unknown>>) => {
+    if (!buf.size) return;
+    const rows = [...buf.values()];
+    await sql`
+      INSERT INTO salesforce.ic_status ${sql(rows, 'ic_id', 'status', 'prev_status', 'changed_at', '_synced_at')}
+      ON CONFLICT (ic_id) DO UPDATE SET status = EXCLUDED.status, prev_status = EXCLUDED.prev_status, changed_at = EXCLUDED.changed_at,
+        _synced_at = EXCLUDED._synced_at
+      WHERE EXCLUDED.changed_at >= salesforce.ic_status.changed_at`;
+  };
+  try {
+    let buf = new Map<string, Record<string, unknown>>();
+    for await (const page of soql(s, q, false)) {
+      for (const rec of page) {
+        const ic = String(rec.ParentId); const at = String(rec.CreatedDate);
+        const prev = buf.get(ic);
+        if (!prev || String(prev.changed_at) <= at) buf.set(ic, { ic_id: ic, status: rec.NewValue == null ? '' : String(rec.NewValue), prev_status: rec.OldValue == null ? null : String(rec.OldValue), changed_at: at, _synced_at: new Date() });
+        if (!maxStamp || at > maxStamp) maxStamp = at;
+        n++;
+        if (buf.size >= BATCH) { await flush(buf); buf = new Map(); }
+      }
+      if (n % 20000 < 2000) console.log(`[${IC_HISTORY_KEY}] ${n} history rows...`);
+    }
+    await flush(buf);
+    // lead of each IC (for the lead-level index); cheap, runs after every load
+    await sql`UPDATE salesforce.ic_status h SET lead_id = ic.lead_master__c FROM salesforce.interested_course__c ic WHERE ic.id = h.ic_id AND h.lead_id IS DISTINCT FROM ic.lead_master__c`;
+    await setState(IC_HISTORY_KEY, maxStamp, n, null);
+    console.log(`[${IC_HISTORY_KEY}] done: ${n} history rows in ${((Date.now() - t0) / 1000).toFixed(1)}s (watermark ${maxStamp})`);
+  } catch (e) {
+    await setState(IC_HISTORY_KEY, null, n, e instanceof Error ? e.message : String(e));
+    throw e;
+  }
+}
+
 const CALLS_KEY = 'Lead_Calls';
 interface CallAgg { lead_id: string; calls: number; first_call_at: string; last_call_at: string; last_reason: string | null; last_call_status: string | null; last_owner_id: string | null; last_subject: string | null; last_comment: string | null; _synced_at: Date }
 async function syncCallSummary(s: SfSession): Promise<void> {
@@ -549,6 +595,10 @@ async function main(): Promise<void> {
     if (wanted(STAGE_HISTORY_KEY)) {
       const s = await login();
       await syncStageHistory(s);
+    }
+    if (wanted(IC_HISTORY_KEY)) {
+      const s = await login();
+      await syncIcStatusHistory(s);
     }
     if (wanted(CALLS_KEY)) {
       const s = await login();

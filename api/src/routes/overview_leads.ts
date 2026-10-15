@@ -3,7 +3,7 @@ import type { Sql } from 'postgres';
 import type { AppEnv, Role } from '../env';
 import { handle, intParam, maskEmail, maskName, maskPhone, csvStream } from '../http';
 import { parseFilters, resolvePeriods, type Filters, type Frag, type Period } from '../filters';
-import { flatWhere, FLAT_COLS, convCond, convFirstCond, tatBucket } from './overview';
+import { flatWhere, FLAT_COLS, convCond, convFirstCond, tatBucket, IC_PARKED } from './overview';
 import { paymentPeriod } from '../filters';
 
 /**
@@ -64,6 +64,15 @@ function dimCond(sql: Sql, q: Record<string, string>): Frag {
   }
   if (dim === 'ic_status') {
     return sql`t.lead_id IN (SELECT ic.lead_master__c FROM salesforce.interested_course__c ic WHERE NOT ic.isdeleted AND btrim(ic.status__c) = ${value})`;
+  }
+  if (dim === 'revised_ic_status') {
+    // Revised IC funnel slice: a parked IC (Not Interested / May Buy Later) whose lead was touched after the status change counts as New
+    const lastTouch = sql`(SELECT max(t3.touch_at) FROM analytics.mv_touch_flat t3 WHERE t3.lead_id = t.lead_id)`;
+    const since = sql`COALESCE((SELECT h.changed_at FROM salesforce.ic_status h WHERE h.ic_id = ic.id AND h.status = btrim(ic.status__c)), GREATEST(ic.createddate, '2026-03-01 00:00:00+00'::timestamptz))`;
+    const icIn = (cond: Frag) => sql`EXISTS (SELECT 1 FROM salesforce.interested_course__c ic WHERE ic.lead_master__c = t.lead_id AND ic.isdeleted = false AND ${cond})`;
+    if (value === 'New') return sql`(${icIn(sql`btrim(ic.status__c) = 'New'`)} OR ${icIn(sql`btrim(ic.status__c) IN ${sql(IC_PARKED)} AND ${lastTouch} > ${since}`)})`;
+    if (IC_PARKED.includes(value)) return icIn(sql`btrim(ic.status__c) = ${value} AND NOT (${lastTouch} > ${since})`);
+    return icIn(sql`btrim(ic.status__c) = ${value}`);
   }
   if (dim === 'course' || dim === 'grade') {
     // purchased course / grade: any valid payment of the lead's app user on that batch
