@@ -2,7 +2,7 @@ import { Hono } from 'hono';
 import type { Sql } from 'postgres';
 import type { AppEnv, Role } from '../env';
 import { handle, intParam, maskEmail, maskName, maskPhone, csvStream } from '../http';
-import { parseFilters, resolvePeriods, paymentPeriod, inList, andAll, isLeadDim, LEAD_DIMS, LIST_KEYS, type Filters, type Frag, type Period } from '../filters';
+import { parseFilters, resolvePeriods, paymentPeriod, inList, andAll, isLeadDim, LEAD_DIMS, LIST_KEYS, icCourseIn, type Filters, type Frag, type Period } from '../filters';
 import { FLAT_COLS } from './overview';
 
 /**
@@ -71,6 +71,11 @@ export function newLeadWhere(sql: Sql, f: Filters, p: Period | null, opts: { val
       if (real.length) c.push(sql`l.lead_id IN (SELECT ic.lead_master__c FROM salesforce.interested_course__c ic WHERE NOT ic.isdeleted AND btrim(ic.status__c) IN ${sql(real)})`);
       continue;
     }
+    if (k === 'ic_course') {
+      const real = vals.filter((v) => v !== '(null)');
+      if (real.length) c.push(icCourseIn(sql, 'l', real));
+      continue;
+    }
     if (isLeadDim(k)) {
       const col = LEAD_DIMS[k].col;
       if (LEAD_CONV_COLS.has(col)) c.push(inList(sql, 'l', col, vals));
@@ -98,6 +103,7 @@ function dimCond(sql: Sql, q: Record<string, string>): Frag {
     if (value === '(no reason recorded)' || blank) return sql`EXISTS (SELECT 1 FROM salesforce.lead_calls c WHERE c.lead_id = l.lead_id AND c.last_reason IS NULL)`;
     return sql`l.lead_id IN (SELECT c.lead_id FROM salesforce.lead_calls c WHERE c.last_reason = ${value})`;
   }
+  if (dim === 'ic_course') return icCourseIn(sql, 'l', [value]);
   if (dim === 'ic_status') {
     return blank
       ? sql`l.best_ic_status IS NULL`

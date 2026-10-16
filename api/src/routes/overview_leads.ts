@@ -2,7 +2,7 @@ import { Hono } from 'hono';
 import type { Sql } from 'postgres';
 import type { AppEnv, Role } from '../env';
 import { handle, intParam, maskEmail, maskName, maskPhone, csvStream } from '../http';
-import { parseFilters, resolvePeriods, type Filters, type Frag, type Period } from '../filters';
+import { parseFilters, resolvePeriods, icCourseIn, type Filters, type Frag, type Period } from '../filters';
 import { flatWhere, FLAT_COLS, convCond, convFirstCond, tatBucket, IC_PARKED } from './overview';
 import { paymentPeriod } from '../filters';
 
@@ -65,6 +65,7 @@ function dimCond(sql: Sql, q: Record<string, string>): Frag {
   if (dim === 'ic_status') {
     return sql`t.lead_id IN (SELECT ic.lead_master__c FROM salesforce.interested_course__c ic WHERE NOT ic.isdeleted AND btrim(ic.status__c) = ${value})`;
   }
+  if (dim === 'ic_course') return icCourseIn(sql, 't', [value]);
   if (dim === 'revised_ic_status') {
     // Revised IC funnel slice: a parked IC (Not Interested / May Buy Later) whose lead was touched after the status change counts as New
     const lastTouch = sql`(SELECT max(t3.touch_at) FROM analytics.mv_touch_flat t3 WHERE t3.lead_id = t.lead_id)`;

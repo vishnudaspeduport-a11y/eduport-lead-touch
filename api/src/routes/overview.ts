@@ -2,7 +2,7 @@ import { Hono } from 'hono';
 import type { Sql } from 'postgres';
 import type { AppEnv } from '../env';
 import { handle, pct, timedAll } from '../http';
-import { LIST_KEYS, paymentPeriod, type Filters, type Frag, type Period } from '../filters';
+import { LIST_KEYS, paymentPeriod, icCourseExpr, icCourseIn, type Filters, type Frag, type Period } from '../filters';
 import { newLeadWhere } from './new_leads';
 
 /**
@@ -55,7 +55,7 @@ export function flatWhere(sql: Sql, f: Filters, p: Period | null, skip?: string)
   for (const k of LIST_KEYS) {
     const col = FLAT_COLS[k]; const vals = f[k];
     if (!vals?.length || k === skip) continue;
-    if (!col && k !== 'call_reason') continue;
+    if (!col && k !== 'call_reason' && k !== 'ic_course') continue;
     if (k === 'call_reason') {
       // reason recorded on the lead's LAST call (salesforce.lead_calls); '(no call)' = no call logged since May 2026,
       // '(no reason recorded)' = the last call exists but its Reason field is empty
@@ -66,6 +66,12 @@ export function flatWhere(sql: Sql, f: Filters, p: Period | null, skip?: string)
       if (noCall) parts.push(sql`NOT EXISTS (SELECT 1 FROM salesforce.lead_calls c WHERE c.lead_id = t.lead_id)`);
       if (noReason) parts.push(sql`EXISTS (SELECT 1 FROM salesforce.lead_calls c WHERE c.lead_id = t.lead_id AND c.last_reason IS NULL)`);
       c.push(parts.length === 1 ? parts[0]! : sql`(${parts.reduce((acc, p) => sql`${acc} OR ${p}`)})`);
+      continue;
+    }
+    if (k === 'ic_course') {
+      // any interested course of the lead with one of these course names
+      const real = vals.filter((v) => v !== '(null)');
+      if (real.length) c.push(icCourseIn(sql, 't', real));
       continue;
     }
     if (k === 'ic_status') {
@@ -115,8 +121,8 @@ overview.get('/overview', (c) =>
     const pp = paymentPeriod(f);
     const feeWin = pp ?? periods.current;   // payments counted for the fee KPIs: the payment-date window when it is on, else the main date range
     const staleDays = Math.max(1, Math.min(365, Number.parseInt(q.stale_days ?? '5', 10) || 5));
-    const QN = ['kpis', 'stale', 'avg_window', 'avg_alltime', 'stages', 'ic_status', 'touch_point', 'source', 'class_raw', 'call_reason', 'medium', 'campaign', 'staff', 'daily', 'stage_react', 'lm_reason', 'new_leads', 'stages_revised', 'tat', 'leads_union', 'fees', 'ic_status_revised'];
-    const [[k], [stale], [avgWin], [avgAll], stages, icStatus, touchPoint, source, classRaw, reason, medium, campaign, staff, daily, reactRows, lmReason, [newLeads], stagesRevised, tatRows, [leadsUnion], [fees], icStatusRevised] = await timedAll(QN, [
+    const QN = ['kpis', 'stale', 'avg_window', 'avg_alltime', 'stages', 'ic_status', 'touch_point', 'source', 'class_raw', 'call_reason', 'medium', 'campaign', 'staff', 'daily', 'stage_react', 'lm_reason', 'new_leads', 'stages_revised', 'tat', 'leads_union', 'fees', 'ic_status_revised', 'ic_course'];
+    const [[k], [stale], [avgWin], [avgAll], stages, icStatus, touchPoint, source, classRaw, reason, medium, campaign, staff, daily, reactRows, lmReason, [newLeads], stagesRevised, tatRows, [leadsUnion], [fees], icStatusRevised, icCourse] = await timedAll(QN, [
       sql<{ touches: number; leads: number; converted: number; converted_first: number; sf_converted: number; stage_conv_total: number; stage_conv_unpaid: number; paid_other_stage: number; touches_of_converted: number }[]>`
         SELECT count(*)::int AS touches,
                count(DISTINCT t.lead_id)::int AS leads,
@@ -251,6 +257,17 @@ overview.get('/overview', (c) =>
           WHERE NULLIF(btrim(ic.status__c), '') IS NOT NULL)
         SELECT key, count(DISTINCT lead_id)::int AS leads, count(*)::int AS ics, count(DISTINCT lead_id) FILTER (WHERE key IS DISTINCT FROM status)::int AS revived
         FROM x GROUP BY key ORDER BY leads DESC`,
+      // Interested course: the leads of the selection by the course name on their Interested Course records (a lead with several appears under each)
+      sql<DimRow[]>`
+        WITH lk AS (
+          SELECT t.lead_id, count(*)::int AS touches, bool_or(${conv}) AS conv, bool_or(${convFirst}) AS conv_first
+          FROM analytics.mv_touch_flat t WHERE ${wx('ic_course')} GROUP BY t.lead_id)
+        SELECT ${icCourseExpr(sql)} AS key, sum(lk.touches)::int AS touches, count(DISTINCT lk.lead_id)::int AS leads,
+               count(DISTINCT lk.lead_id) FILTER (WHERE lk.conv)::int AS converted, count(DISTINCT lk.lead_id) FILTER (WHERE lk.conv_first)::int AS converted_first
+        FROM lk JOIN salesforce.interested_course__c ic ON ic.lead_master__c = lk.lead_id AND ic.isdeleted = false
+        LEFT JOIN salesforce.course__c cr ON cr.id = ic.course__c
+        WHERE ${icCourseExpr(sql)} IS NOT NULL
+        GROUP BY 1 ORDER BY leads DESC LIMIT 2000`,
     ]);
     const tatShape = (kind: 'created' | 'touch') => {
       const all = tatRows.find((r) => r.kind === kind && r.key === '_all');
@@ -282,7 +299,7 @@ overview.get('/overview', (c) =>
         new_leads: newLeads?.new_leads ?? 0, new_leads_touched: newLeads?.new_leads_touched ?? 0,
         ...(fees ?? { fee_payers: 0, fee_payments: 0, fee_received: 0, proposed_fee: 0, fee_enrollments: 0, fee_enrollments_unknown: 0 }), fee_window: feeWin,
       },
-      stages, stages_revised: stagesRevised, ic_status: icStatus, ic_status_revised: icStatusRevised, tat: { created: tatShape('created'), touch: tatShape('touch') },
+      stages, stages_revised: stagesRevised, ic_status: icStatus, ic_status_revised: icStatusRevised, ic_course: icCourse.map((r) => ({ ...r, conv_rate: pct(r.converted, r.leads) })), tat: { created: tatShape('created'), touch: tatShape('touch') },
       touch_point: touchPoint, source, class_raw: classRaw, reason, lm_reason: lmReason, medium, campaign, staff, daily,
       definitions: {
         leads: f.basis === 'created'
@@ -295,6 +312,7 @@ overview.get('/overview', (c) =>
         proposed_fee: 'Proposed fee = fee minus discount of the enrollments that received a payment inside the date range (the payment-date window when it is switched on), each enrollment counted once. Only payments of the app accounts linked to the leads in the selection (own phone or alternative number), valid and payment_method 0. It is the agreed price, so it is larger than the fee received while instalments are still open.',
         fee_received: 'Fee received = sum of the payment amounts dated inside the same date range, for the same leads and accounts (valid payments, payment_method 0).',
         tat: 'Turnaround time of the converted leads in the selection (Total converted rule), in calendar days. "Lead created → paid": from the day the lead was created to the day of its FIRST valid payment; "before lead created" = the phone already had a payment before the lead existed. "Last touch → paid": from the latest lead touch on or before that payment day to the payment day; "no prior touch" = the first payment came before any touch (the lead counts as converted because a later payment followed a touch). Median = half the leads were faster. Click a band to list those leads.',
+        ic_course: 'The leads of the selection grouped by the course name on their Salesforce Interested Course records (interest, not purchase). A lead with several interested courses appears under each. Total leads = distinct leads with that course; touches = those leads\' touches in the window; converted = the dashboard conversion rule. Click a row to filter every page by that course; the filter bar has the same list under "Interested course". What was actually bought is on the Converted page (Purchased course).',
         ic_status_revised: 'Same leads and interested courses as the IC-status funnel, but an interested course in Not Interested or May Buy Later whose lead was touched again AFTER the status change counts as New (the lead is active again). Follow Up is an active status, so a later touch is expected there and it is not moved. The status moment is the latest Salesforce field-history change into the current status (history from 1 March 2026); without one, the later of the IC creation date and 1 March 2026. "moved to New" = leads moved by this rule.',
         stages_revised: 'Same leads as the Lead funnel, but a lead in Connected, Not Willing Now, Disqualified, Not Connected or P2 Completed that received a lead touch AFTER it entered that stage is counted under New (it is active again). Leads with no touch after the stage change stay in their stage. The stage moment comes from the Salesforce field-history log; leads with no logged change since 1 March 2026 use their creation date, or 1 March 2026 if older.',
         new_leads: 'Salesforce leads created (IST) inside the date range, whether or not they have a touch yet - the only figure on this page that includes leads without a touch. Deleted leads are excluded; duplicates are excluded unless toggled on. Lead filters (class, lead source, stage, LM reason, owner …) apply to the lead itself; touch filters (touch point, source, campaign, medium, staff) keep only leads with at least one such touch on any date. "With a touch" = at least one lead touch on record, any date.',

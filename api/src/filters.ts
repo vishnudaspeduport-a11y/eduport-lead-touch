@@ -30,6 +30,7 @@ const LEAD_DIMS_RAW = {
   lead_type:          { col: 'lead_type',            label: 'Lead Type' },
   owner:              { col: 'owner_name',           label: 'Owner' },
   ic_status:          { col: 'best_ic_status',       label: 'IC Status' },
+  ic_course:          { col: 'ic_course',            label: 'Interested course' },
   ad_platform:        { col: 'ad_platform',          label: 'Ad Platform' },
   first_touch_point:  { col: 'first_touch_point',    label: 'First Touch Point' },
   last_touch_point:   { col: 'last_touch_point',     label: 'Last Touch Point' },
@@ -72,9 +73,18 @@ export const LEAD_DIMS_ON_TOUCH = new Set<LeadDim>([
 /** Multi-select (list) filter keys - every non-boolean dimension. */
 export const LIST_KEYS = [
   'lead_source', 'lead_stage', 'class_group', 'class_raw', 'district', 'city', 'priority', 'lead_type', 'owner',
-  'ic_status', 'ad_platform', 'first_touch_point', 'last_touch_point', 'touch_bucket', 'lm_reason', 'call_reason',
+  'ic_status', 'ic_course', 'ad_platform', 'first_touch_point', 'last_touch_point', 'touch_bucket', 'lm_reason', 'call_reason',
   'source', 'medium', 'touch_point', 'campaign', 'ad_set', 'ad_name', 'staff', 'platform_id', 'gap_bucket',
 ] as const satisfies readonly Dim[];
+
+// ---------------------------------------------------------------- interested course (Salesforce Interested_Course__c, several per lead)
+/** course name of an Interested Course row aliased `ic`, with the Course__c lookup aliased `cr` (same rule as the lead detail) */
+export const icCourseExpr = (sql: Sql): Frag => sql`COALESCE(NULLIF(ic.course_name__c, ''), cr.name, ic.course__c)`;
+/** `<alias>.lead_id` has an interested course named one of `vals` */
+export function icCourseIn(sql: Sql, alias: 'l' | 't', vals: string[]): Frag {
+  return sql`${sql(alias)}.lead_id IN (SELECT ic.lead_master__c FROM salesforce.interested_course__c ic LEFT JOIN salesforce.course__c cr ON cr.id = ic.course__c
+                                     WHERE ic.isdeleted = false AND ${icCourseExpr(sql)} IN ${sql(vals)})`;
+}
 export type ListKey = (typeof LIST_KEYS)[number];
 const BOOL_LEAD_KEYS = ['repeat', 'pre_existing'] as const;
 

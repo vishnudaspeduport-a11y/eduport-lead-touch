@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
 import type { AppEnv } from '../env';
 import { handle, intParam } from '../http';
-import { dimExpr, isLeadDim, isTouchDim, leadWhere, touchWhere, type Dim } from '../filters';
+import { dimExpr, isLeadDim, isTouchDim, leadWhere, touchWhere, type Dim, icCourseExpr } from '../filters';
 import { flatWhere, FLAT_COLS } from './overview';
 
 export const filters = new Hono<AppEnv>();
@@ -22,6 +22,26 @@ filters.get('/filters', (c) =>
     const p = periods.current;
     const d = dim as Dim;
 
+    if (d === 'ic_course') {
+      const expr = icCourseExpr(sql);
+      const rows = await sql<{ value: string; leads: number; converted: number }[]>`
+        SELECT ${expr} AS value, count(DISTINCT t.lead_id)::int AS leads, count(DISTINCT t.lead_id) FILTER (WHERE t.tab_converted)::int AS converted
+        FROM analytics.mv_touch_flat t
+        JOIN salesforce.interested_course__c ic ON ic.lead_master__c = t.lead_id AND ic.isdeleted = false
+        LEFT JOIN salesforce.course__c cr ON cr.id = ic.course__c
+        WHERE ${flatWhere(sql, f, p, d)} AND ${expr} IS NOT NULL ${search ? sql`AND lower(${expr}) LIKE ${'%' + search + '%'}` : sql``}
+        GROUP BY 1 ORDER BY 2 DESC, 1 LIMIT ${limit}`;
+      if (search && rows.length < 20) {
+        // a search also looks outside the current filters / date range (every interested course ever recorded)
+        const outside = await sql<{ value: string; leads: number }[]>`
+          SELECT ${expr} AS value, count(DISTINCT ic.lead_master__c)::int AS leads
+          FROM salesforce.interested_course__c ic LEFT JOIN salesforce.course__c cr ON cr.id = ic.course__c
+          WHERE ic.isdeleted = false AND lower(${expr}) LIKE ${'%' + search + '%'} GROUP BY 1 ORDER BY 2 DESC, 1 LIMIT 500`;
+        const seen = new Set(rows.map((r) => r.value));
+        return { dim: d, options: [...rows, ...outside.filter((o) => !seen.has(o.value)).map((o) => ({ value: o.value, leads: 0, converted: 0, outside: true, leads_all: o.leads }))] };
+      }
+      return { dim: d, options: rows };
+    }
     if (d === 'call_reason') {
       const rows = await sql<{ value: string; leads: number; converted: number }[]>`
         SELECT CASE WHEN c.lead_id IS NULL THEN '(no call)' WHEN c.last_reason IS NULL THEN '(no reason recorded)' ELSE c.last_reason END AS value, count(DISTINCT t.lead_id)::int AS leads, count(DISTINCT t.lead_id) FILTER (WHERE t.tab_converted)::int AS converted

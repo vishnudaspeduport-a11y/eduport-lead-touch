@@ -33,7 +33,9 @@
         "-c",
         "api/wrangler.toml",
         "--port",
-        "8787"
+        "8787",
+        "--var",
+        "CACHE_SCOPE:dev"
       ],
       "port": 8787
     },

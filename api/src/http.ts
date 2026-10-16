@@ -13,7 +13,7 @@ export interface Ctx { sql: Sql; f: Filters; periods: Periods; q: Record<string,
  *   { ttl, perUser }  keyed on time instead (for answers that depend on more than the data, e.g. /meta)
  *   false             never cached
  */
-// wrangler dev has no BUILD_ID: use a token minted once per isolate so a code reload never reads answers of the previous code
+// wrangler dev: a token minted once per isolate, so a code reload never reads answers of the previous code and never touches production entries
 let devBuild: string | null = null;
 const devBuildId = () => (devBuild ??= `dev-${crypto.randomUUID().slice(0, 8)}`);
 
@@ -28,9 +28,12 @@ export async function handle<T>(c: Context<AppEnv>, fn: (x: Ctx) => Promise<T>, 
   const headers: Record<string, string> = { 'Cache-Control': `private, max-age=${cache}` };
 
   let key: string | null = null; let ttl = KV_TTL_VERSIONED;
+  // `wrangler dev --remote` inherits the deployed Worker's BUILD_ID, so dev and production would share cache entries (dev would read
+  // answers of the live code and write answers of unreleased code). The launch config passes --var CACHE_SCOPE:dev; localhost hosts count too.
+  const isDev = c.env.CACHE_SCOPE === 'dev' || /^(localhost|127.0.0.1|[::1])$/.test(new URL(c.req.url).hostname);
+  const build = isDev ? devBuildId() : (c.env.BUILD_ID ?? 'nobuild');
   if (edge && c.req.method === 'GET') {
-    const mask = user.role === 'viewer' ? 'viewer' : 'full';
-    const build = c.env.BUILD_ID ?? devBuildId();   // a new deploy never serves answers computed by the previous code; in `wrangler dev` every restart starts clean
+    const mask = user.role === 'viewer' ? 'viewer' : 'full';   // a new deploy never serves answers computed by the previous code; in `wrangler dev` every restart starts clean
     if (edge === 'version') key = await cacheKey({ version: await dataVersion(c.env, c.executionCtx), build, mask, path: c.req.path, query: q });
     else { ttl = edge.ttl; key = await cacheKey({ version: `ttl${edge.ttl}`, build, mask, path: c.req.path, query: q, user: edge.perUser ? String(user.id ?? user.email) : undefined }); }
     if (!wantsFresh(c.req.raw, q)) {
@@ -41,7 +44,7 @@ export async function handle<T>(c: Context<AppEnv>, fn: (x: Ctx) => Promise<T>, 
 
   const t0 = Date.now();
   const data = await withSql(c.env, c.executionCtx, (sql) => fn({ sql, f, periods, q, role: user.role }));
-  const body = JSON.stringify({ data, meta: { period: periods.current, previous: periods.previous, basis: f.basis, tookMs: Date.now() - t0, cachedAt: key ? new Date().toISOString() : undefined } });
+  const body = JSON.stringify({ data, meta: { period: periods.current, previous: periods.previous, basis: f.basis, tookMs: Date.now() - t0, cachedAt: key ? new Date().toISOString() : undefined, build: key ? build : undefined } });
   if (key) cachePut(c.env, c.executionCtx, key, body, ttl);
   return new Response(body, { status: 200, headers: { ...headers, 'Content-Type': 'application/json; charset=UTF-8', 'X-LT-Cache': key ? 'miss' : 'bypass' } });
 }
