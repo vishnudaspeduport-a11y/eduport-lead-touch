@@ -188,7 +188,7 @@ overview.get('/overview', (c) =>
       sql<{ new_leads: number; new_leads_touched: number }[]>`
         SELECT count(*)::int AS new_leads,
                count(*) FILTER (WHERE EXISTS (SELECT 1 FROM analytics.mv_touch_flat t WHERE t.lead_id = l.lead_id))::int AS new_leads_touched
-        FROM analytics.v_lead_lite l WHERE ${newLeadWhere(sql, f, periods.current)}`,
+        FROM analytics.mv_lead_lite l WHERE ${newLeadWhere(sql, f, periods.current)}`,   // narrow materialized copy (sql/035): the count scans a fraction of the lead table
       // Revised funnel: a lead in Connected, Not Willing Now, Disqualified, Not Connected or P2 Completed that was touched AFTER the stage change
       // counts under New (it is active again); every other lead keeps its stage. Stage moment = the Salesforce field-history row of the latest
       // change into the current stage (salesforce.lead_stage, joined once instead of calling analytics.stage_since per lead), else the creation
@@ -219,7 +219,7 @@ overview.get('/overview', (c) =>
         SELECT kind, '_all', count(*)::int, avg(days)::float8, percentile_cont(0.5) WITHIN GROUP (ORDER BY days)::float8 FROM d GROUP BY 1`,
       // Total leads on the lead-created basis: leads created in the window OR touched in the window
       f.basis === 'created'
-        ? sql<{ n: number }[]>`SELECT count(*)::int AS n FROM analytics.v_lead_lite l WHERE ${newLeadWhere(sql, f, periods.current, { scope: 'union' })}`
+        ? sql<{ n: number }[]>`SELECT count(*)::int AS n FROM analytics.mv_lead_lite l WHERE ${newLeadWhere(sql, f, periods.current, { scope: 'union' })}`
         : Promise.resolve([{ n: 0 }]),
       // Proposed fee / fee received: valid payments (payment_method 0) dated inside the window, made by the app accounts of the leads in the
       // selection (own phone or alternative number). Proposed fee = fee - discount of the enrollments those payments belong to, each once.

@@ -35,8 +35,9 @@ export function newLeadWhere(sql: Sql, f: Filters, p: Period | null, opts: { val
     : opts.scope === 'union'
       // one semi-join against the union of the two id sets. An OR of "created in range" with "= ANY(array of touched ids)" degraded to a
       // row-by-row array scan once both sides were large (800k leads x 190k ids = 96 s); IN (subquery) at the top level becomes a hash semi-join.
-      ? [sql`l.lead_id IN (SELECT m.id FROM salesforce.lead_master__c m
-                            WHERE m.createddate >= (${p.from}::date)::timestamp AT TIME ZONE 'Asia/Kolkata' AND m.createddate < (${p.to}::date + 1)::timestamp AT TIME ZONE 'Asia/Kolkata'
+      // both id sets come from covering indexes (mv_lead_lite_created_inc, mv_touch_flat_date): no table pages are read for the union itself
+      ? [sql`l.lead_id IN (SELECT m.lead_id FROM analytics.mv_lead_lite m
+                            WHERE m.created_at >= (${p.from}::date)::timestamp AT TIME ZONE 'Asia/Kolkata' AND m.created_at < (${p.to}::date + 1)::timestamp AT TIME ZONE 'Asia/Kolkata'
                             UNION SELECT t.lead_id FROM analytics.mv_touch_flat t WHERE t.touch_date BETWEEN ${p.from} AND ${p.to})`]
       : [sql`l.created_at >= (${p.from}::date)::timestamp AT TIME ZONE 'Asia/Kolkata' AND l.created_at < (${p.to}::date + 1)::timestamp AT TIME ZONE 'Asia/Kolkata'`];
   if (f.dups !== '1') c.push(sql`l.is_duplicate = false`);
