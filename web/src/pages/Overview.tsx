@@ -171,25 +171,7 @@ export default function Overview() {
         {dimCard('Last call reason', d?.reason, 'call_reason', ['leads', 'converted'], 'tone-amber', { limit: 14, height: 300, help: def.reason, subtitle: 'Total leads by the reason recorded on their last call · click a row to filter every card' })}
         {dimCard('Medium', d?.medium, 'medium', ['leads', 'converted'], 'tone-green', { asTable: true, height: 260 })}
         {dimCard('Campaign name', d?.campaign, 'campaign', ['leads', 'touches'], 'tone-brand', { asTable: true, height: 260 })}
-        {dimCard('Staff-wise', d?.staff, 'staff', ['leads', 'touches'], 'tone-pink', { asTable: true, height: 260, className: 'xl:col-span-2' })}   {/* 9 cards in 2 columns: the last one spans the row so no slot stays empty */}
-      </div>
-
-      <div className="grid gap-4 xl:grid-cols-2">
-        <ChartCard title="Touches per day" tone="tone-teal" subtitle="touches, distinct leads and converted leads by touch date · click a point to zoom the date range to that day" loading={q.isLoading} error={q.error} rows={d?.daily ?? []} height={260}>
-          <DailyLines data={(d?.daily ?? []).map((r) => ({ d: r.d.slice(5), touches: r.touches, leads: r.leads, converted: r.converted }))} xKey="d" lines={[{ key: 'touches', label: 'Touches' }, { key: 'leads', label: 'Leads' }, { key: 'converted', label: 'Converted' }]} onClick={(key) => { const row = (d?.daily ?? []).find((r) => r.d.slice(5) === key); if (row) set({ preset: 'custom', from: row.d, to: row.d }); }} />
-        </ChartCard>
-        <ChartCard title="Turnaround time" tone="tone-green" help={def.tat} loading={q.isLoading} error={q.error} rows={tatData?.buckets ?? []} height={240}
-          subtitle={tatData ? `${fmtInt(tatData.leads)} converted leads · median ${tatData.median_days == null ? '–' : fmt1(tatData.median_days)} d · average ${tatData.avg_days == null ? '–' : fmt1(tatData.avg_days)} d · click a band for the leads` : 'days to the first payment, converted leads only'}
-          actions={<Segmented size="xs" value={tat} onChange={setTat} options={[
-            { value: 'created', label: 'Lead created → paid', title: 'days from the lead\'s creation day to its first valid payment day' },
-            { value: 'touch', label: 'Last touch → paid', title: 'days from the latest touch on or before the payment to the payment day' },
-          ]} />}>
-          <HBars data={(tatData?.buckets ?? []).map((b) => ({ key: b.key, value: b.leads, secondary: tatData?.leads ? (b.leads / tatData.leads) * 100 : null }))} valueLabel="Converted leads" secondaryLabel="share"
-            onClick={(key) => open('converted', `Turnaround · ${key}`, tat === 'created' ? 'tat_created' : 'tat_touch', key, tat === 'created' ? `converted leads whose first payment came ${key} after the lead was created` : `converted leads whose first payment came ${key} after their last touch`)} />
-        </ChartCard>
-      </div>
-
-      <div className="grid gap-4">
+        {dimCard('Staff-wise', d?.staff, 'staff', ['leads', 'touches'], 'tone-pink', { asTable: true, height: 300 })}
         <ChartCard title="Leads still waiting in a stage" tone="tone-red" loading={q.isLoading} error={q.error} rows={staleRows} height={240}
           subtitle={`still in the stage, created more than ${k?.stale_days ?? staleDays} days ago and not touched in the last ${k?.stale_days ?? staleDays} days · click a row for the leads`}
           help={`${def.stale_new ?? ''} ${def.stale_nc ?? ''}`}
@@ -208,6 +190,21 @@ export default function Overview() {
               { key: 'share', header: 'Share', align: 'right', render: (v) => fmtPct(v as number) },
               { key: 'untouched', header: 'Never touched after creation', align: 'right' },
             ]} />
+        </ChartCard>
+      </div>
+
+      <div className="grid gap-4 xl:grid-cols-2">
+        <ChartCard title="Touches per day" tone="tone-teal" subtitle="touches, distinct leads and converted leads by touch date · click a point to zoom the date range to that day" loading={q.isLoading} error={q.error} rows={d?.daily ?? []} height={260}>
+          <DailyLines data={(d?.daily ?? []).map((r) => ({ d: r.d.slice(5), touches: r.touches, leads: r.leads, converted: r.converted }))} xKey="d" lines={[{ key: 'touches', label: 'Touches' }, { key: 'leads', label: 'Leads' }, { key: 'converted', label: 'Converted' }]} onClick={(key) => { const row = (d?.daily ?? []).find((r) => r.d.slice(5) === key); if (row) set({ preset: 'custom', from: row.d, to: row.d }); }} />
+        </ChartCard>
+        <ChartCard title="Turnaround time" tone="tone-green" help={def.tat} loading={q.isLoading} error={q.error} rows={tatData?.buckets ?? []} height={240}
+          subtitle={tatData ? `${fmtInt(tatData.leads)} converted leads · median ${tatData.median_days == null ? '–' : fmt1(tatData.median_days)} d · average ${tatData.avg_days == null ? '–' : fmt1(tatData.avg_days)} d · click a band for the leads` : 'days to the first payment, converted leads only'}
+          actions={<Segmented size="xs" value={tat} onChange={setTat} options={[
+            { value: 'created', label: 'Lead created → paid', title: 'days from the lead\'s creation day to its first valid payment day' },
+            { value: 'touch', label: 'Last touch → paid', title: 'days from the latest touch on or before the payment to the payment day' },
+          ]} />}>
+          <HBars data={(tatData?.buckets ?? []).map((b) => ({ key: b.key, value: b.leads, secondary: tatData?.leads ? (b.leads / tatData.leads) * 100 : null }))} valueLabel="Converted leads" secondaryLabel="share"
+            onClick={(key) => open('converted', `Turnaround · ${key}`, tat === 'created' ? 'tat_created' : 'tat_touch', key, tat === 'created' ? `converted leads whose first payment came ${key} after the lead was created` : `converted leads whose first payment came ${key} after their last touch`)} />
         </ChartCard>
       </div>
 
