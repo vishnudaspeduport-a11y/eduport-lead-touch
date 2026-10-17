@@ -143,7 +143,7 @@ export default function Analysis() {
         <ul className="list-disc space-y-1 pl-4">
           <li><b>Phone numbers in column A</b> of the first sheet, one per row, with a header such as <b>Phone</b>. Country code, spaces, dashes and +91 are fine: only the last 10 digits are used. If the file has several number columns you can pick the right one after the upload.</li>
           <li><b>Leads start on 1 January 2025, lead touches on 1 March 2026.</b> The dashboard holds every Salesforce lead created since 1 January 2025, plus older leads only if they had a lead touch or a payment. A number whose lead is older and was never touched comes back as <b>not in the dashboard database</b>, even though it exists in Salesforce.</li>
-          <li><b>New activity brings a lead in.</b> As soon as an older lead gets a new lead touch it is picked up by the next sync (every 4 hours) and will show here with its full history.</li>
+          <li><b>New activity brings a lead in.</b> As soon as an older lead gets a new lead touch it is picked up by the next sync (daily at 10 am, or when an admin presses Sync now) and will show here with its full history.</li>
           <li><b>Call reasons and comments</b> are available for calls logged since <b>1 May 2026</b>; stage-change dates since 1 March 2026.</li>
           <li>Payments are matched on the number, so a paying number shows as converted on every lead that shares it.</li>
         </ul>
