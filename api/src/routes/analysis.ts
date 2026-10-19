@@ -52,7 +52,27 @@ analysis.post('/analysis/phones', async (c) => {
                (array_agg(t.touch_point ORDER BY t.touch_at))[1] AS first_touch_point, (array_agg(t.touch_point ORDER BY t.touch_at DESC))[1] AS last_touch_point,
                (array_agg(t.staff ORDER BY t.touch_at DESC) FILTER (WHERE t.staff IS NOT NULL))[1] AS last_touch_staff,
                string_agg(DISTINCT t.touch_point, ', ') AS touch_points, string_agg(DISTINCT t.campaign, ', ') FILTER (WHERE t.campaign <> '(blank)') AS campaigns
-        FROM analytics.mv_touch_flat t WHERE t.lead_id IN (SELECT lead_id FROM leads) GROUP BY 1)
+        FROM analytics.mv_touch_flat t WHERE t.lead_id IN (SELECT lead_id FROM leads) GROUP BY 1),
+      -- last activity: the latest of the lead's touches, calls and stage change (LM activity) and of its interested courses'
+      -- status changes / creation (IC activity). Record edits by automations are not counted (SystemModstamp is noisy).
+      act AS (
+        SELECT x.lead_id, x.at, x.kind FROM (
+          SELECT lead_id, at, kind, row_number() OVER (PARTITION BY lead_id ORDER BY at DESC) AS rn FROM (
+            SELECT t.lead_id, max(t.touch_at) AS at, 'LM touch'::text AS kind FROM analytics.mv_touch_flat t WHERE t.lead_id IN (SELECT lead_id FROM leads) GROUP BY 1
+            UNION ALL SELECT c.lead_id, c.last_call_at, 'LM call' FROM salesforce.lead_calls c WHERE c.lead_id IN (SELECT lead_id FROM leads)
+            UNION ALL SELECT s.lead_id, s.changed_at, 'LM stage change' FROM salesforce.lead_stage s WHERE s.lead_id IN (SELECT lead_id FROM leads)
+            UNION ALL SELECT ic.lead_master__c, max(ic.createddate), 'IC created' FROM salesforce.interested_course__c ic WHERE ic.lead_master__c IN (SELECT lead_id FROM leads) AND ic.isdeleted = false GROUP BY 1
+            UNION ALL SELECT h.lead_id, max(h.changed_at), 'IC status change' FROM salesforce.ic_status h WHERE h.lead_id IN (SELECT lead_id FROM leads) GROUP BY 1
+          ) a WHERE a.at IS NOT NULL) x WHERE x.rn = 1),
+      lm AS (
+        SELECT lead_id, max(at) AS at FROM (
+          SELECT t.lead_id, max(t.touch_at) AS at FROM analytics.mv_touch_flat t WHERE t.lead_id IN (SELECT lead_id FROM leads) GROUP BY 1
+          UNION ALL SELECT c.lead_id, c.last_call_at FROM salesforce.lead_calls c WHERE c.lead_id IN (SELECT lead_id FROM leads)
+          UNION ALL SELECT s.lead_id, s.changed_at FROM salesforce.lead_stage s WHERE s.lead_id IN (SELECT lead_id FROM leads)) a GROUP BY 1),
+      icx AS (
+        SELECT lead_id, max(at) AS at FROM (
+          SELECT ic.lead_master__c AS lead_id, max(ic.createddate) AS at FROM salesforce.interested_course__c ic WHERE ic.lead_master__c IN (SELECT lead_id FROM leads) AND ic.isdeleted = false GROUP BY 1
+          UNION ALL SELECT h.lead_id, max(h.changed_at) FROM salesforce.ic_status h WHERE h.lead_id IN (SELECT lead_id FROM leads) GROUP BY 1) a GROUP BY 1)
       SELECT p.phone_key, (leads.lead_id IS NOT NULL) AS matched,
              leads.lead_id, leads.lead_name, leads.first_name, leads.last_name, leads.mobile, leads.email, leads.created_at::text AS created_at,
              leads.lead_stage, leads.class_raw, leads.class_group, leads.lead_source, leads.lead_type, leads.district, leads.city, leads.owner_name,
@@ -61,11 +81,16 @@ analysis.post('/analysis/phones', async (c) => {
              pay.payments, pay.revenue, pay.courses,
              tch.touches, tch.first_touch_at::text AS first_touch_at, tch.first_touch_point, tch.last_touch_at::text AS last_touch_at, tch.last_touch_point, tch.last_touch_staff,
              tch.touch_points, tch.campaigns,
-             floor(EXTRACT(epoch FROM now() - tch.last_touch_at) / 86400)::int AS days_since_last_touch
+             floor(EXTRACT(epoch FROM now() - tch.last_touch_at) / 86400)::int AS days_since_last_touch,
+             act.at::text AS last_activity_at, act.kind AS last_activity_type, floor(EXTRACT(epoch FROM now() - act.at) / 86400)::int AS days_since_activity,
+             lm.at::text AS lm_last_activity_at, icx.at::text AS ic_last_activity_at
       FROM p
       LEFT JOIN leads ON leads.phone_key = p.phone_key
       LEFT JOIN pay ON pay.phone_key = p.phone_key
       LEFT JOIN tch ON tch.lead_id = leads.lead_id
+      LEFT JOIN act ON act.lead_id = leads.lead_id
+      LEFT JOIN lm ON lm.lead_id = leads.lead_id
+      LEFT JOIN icx ON icx.lead_id = leads.lead_id
       ORDER BY p.phone_key, leads.created_at DESC NULLS LAST`;
     return c.json({ data: { rows: rows.map((r) => maskRow(r, role)), phones: phones.length, masked: role === 'viewer' } }, 200, { 'Cache-Control': 'private, no-store' });
   } finally {

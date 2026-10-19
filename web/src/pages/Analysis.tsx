@@ -136,7 +136,9 @@ export default function Analysis() {
     { key: 'created_at', header: 'Created', render: (v) => fmtDateTime(v as string) }, { key: 'lead_stage', header: 'Stage' }, { key: 'class_raw', header: 'Class' },
     { key: 'lead_source', header: 'Lead source' }, { key: 'owner_name', header: 'Owner' }, { key: 'district', header: 'District' }, { key: 'lm_reason', header: 'LM reason' }, { key: 'best_ic_status', header: 'IC status' },
     { key: 'touches', header: 'Touches', align: 'right' }, { key: 'first_touch_point', header: 'First touch' }, { key: 'last_touch_point', header: 'Last touch' },
-    { key: 'last_touch_at', header: 'Last touch time', render: (v) => fmtDateTime(v as string) }, { key: 'days_since_last_touch', header: 'Days since touch', align: 'right' }, { key: 'last_touch_staff', header: 'Last touch staff' },
+    { key: 'last_touch_at', header: 'Last touch time', render: (v) => fmtDateTime(v as string) }, { key: 'days_since_last_touch', header: 'Days since touch', align: 'right' },
+    { key: 'last_activity_at', header: 'Last activity', render: (v) => fmtDateTime(v as string) }, { key: 'last_activity_type', header: 'Activity type' }, { key: 'days_since_activity', header: 'Days since activity', align: 'right' },
+    { key: 'lm_last_activity_at', header: 'LM last activity', render: (v) => fmtDateTime(v as string) }, { key: 'ic_last_activity_at', header: 'IC last activity', render: (v) => fmtDateTime(v as string) }, { key: 'last_touch_staff', header: 'Last touch staff' },
     { key: 'touch_points', header: 'All touch points' }, { key: 'campaigns', header: 'Campaigns' },
     { key: 'converted', header: 'Converted', render: (v) => (v ? 'Yes' : 'No') }, { key: 'payments', header: 'Payments', align: 'right' }, { key: 'first_payment_date', header: 'First payment' }, { key: 'last_payment_date', header: 'Last payment' },
     { key: 'revenue', header: 'Revenue', render: (v) => (v == null ? '–' : fmtINR(v as number)) }, { key: 'courses', header: 'Courses bought' },
@@ -155,6 +157,7 @@ export default function Analysis() {
           <li><b>New activity brings a lead in.</b> As soon as an older lead gets a new lead touch it is picked up by the next sync (daily at 10 am, or when an admin presses Sync now) and will show here with its full history.</li>
           <li><b>Call reasons and comments</b> are available for calls logged since <b>1 May 2026</b>; stage-change dates since 1 March 2026.</li>
           <li>Payments are matched on the number, so a paying number shows as converted on every lead that shares it.</li>
+          <li><b>Last activity</b> = the latest of the lead's touches, logged calls and stage changes (LM activity) and of its interested courses' creation and status changes (IC activity); the type column says which one it was.</li>
         </ul>
       </div>
 
