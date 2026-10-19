@@ -81,6 +81,9 @@ export default function Analysis() {
       const byPhone = new Map<string, Row>();
       for (const r of parsed.rows) { const k = normalise(r[phoneCol]); if (k && !byPhone.has(k)) byPhone.set(k, r); }
       const extra = parsed.headers.filter((h) => h !== phoneCol);
+      // results in the order of the uploaded file (the API answers sorted by number); a number with several leads keeps them together, newest lead first
+      const order = new Map(phones.map((k, i) => [k, i]));
+      out.sort((x, y) => (order.get(String(x.phone_key)) ?? 1e9) - (order.get(String(y.phone_key)) ?? 1e9));
       setStages([]);
       setResults(out.map((r) => { const src = byPhone.get(String(r.phone_key)) ?? {}; const o: Row = { input_phone: src[phoneCol] ?? r.phone_key, ...r }; for (const h of extra) o[`file: ${h}`] = src[h]; return o; }));
     } catch (e) { setError((e as Error).message); }
