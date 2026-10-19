@@ -63,8 +63,9 @@ export function LeadDrawer({ leadId, onClose }: { leadId: string; onClose: () =>
               <Section title={`Interested courses (${d.ics.length})`}>
                 <SimpleTable rows={d.ics} cols={['course_name', 'status', 'is_enrolled', 'ic_created_at']} />
               </Section>
-              <Section title={`Valid payments (${d.payments.length})`}>
-                <SimpleTable rows={d.payments} cols={['payment_date', 'source', 'course', 'batch', 'amount', 'discount', 'refund_amount', 'total', 'batch_id', 'sales_person_id']} />
+              <Section title={`Payments (${d.payments.length} · ${d.payments.filter((p) => p.counted).length} counted as valid)`}>
+                <div className="mb-1 text-[10px] text-ink-3">Every successful payment of the accounts on this number, app and Ujra. Converted / revenue count only app payment method 0 and Ujra (counted = yes); other methods are listed for the full history.</div>
+                <SimpleTable rows={d.payments} cols={['payment_date', 'method', 'counted', 'course', 'batch', 'amount', 'discount', 'refund_amount', 'total', 'batch_id', 'sales_person_id']} />
               </Section>
               <Section title={d.call_summary ? `Calls (${fmtInt(Number(d.call_summary.calls))} since May 2026)` : 'Calls'}>
                 {d.call_summary ? (
@@ -79,8 +80,8 @@ export function LeadDrawer({ leadId, onClose }: { leadId: string; onClose: () =>
                 ) : <div className="text-ink-3">No call logged since May 2026</div>}
               </Section>
               {d.siblings.length > 0 && (
-                <Section title={`Other leads on the same phone (${d.siblings.length})`}>
-                  <SimpleTable rows={d.siblings} cols={['lead_name', 'created_date', 'lead_source', 'lead_stage', 'is_duplicate', 'converted']} />
+                <Section title={`Other leads of the same person (${d.siblings.length})`}>
+                  <SimpleTable rows={d.siblings} cols={['lead_name', 'mobile', 'matched_on', 'created_date', 'lead_source', 'lead_stage', 'is_duplicate', 'converted']} />
                 </Section>
               )}
             </>

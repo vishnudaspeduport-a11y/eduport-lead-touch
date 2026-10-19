@@ -203,20 +203,35 @@ leads.get('/leads/:id{[a-zA-Z0-9]+}', (c) =>
                         COALESCE(NULLIF(btrim(ic.status__c), ''), '(blank)') AS status, COALESCE(ic.is_enrolled__c, false) AS is_enrolled, ic.createddate::text AS ic_created_at
                  FROM salesforce.interested_course__c ic LEFT JOIN salesforce.course__c cr ON cr.id = ic.course__c
                  WHERE ic.lead_master__c = ${id} AND ic.isdeleted = false ORDER BY ic.createddate`,
-      sql<Rec[]>`SELECT vp.payment_id, vp.payment_date::text, COALESCE(b.course_title, vp.course_label) AS course, COALESCE(b.title, CASE WHEN vp.source = 'ujra' THEN 'Ujra (' || vp.matched_by || ')' END) AS batch, vp.source, vp.amount::float8, vp.total::float8, vp.discount::float8, vp.refund_amount::float8,
-                            vp.payment_time::text, vp.course_new_id, vp.batch_id, vp.sales_person_id, vp.enrollment_id, vp.payment_type
-                     FROM analytics.v_valid_payment_x vp LEFT JOIN app.core_batch b ON b.id = vp.batch_id
+      // every successful payment of the accounts on this number (any payment method, app + Ujra). counted = the dashboard's conversion rule
+      // (payment_method 0); the other methods are shown so the lead's payment history is complete, e.g. a renewal paid through method 1
+      sql<Rec[]>`SELECT vp.payment_id, vp.payment_date::text, COALESCE(b.course_title, vp.course_label) AS course,
+                            COALESCE(b.title, CASE WHEN vp.source = 'ujra' THEN 'Ujra (' || vp.matched_by || ')' END) AS batch, vp.source,
+                            CASE WHEN vp.source = 'ujra' THEN 'ujra' WHEN vp.payment_method = 0 THEN 'app' ELSE 'app method ' || vp.payment_method::text END AS method,
+                            (vp.payment_method = 0) AS counted,
+                            vp.amount::float8, vp.total::float8, hp.discount::float8, hp.refund_amount::float8,
+                            vp.payment_time::text, hp.course_new_id, vp.batch_id, hp.sales_person_id, vp.enrollment_id, vp.payment_type
+                     FROM analytics.v_paid_any_x vp
+                     LEFT JOIN app.home_payment hp ON vp.source = 'app' AND hp.id = vp.payment_id
+                     LEFT JOIN app.core_batch b ON b.id = vp.batch_id
                      WHERE vp.phone_key = ${pk} ORDER BY vp.payment_date, vp.payment_id LIMIT 100`,
       // per-lead call summary (salesforce.lead_calls, reduced from the Salesforce call log since May 2026)
       sql<Rec[]>`SELECT c.calls, c.first_call_at::text AS first_call_at, c.last_call_at::text AS last_call_at, c.last_reason, c.last_comment, c.last_call_status, c.last_subject, u.name AS last_owner
                  FROM salesforce.lead_calls c LEFT JOIN salesforce."user" u ON u.id = c.last_owner_id WHERE c.lead_id = ${id}`,
-      // other leads on the same number (expression index lead_master_phone_key); they share the payer, so the converted flag is the same
-      sql<Rec[]>`SELECT l.id AS lead_id, l.name AS lead_name, analytics.ist_date(l.createddate)::text AS created_date,
+      // other leads of the same person: on this number, or on any other number of the app / Ujra accounts that carry this number
+      // (alternative number, Ujra numbers). matched_on says which number; converted is per lead's own number.
+      sql<Rec[]>`WITH keys AS (
+                       SELECT ${pk}::text AS phone_key, 'same number'::text AS matched_on
+                       UNION
+                       SELECT up2.phone_key, up2.kind FROM analytics.mv_user_phone up JOIN analytics.mv_user_phone up2 ON up2.user_id = up.user_id
+                       WHERE up.phone_key = ${pk} AND up2.phone_key <> ${pk})
+                     SELECT l.id AS lead_id, l.name AS lead_name, analytics.ist_date(l.createddate)::text AS created_date,
                             COALESCE(NULLIF(btrim(l.lead_source__c), ''), '(blank)') AS lead_source, COALESCE(NULLIF(btrim(l.lead_stage__c), ''), '(blank)') AS lead_stage,
-                            COALESCE(l.is_duplicate__c, false) AS is_duplicate, (${convAt} IS NOT NULL) AS converted
-                     FROM salesforce.lead_master__c l
-                     WHERE analytics.phone_key(l.mobile_number__c) = ${pk} AND l.id <> ${id}
-                       AND COALESCE(l.is_deleted__c, false) = false AND COALESCE(l.isdeleted, false) = false
+                            COALESCE(l.is_duplicate__c, false) AS is_duplicate,
+                            EXISTS (SELECT 1 FROM analytics.v_valid_payment_x vp WHERE vp.phone_key = k.phone_key) AS converted,
+                            l.mobile_number__c AS mobile, k.matched_on
+                     FROM keys k JOIN salesforce.lead_master__c l ON analytics.phone_key(l.mobile_number__c) = k.phone_key
+                     WHERE l.id <> ${id} AND COALESCE(l.is_deleted__c, false) = false AND COALESCE(l.isdeleted, false) = false
                      ORDER BY l.createddate LIMIT 20`,
     ]);
     const lead = leadRows[0];
