@@ -35,9 +35,18 @@ export default function Analysis() {
       const buf = await file.arrayBuffer();
       const wb = XLSX.read(buf, { type: 'array' });
       const sheet = wb.SheetNames[0];
-      const rows = XLSX.utils.sheet_to_json<Row>(wb.Sheets[sheet], { defval: null, raw: false });
+      let rows = XLSX.utils.sheet_to_json<Row>(wb.Sheets[sheet], { defval: null, raw: false });
       if (!rows.length) throw new Error('The first sheet is empty');
-      const headers = Object.keys(rows[0]);
+      let headers = Object.keys(rows[0]);
+      // no header row: when the first row itself is a phone number (10+ digits), the sheet is read again without a header
+      // so that number is looked up too, and the columns are named Phone, Column B, Column C, ...
+      if (headers.some((h) => /\d{10,}/.test(h.replace(/\D/g, '')))) {
+        const raw = XLSX.utils.sheet_to_json<unknown[]>(wb.Sheets[sheet], { header: 1, defval: null, raw: false });
+        const width = Math.max(...raw.map((r) => r.length));
+        const names = Array.from({ length: width }, (_, i) => (i === 0 ? 'Phone' : `Column ${String.fromCharCode(65 + i)}`));
+        rows = raw.filter((r) => r.some((v) => v != null && v !== '')).map((r) => Object.fromEntries(names.map((n, i) => [n, r[i] ?? null])) as Row);
+        headers = names;
+      }
       // pick the phone column: header name first, otherwise the column with most phone-looking values
       let best = headers.find(looksLikePhone) ?? '';
       if (!best) {
@@ -217,7 +226,7 @@ export default function Analysis() {
       )}
 
       {leadId && <LeadDrawer leadId={leadId} onClose={() => setLeadId(null)} />}
-      <Note>How it works: the spreadsheet is opened in your browser only. Phone numbers are normalised to their last 10 digits and sent to the dashboard's API in batches of 1,000, which looks them up in the same lead, payment and touch data as the rest of the dashboard and answers immediately. Neither the file nor the results are written to the database, so nothing needs deleting and no storage is used. Each lead sharing a number is returned; payments belong to the number, so they repeat on every lead of that number. Coverage: leads created since 1 March 2026 and older leads with a touch or a payment; see the notes above the upload button.</Note>
+      <Note>How it works: the spreadsheet is opened in your browser only. Phone numbers are normalised to their last 10 digits and sent to the dashboard's API in batches of 1,000, which looks them up in the same lead, payment and touch data as the rest of the dashboard and answers immediately. Neither the file nor the results are written to the database, so nothing needs deleting and no storage is used. Each lead sharing a number is returned; payments belong to the number, so they repeat on every lead of that number. Coverage: leads created since 1 January 2025 and older leads with a touch or a payment; touches since 1 March 2026; see the notes above the upload button.</Note>
     </div>
   );
 }
