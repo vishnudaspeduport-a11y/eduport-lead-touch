@@ -8,3 +8,6 @@ dist/
 !web/.env.production
 *.log
 .DS_Store
+
+# student data never goes into the repository: the Ujra snapshot CSVs used for the first load on 2026-10-06 were purged from history on 2026-10-21
+sync/seed/

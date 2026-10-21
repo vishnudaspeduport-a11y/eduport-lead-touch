@@ -20,7 +20,7 @@
  *   UJRA_DATABASE_URL       second payment source: the Ujra Postgres (residential Integrated programmes); read-only user is enough.
  *                           When unset but METABASE_URL + METABASE_API_KEY are set, the tables are read through three saved Metabase questions
  *                           (collection "Ujra", ids 6973-6975; the key only needs to view that collection). Otherwise the CSV snapshot in
- *                           sync/seed/ujra/ is loaded - a one-time copy, not a live feed.
+ *                           sync/seed/ujra/ is loaded if present - a local one-time copy; the repository ships no such files (student data is never committed).
  *   REFRESH_AFTER_SYNC=1    run analytics.refresh_all() at the end (default 1)
  *
  * Idempotent (INSERT ... ON CONFLICT DO UPDATE). Run from GitHub Actions every 30 min.
@@ -478,7 +478,7 @@ function parseCsv(text: string): Record<string, string | boolean | null>[] {
   return rows.filter((r) => r.length === header.length && r.some((v) => v !== '')).map((r) => Object.fromEntries(header.map((h, i) => [h, cell(r[i])])));
 }
 
-/** Ujra snapshot from sync/seed/ujra/*.csv (Metabase exports): used while no UJRA_DATABASE_URL is configured */
+/** Ujra snapshot from a LOCAL sync/seed/ujra/*.csv (Metabase exports), only when neither the Ujra database nor Metabase is configured. Not in the repository. */
 async function seedUjraFromFiles(): Promise<void> {
   const dir = process.env.UJRA_SEED_DIR ?? new URL('../seed/ujra/', import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1');
   for (const t of ['ujra_student', 'ujra_booking', 'ujra_payment']) {
