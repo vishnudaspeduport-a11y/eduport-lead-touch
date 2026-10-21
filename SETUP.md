@@ -24,7 +24,7 @@ Keep a scratch note open. You will collect these 9 values as you go:
 
 ## 1. Supabase – create the database (15 min)
 
-1.1 Open https://supabase.com/dashboard/org/hnaksaxdnzabrcyllfov and click **New project**.
+1.1 Open https://supabase.com/dashboard (your organisation) and click **New project**.
 1.2 Name: `eduport-lead-touch`. Region: **South Asia (Mumbai)**. Click **Generate a password**, copy it somewhere (this is the `postgres` superuser password, you need it only for psql later). Click **Create new project** and wait until the project is "Healthy".
 1.3 Plan: on the left, **Project Settings → Billing**. Free tier is 500 MB. With the default `LEAD_SINCE=2025-04-01` (leads from April 2025 onward) the data fits. If you want all leads back to 2022, upgrade to **Pro** first.
 1.4 Invent two strong passwords now: `OWNER_PASSWORD` (for the sync job) and `RO_PASSWORD` (for the website). Write them in your note.

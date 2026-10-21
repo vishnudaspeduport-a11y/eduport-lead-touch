@@ -36,7 +36,7 @@ public.home_customuser / home_payment (app DB) ───────────
 
 * **Database**: Supabase project `duotauyrrxjmqpzdjtph` (Singapore). Schema created with `sql/ALL_supabase_simple.sql` (single `postgres` login, no extra roles). Role default `statement_timeout = 90s` protects against stuck web sessions; the sync sets it to 0 for its own session.
 * **Worker + site**: https://eduport-lead-touch.vishnudasp-eduport.workers.dev, deployed from a PC with `npx wrangler deploy` (wrangler logged in). Connects to Supabase through **Hyperdrive** (direct Worker->Supabase connections time out). **Login** (`AUTH_MODE=password`): accounts live in `app_auth.users` (`sql/016_app_auth.sql`), passwords are PBKDF2-SHA256, the session is an HttpOnly cookie (30 days, sliding). On the first visit after deploy the app shows a one-time **setup screen** that creates the first admin - the e-mail must be in `ADMIN_EMAILS`. Admins then use the **Access** page to add accounts, set passwords, promote other admins, disable or delete. Roles: *admin* (everything + Access page) and *user* (all dashboard pages). `AUTH_MODE=none` turns the login off (everyone gets `PUBLIC_ROLE`). Hyperdrive caches plain SELECTs for 60 s, so every auth query mentions `now()` to stay uncached.
-* **Sync**: GitHub Actions `sync.yml` once a day at 10:00 IST (04:30 UTC; six runs a day used ~900 of the 2,000 free Actions minutes a month, changed 2026-10-17; run it any time from Actions -> sync -> Run workflow). Salesforce login = client-credentials against the org My Domain (repo variable `SF_MY_DOMAIN=https://velocity-fun-1818.my.salesforce.com`). Secrets: `DATABASE_URL` (Supabase session pooler, port 5432, password URL-encoded), `SF_CLIENT_ID`, `SF_CLIENT_SECRET`, optional `SF_USERNAME/SF_PASSWORD/SF_SECURITY_TOKEN`, and `SOURCE_DATABASE_URL` (production Postgres, read-only) for the payment tables.
+* **Sync**: GitHub Actions `sync.yml` once a day at 10:00 IST (04:30 UTC; six runs a day used ~900 of the 2,000 free Actions minutes a month, changed 2026-10-17; run it any time from Actions -> sync -> Run workflow). Salesforce login = client-credentials against the org My Domain (repo variable `SF_MY_DOMAIN=https://<your Salesforce My Domain>`). Secrets: `DATABASE_URL` (Supabase session pooler, port 5432, password URL-encoded), `SF_CLIENT_ID`, `SF_CLIENT_SECRET`, optional `SF_USERNAME/SF_PASSWORD/SF_SECURITY_TOKEN`, and `SOURCE_DATABASE_URL` (production Postgres, read-only) for the payment tables.
 * **Ops**: the sync workflow accepts a `sql` input (Actions -> sync -> Run workflow) that runs ad-hoc SQL against Supabase and prints the rows - use it for `SELECT * FROM analytics.refresh_all()`, `pg_stat_activity`, or the reconciliation queries.
 
 ## 2. Environment variables & secrets
@@ -190,24 +190,9 @@ Responses are `{ data, meta: { period, previous, basis, tookMs } }`; errors are 
 5. Paid/organic, response time, contact rate, cohorts, stale leads, movers, time-in-stage (approximation: stage history is not replicated) are **app additions** with no Tableau counterpart.
 6. Time zone: all calendar dates are IST (`Asia/Kolkata`); Salesforce timestamps are UTC.
 
-## 7. Reconciliation (2026-03-01 → 2026-08-31, no filters)
+## 7. Reconciliation
 
-Run `psql "$RO_DATABASE_URL" -f sql/900_reconciliation.sql` after the first sync + refresh; every block prints the number and is the exact SQL the API uses.
-
-Reference numbers gathered **directly from the sources on 2026-09-19** (SOQL against Salesforce, SQL against the production Postgres) so you can sanity-check the replica:
-
-| Measure (Mar–Aug 2026) | Source | Value |
-|---|---|---|
-| Leads created, `Is_Deleted__c=false AND Is_Duplicate__c=false` | Salesforce | 250,233 |
-| Leads created incl. duplicates | Salesforce | 256,594 (251,481 distinct phones) |
-| Leads with Salesforce `Is_Converted__c = true` | Salesforce | 17,153 |
-| Touches by `Touch_Date__c` in window, `IsDeleted=false` | Salesforce | 52,214 (first touch record: 2026-03-03) |
-| Touches flagged `Is_Converted__c` (SF flag) | Salesforce | 375 |
-| Touches with `Is_First_Touch__c AND Is_Converted__c` (SF flags) | Salesforce | 342 |
-| Touches with `Is_Last_Touch__c AND Is_Converted__c` (SF flags) | Salesforce | 268 |
-| Valid payments by `payment_date` in window | Postgres | 42,757 payments · 42,237 users · ₹14.40 Cr |
-
-The payment-based converted count will differ from Salesforce's `Is_Converted__c` (17,153) - that gap is reported per lead in the Data-quality check "Is_Converted__c disagrees with payment definition".
+The reconciliation sheet (dashboard vs Tableau vs Metabase, with the figures) is kept outside this repository.
 
 ## 8. Performance
 
