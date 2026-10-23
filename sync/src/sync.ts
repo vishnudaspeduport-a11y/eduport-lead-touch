@@ -538,10 +538,11 @@ async function cleanup(): Promise<void> {
   const r2 = await sql`DELETE FROM salesforce.interested_course__c ic WHERE ic.isdeleted OR NOT EXISTS (SELECT 1 FROM salesforce.lead_master__c l WHERE l.id = ic.lead_master__c)`;
   const r3 = await sql`DELETE FROM salesforce.lead_touch__c WHERE isdeleted`;
   const r4 = await sql`DELETE FROM salesforce.task WHERE isdeleted`;
-  // stage rows only for leads with touches (the Overview population): keeps the table at ~65k rows
-  const r5 = await sql`DELETE FROM salesforce.lead_stage s WHERE NOT EXISTS (SELECT 1 FROM salesforce.lead_touch__c t WHERE t.lead_master__c = s.lead_id AND NOT t.isdeleted)`;
-  // call summaries only for leads with touches (the Overview population)
-  const r6 = await sql`DELETE FROM salesforce.lead_calls c WHERE NOT EXISTS (SELECT 1 FROM salesforce.lead_touch__c t WHERE t.lead_master__c = c.lead_id AND NOT t.isdeleted)`;
+  // stage rows and call summaries are kept for EVERY lead the dashboard holds (until 2026-10-23 they were pruned to leads with touches,
+  // which silently dropped the calls and stage history of untouched 2025 leads: a lead touched for the first time later showed "(no call)"
+  // although Salesforce had calls, because the increment never re-fetches old tasks). Only rows of leads no longer held are removed.
+  const r5 = await sql`DELETE FROM salesforce.lead_stage s WHERE NOT EXISTS (SELECT 1 FROM salesforce.lead_master__c l WHERE l.id = s.lead_id)`;
+  const r6 = await sql`DELETE FROM salesforce.lead_calls c WHERE NOT EXISTS (SELECT 1 FROM salesforce.lead_master__c l WHERE l.id = c.lead_id)`;
   console.log(`[cleanup] removed leads=${r1.count} ics=${r2.count} touches=${r3.count} tasks=${r4.count} stage_rows=${r5.count} call_rows=${r6.count} (window >= ${leadSince}, deleted rows purged)`);
   });
 }
