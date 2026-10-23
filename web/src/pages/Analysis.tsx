@@ -160,7 +160,7 @@ export default function Analysis() {
           <li><b>New activity brings a lead in.</b> As soon as an older lead gets a new lead touch it is picked up by the next sync (daily at 10 am, or when an admin presses Sync now) and will show here with its full history.</li>
           <li><b>Call reasons and comments</b> are available for calls logged since <b>1 May 2026</b>; stage-change dates since 1 March 2026.</li>
           <li>Payments are matched on the number, so a paying number shows as converted on every lead that shares it.</li>
-          <li><b>Academic year</b> of a payment comes from the batch title, e.g. "(2026-27)"; when the title has no year (Ujra programmes, older batches) the payment date decides, with the year starting in April. "Converted in" is the year of the first valid payment, "Last paid" the year of the latest one.</li>
+          <li><b>Academic year</b> of a payment is the academic year set on the batch's course in the app (syllabus structure); when a course has none (Ujra programmes, older batches) the batch title, then the payment date (year starting in April) decide. "Converted in" is the year of the first valid payment, "Last paid" the year of the latest one.</li>
           <li><b>Last activity</b> = the latest of the lead's touches, logged calls and stage changes (LM activity) and of its interested courses' creation and status changes (IC activity); the type column says which one it was.</li>
         </ul>
       </div>

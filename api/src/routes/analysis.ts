@@ -42,10 +42,10 @@ analysis.post('/analysis/phones', async (c) => {
         SELECT p.phone_key, min(cu.user_id) AS eps_id, min(hp.payment_date) AS first_payment_date, max(hp.payment_date) AS last_payment_date,
                count(*)::int AS payments, sum(hp.amount)::float8 AS revenue,
                string_agg(DISTINCT COALESCE(b.title, hp.course_label, 'batch ' || COALESCE(hp.enrollment_batch_id, hp.batch_id)::text), ' | ') AS courses,
-               -- academic year of a payment: from the batch title, else from the payment date (April start); see analytics.academic_year
-               (array_agg(analytics.academic_year(COALESCE(b.title, hp.course_label), hp.payment_date) ORDER BY hp.payment_date, hp.id))[1] AS converted_academic_year,
-               (array_agg(analytics.academic_year(COALESCE(b.title, hp.course_label), hp.payment_date) ORDER BY hp.payment_date DESC, hp.id DESC))[1] AS last_paid_academic_year,
-               string_agg(DISTINCT analytics.academic_year(COALESCE(b.title, hp.course_label), hp.payment_date), ' | ') AS academic_years
+               -- academic year of a payment: the batch's syllabus academic year (app core_syllabusstructure), else the batch title, else the payment date (April start)
+               (array_agg(analytics.academic_year(b.academic_year, COALESCE(b.title, hp.course_label), hp.payment_date) ORDER BY hp.payment_date, hp.id))[1] AS converted_academic_year,
+               (array_agg(analytics.academic_year(b.academic_year, COALESCE(b.title, hp.course_label), hp.payment_date) ORDER BY hp.payment_date DESC, hp.id DESC))[1] AS last_paid_academic_year,
+               string_agg(DISTINCT analytics.academic_year(b.academic_year, COALESCE(b.title, hp.course_label), hp.payment_date), ' | ') AS academic_years
         -- the paying account's own phone or its alternative number
         FROM p JOIN analytics.mv_user_phone cu ON cu.phone_key = p.phone_key
         JOIN analytics.v_payment_all hp ON hp.user_id = cu.user_id AND hp.payment_method = 0 AND hp.deleted = false AND hp.is_success = true AND hp.payment_success = true
