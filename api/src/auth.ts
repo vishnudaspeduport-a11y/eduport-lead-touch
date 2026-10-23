@@ -17,9 +17,9 @@ import { newToken, sha256Hex } from './password';
 export const COOKIE = 'lt_session';
 export const SESSION_DAYS = 30;
 
-export interface Account { id: number; email: string; name: string; role: 'admin' | 'user'; is_active: boolean }
+export interface Account { id: number; email: string; name: string; role: 'admin' | 'user' | 'bde'; is_active: boolean }
 
-const toUser = (a: Account): User => ({ id: a.id, email: a.email, name: a.name, role: a.role === 'admin' ? 'admin' : 'analyst' });
+const toUser = (a: Account): User => ({ id: a.id, email: a.email, name: a.name, role: a.role === 'admin' ? 'admin' : a.role === 'bde' ? 'bde' : 'analyst' });
 
 // tiny per-isolate cache so a page load (10+ parallel API calls) does one session lookup, not ten
 const cache = new Map<string, { user: User; until: number }>();

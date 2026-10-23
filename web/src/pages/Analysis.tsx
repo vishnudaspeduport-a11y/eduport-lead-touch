@@ -7,6 +7,7 @@ import { Icon, Note, PageHeader, Segmented, Skeleton } from '../components/ui';
 import { ChartCard } from '../components/ChartCard';
 import { HBars } from '../charts';
 import { useExportGate, verifyExportPassword } from '../lib/exportGate';
+import { useAuth, canDownload } from '../lib/auth';
 
 type Row = Record<string, unknown>;
 interface Parsed { headers: string[]; rows: Row[]; fileName: string; sheet: string }
@@ -27,6 +28,7 @@ export default function Analysis() {
   const [stages, setStages] = useState<string[]>([]);
   const [ay, setAy] = useState<{ kind: 'converted_academic_year' | 'last_paid_academic_year'; year: string } | null>(null);
   const requestExport = useExportGate();
+  const { user: me } = useAuth();
   const [leadId, setLeadId] = useState<string | null>(null);
 
   const onFile = async (file: File) => {
@@ -251,7 +253,7 @@ export default function Analysis() {
                 {ay && <button className="chip" onClick={() => setAy(null)} title="Clear the academic-year filter">{ay.kind === 'converted_academic_year' ? 'Converted in' : 'Last paid'}: {ay.year} ×</button>}
                 <span className="text-[11px] text-ink-3">one row per lead · a number with several leads appears more than once · click a row for the full record</span>
               </div>
-              <button className="btn" onClick={() => { const file = `analysis_${(parsed?.fileName ?? 'phones').replace(/\.[^.]+$/, '')}.csv`; requestExport({ title: `${file} · ${fmtInt(shown.length)} rows`, run: async (pw) => { await verifyExportPassword(pw, file); downloadText(file, toCsv(shown as Record<string, unknown>[], cols.map((c) => String(c.key)))); } }); }}><Icon.Download /> CSV ({fmtInt(shown.length)} rows)</button>
+              {canDownload(me?.role) && <button className="btn" onClick={() => { const file = `analysis_${(parsed?.fileName ?? 'phones').replace(/\.[^.]+$/, '')}.csv`; requestExport({ title: `${file} · ${fmtInt(shown.length)} rows`, run: async (pw) => { await verifyExportPassword(pw, file); downloadText(file, toCsv(shown as Record<string, unknown>[], cols.map((c) => String(c.key)))); } }); }}><Icon.Download /> CSV ({fmtInt(shown.length)} rows)</button>}
             </div>
             <div style={{ height: 520 }}>
               <DataTable rows={shown} columns={cols} compact maxHeight="100%" rowKey={(r) => `${r.phone_key}-${r.lead_id ?? 'x'}`} onRowClick={(r) => { if (r.lead_id) setLeadId(String(r.lead_id)); }} />

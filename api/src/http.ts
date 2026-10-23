@@ -76,9 +76,12 @@ export function pct(num: number | null | undefined, den: number | null | undefin
 }
 
 // ---------------------------------------------------------------- PII masking
+/** BDE accounts never download anything: every *.csv route and the export password check refuse them (index.ts), the UI hides the buttons */
+export const canDownload = (role: Role): boolean => role !== 'bde';
+
 export function maskPhone(v: string | null | undefined, role: Role): string | null {
   if (v == null) return null;
-  if (role !== 'viewer') return v;
+  if (role !== 'viewer' && role !== 'bde') return v;   // bde: phone numbers masked everywhere, names and e-mails stay
   const d = v.replace(/\D/g, '');
   return d.length >= 4 ? `${'•'.repeat(Math.max(0, d.length - 4))}${d.slice(-4)}` : '••••';
 }

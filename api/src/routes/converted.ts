@@ -161,7 +161,7 @@ const COLS = ['user_id', 'lead_name', 'first_name', 'last_name', 'mobile', 'emai
   'last_touch_point', 'last_touch_source', 'last_touch_medium', 'last_touch_campaign', 'last_touch_staff', 'last_touch_at', 'touches_before_payment', 'no_lead', 'lead_id'];
 
 function maskRow(r: Rec, role: Role): Rec {
-  return { ...r, mobile: maskPhone(r.mobile as string | null, role), email: maskEmail(r.email as string | null, role), first_name: maskName(r.first_name as string | null, role), last_name: maskName(r.last_name as string | null, role) };
+  return { ...r, mobile: maskPhone(r.mobile as string | null, role), phone_key: maskPhone(r.phone_key as string | null, role), email: maskEmail(r.email as string | null, role), first_name: maskName(r.first_name as string | null, role), last_name: maskName(r.last_name as string | null, role) };
 }
 function searchCond(sql: Sql, s: string): Frag {
   s = s.trim(); if (!s) return sql`true`;

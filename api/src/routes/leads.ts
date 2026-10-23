@@ -98,6 +98,7 @@ function maskRow(r: Rec, role: Role): Rec {
   return {
     ...r,
     mobile: maskPhone(r.mobile as string | null, role),
+    phone_key: maskPhone(r.phone_key as string | null, role),
     email: maskEmail(r.email as string | null, role),
     first_name: maskName(r.first_name as string | null, role),
     last_name: maskName(r.last_name as string | null, role),
@@ -237,6 +238,7 @@ leads.get('/leads/:id{[a-zA-Z0-9]+}', (c) =>
     const lead = leadRows[0];
     if (!lead) throw Object.assign(new Error('lead not found'), { status: 404 });
     const l = maskRow(lead, role);
+    for (const s of siblings) s.mobile = maskPhone(s.mobile as string | null, role);
     return { lead: l, touches, ics, payments, calls: [] as Rec[], call_summary: calls[0] ?? null, siblings, masked: role === 'viewer' };
   }, 0),
 );

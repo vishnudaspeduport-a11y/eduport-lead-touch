@@ -1,6 +1,16 @@
 import { createContext, useContext } from 'react';
 
-export type AccountRole = 'admin' | 'user';
+export type AccountRole = 'admin' | 'user' | 'bde';
+/** what each account role is called on screen ("user" was the original second role; it is the Manager view) */
+export const ROLE_LABEL: Record<AccountRole, string> = { admin: 'Admin', user: 'Manager', bde: 'BDE' };
+export const ROLE_DESC: Record<AccountRole, string> = {
+  admin: 'All pages, downloads, and this Access page',
+  user: 'All dashboard pages with full lead details and downloads',
+  bde: 'Dashboard pages with phone numbers masked · no Lead explorer · no downloads',
+};
+/** BDE accounts cannot download anything (the API refuses the CSV routes too) and have no Lead explorer */
+export const canDownload = (role: AccountRole | undefined) => role !== 'bde';
+export const canExplore = (role: AccountRole | undefined) => role !== 'bde';
 export interface Account { id: number | null; email: string; name: string; role: AccountRole }
 export interface AuthStatus { mode: 'password' | 'none'; setup_required: boolean; user: Account | null }
 

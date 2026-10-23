@@ -29,6 +29,14 @@ app.use('/api/*', async (c, next) => {
 app.use('/api/*', authMiddleware);
 
 const api = new Hono<AppEnv>();
+// BDE accounts: no Lead explorer list, no CSV, no export password check (phone numbers are masked by maskPhone for them)
+api.use('*', async (c, next) => {
+  if (c.get('user')?.role === 'bde') {   // public routes (login, status) carry no user
+    const path = new URL(c.req.url).pathname;
+    if (/\.csv$/.test(path) || path === '/api/leads' || path.startsWith('/api/export/')) return c.json({ error: { code: 'forbidden', message: 'Not available for BDE accounts' } }, 403);
+  }
+  await next();
+});
 // every streamed CSV asks for the shared export password (routes/export_auth.ts)
 for (const csv of ['/leads/export.csv', '/converted/users.csv', '/overview/new_leads.csv', '/overview/leads.csv']) api.use(csv, requireExportPassword);
 for (const r of [authRoutes, exportRoutes, meta, filters, leads, syncRoute, overview, overviewLeads, newLeads, touchAttribution, converted, analysis]) api.route('/', r);

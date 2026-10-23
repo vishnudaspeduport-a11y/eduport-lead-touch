@@ -4,7 +4,7 @@ import { useTheme } from '../lib/palette';
 import { fmtDateTime, fmtInt } from '../lib/format';
 import { FilterBar } from './FilterBar';
 import { ErrorBoundary, Icon, Popover } from './ui';
-import { useAuth } from '../lib/auth';
+import { useAuth, ROLE_LABEL, canExplore } from '../lib/auth';
 import { UserMenu } from './UserMenu';
 import { SyncButton } from './SyncButton';
 
@@ -21,7 +21,8 @@ export function AppShell() {
   const { data: meta, error } = useMeta();
   const { dark, toggle } = useTheme();
   const { user } = useAuth();
-  const nav = user?.role === 'admin' ? [...NAV, { to: '/access', label: 'Access', icon: <Icon.Users /> }] : NAV;
+  const base = canExplore(user?.role) ? NAV : NAV.filter((n) => n.to !== '/leads');
+  const nav = user?.role === 'admin' ? [...base, { to: '/access', label: 'Access', icon: <Icon.Users /> }] : base;
   const asOf = meta?.dataAsOf;
   const stale = asOf?.refreshed_at ? Date.now() - new Date(asOf.refreshed_at).getTime() > 6 * 3600e3 : false;
   const syncErr = meta?.syncState.some((s) => s.last_error);
@@ -59,7 +60,7 @@ export function AppShell() {
             <div className="mt-1.5 text-[10px] text-ink-3">Salesforce watermark {fmtDateTime(asOf?.salesforce_as_of)}</div>
           </div>
           <div className="mt-2 px-1 text-[10px] text-ink-3">
-            {meta && <span>v{meta.version} · {user?.role === 'admin' ? 'admin' : 'user'}</span>}
+            {meta && <span>v{meta.version} · {user ? ROLE_LABEL[user.role].toLowerCase() : 'user'}</span>}
           </div>
         </div>
       </aside>

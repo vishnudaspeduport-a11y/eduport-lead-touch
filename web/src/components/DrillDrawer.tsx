@@ -7,6 +7,7 @@ import { LeadDrawer } from './LeadDrawer';
 import { DrillSummary } from './DrillSummary';
 import { ErrorNote, Icon, Skeleton, useDebounce } from './ui';
 import { useExportGate } from '../lib/exportGate';
+import { useAuth, canDownload } from '../lib/auth';
 
 export type DrillMetric = 'leads' | 'touches' | 'converted' | 'first_touch' | 'last_touch' | 'stale_new' | 'stale_not_connected' | 'converted_first' | 'sf_converted' | 'stage_conv_unpaid' | 'paid_other_stage' | 'stage_react' | 'avg_alltime' | 'avg_window' | 'new_leads' | 'fee_paid';
 export interface Drill {
@@ -137,6 +138,7 @@ export function DrillDrawer({ drill, onClose }: { drill: Drill; onClose: () => v
   const [leadId, setLeadId] = useState<string | null>(null);
   const [dl, setDl] = useState(false);
   const requestExport = useExportGate();
+  const { user } = useAuth();
   const [view, setView] = useState<'summary' | 'list'>(drill.summary ? 'summary' : 'list');
   // a row picked on the summary narrows the drawer to that value (on top of the drill's own dim)
   const [pick, setPick] = useState<{ dim: string; value: string } | null>(null);
@@ -179,9 +181,9 @@ export function DrillDrawer({ drill, onClose }: { drill: Drill; onClose: () => v
             {canFilterPage && (
               <button className="btn" title="Apply this value as a page filter" onClick={() => { toggleValue(dim as ListDim, value!); onClose(); }}><Icon.Plus /> Filter page by this</button>
             )}
-            <button className="btn" disabled={dl} onClick={() => requestExport({ title: `${drill.title} · all rows`, run: async (pw) => { setDl(true); try { await downloadWithAuth(drill.csvPath ?? '/overview/leads.csv', { ...p, page: undefined, limit: undefined }, `${drill.title.replace(/[^a-z0-9]+/gi, '_').toLowerCase()}.csv`, pw); } finally { setDl(false); } } })}>
+            {canDownload(user?.role) && <button className="btn" disabled={dl} onClick={() => requestExport({ title: `${drill.title} · all rows`, run: async (pw) => { setDl(true); try { await downloadWithAuth(drill.csvPath ?? '/overview/leads.csv', { ...p, page: undefined, limit: undefined }, `${drill.title.replace(/[^a-z0-9]+/gi, '_').toLowerCase()}.csv`, pw); } finally { setDl(false); } } })}>
               <Icon.Download /> {dl ? 'Preparing…' : 'CSV (all rows)'}
-            </button>
+            </button>}
             <button className="btn btn-dark" onClick={onClose}><Icon.Close /> Close</button>
           </div>
         </div>

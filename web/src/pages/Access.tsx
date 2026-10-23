@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Navigate } from 'react-router-dom';
 import { fmtDateTime } from '../lib/format';
-import { authCall, generatePassword, useAuth, type AccountRole } from '../lib/auth';
+import { authCall, generatePassword, useAuth, ROLE_LABEL, ROLE_DESC, type AccountRole } from '../lib/auth';
 import { Icon, PageHeader } from '../components/ui';
 
 interface Row { id: number; email: string; name: string; role: AccountRole; is_active: boolean; last_login_at: string | null; password_set_at: string; created_at: string; created_by: string | null; locked_until: string | null; active_sessions: number }
@@ -34,13 +34,14 @@ export default function Access() {
 
   return (
     <div className="space-y-4">
-      <PageHeader title="Access" subtitle="Who can open this dashboard. Admins create every account and set every password; users see the same pages without this menu."
+      <PageHeader title="Access" subtitle="Who can open this dashboard. Admins create every account and set every password. Manager = every page with full details and downloads; BDE = phone numbers masked, no Lead explorer, no downloads."
         right={<button className="btn btn-primary" onClick={() => setModal({ kind: 'new' })}><Icon.Plus /> Add account</button>} />
 
-      <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+      <div className="grid grid-cols-2 gap-4 sm:grid-cols-5">
         <Stat label="Accounts" value={rows?.length ?? 0} />
         <Stat label="Admins" value={admins} />
-        <Stat label="Users" value={(rows ?? []).filter((r) => r.role === 'user').length} />
+        <Stat label="Managers" value={(rows ?? []).filter((r) => r.role === 'user').length} />
+        <Stat label="BDE" value={(rows ?? []).filter((r) => r.role === 'bde').length} />
         <Stat label="Disabled" value={(rows ?? []).filter((r) => !r.is_active).length} />
       </div>
 
@@ -63,7 +64,7 @@ export default function Access() {
                   <tr key={r.id} className={!r.is_active ? 'opacity-60' : ''}>
                     <td className="td font-medium">{r.name || '–'}{isMe && <span className="ml-1.5 rounded bg-accent/10 px-1 text-[10px] text-accent">you</span>}</td>
                     <td className="td">{r.email}</td>
-                    <td className="td"><span className={`chip ${r.role === 'admin' ? 'border-accent/40 text-accent' : ''}`}>{r.role === 'admin' ? 'Admin' : 'User'}</span></td>
+                    <td className="td"><span className={`chip ${r.role === 'admin' ? 'border-accent/40 text-accent' : ''}`} title={ROLE_DESC[r.role]}>{ROLE_LABEL[r.role]}</span></td>
                     <td className="td">{!r.is_active ? <span className="text-red-600">Disabled</span> : locked ? <span className="text-amber-600" title={`Locked until ${fmtDateTime(r.locked_until)}`}>Locked</span> : <span className="text-emerald-600">Active</span>}{r.active_sessions > 0 && r.is_active && <span className="ml-1 text-ink-3">· {r.active_sessions} device{r.active_sessions > 1 ? 's' : ''}</span>}</td>
                     <td className="td text-ink-2">{fmtDateTime(r.last_login_at)}</td>
                     <td className="td text-ink-2">{fmtDateTime(r.password_set_at)}</td>
@@ -71,7 +72,9 @@ export default function Access() {
                     <td className="td">
                       <div className="flex flex-wrap justify-end gap-1">
                         <button className="btn" onClick={() => setModal({ kind: 'password', row: r })}>Set password</button>
-                        {!isMe && <button className="btn" onClick={() => patch(r, { role: r.role === 'admin' ? 'user' : 'admin' })}>{r.role === 'admin' ? 'Make user' : 'Make admin'}</button>}
+                        {!isMe && <select className="input !py-1 text-xs" value={r.role} title="Change the account's view" onChange={(e) => patch(r, { role: e.target.value as AccountRole })}>
+                          {(['admin', 'user', 'bde'] as const).map((k) => <option key={k} value={k}>{ROLE_LABEL[k]}</option>)}
+                        </select>}
                         {!isMe && <button className="btn" onClick={() => patch(r, { is_active: !r.is_active })}>{r.is_active ? 'Disable' : 'Enable'}</button>}
                         {!isMe && <button className="btn text-red-600 hover:text-red-700" onClick={() => remove(r)}>Delete</button>}
                       </div>
@@ -170,7 +173,7 @@ function NewAccount({ onClose, onDone }: { onClose: () => void; onDone: () => vo
         <label className="block text-[11px] font-medium text-ink-3">Name<input className="input mt-1 w-full" value={name} onChange={(e) => setName(e.target.value)} /></label>
         <div className="text-[11px] font-medium text-ink-3">Role
           <div className="mt-1 flex gap-2">
-            {(['user', 'admin'] as const).map((r) => <label key={r} className={`flex flex-1 cursor-pointer items-start gap-2 rounded-lg border p-2 ${role === r ? 'border-accent bg-accent/5' : 'border-line'}`}><input type="radio" className="mt-0.5" checked={role === r} onChange={() => setRole(r)} /><span><b className="text-ink">{r === 'admin' ? 'Admin' : 'User'}</b><br /><span className="text-ink-3">{r === 'admin' ? 'All pages + this Access page' : 'All dashboard pages'}</span></span></label>)}
+            {(['user', 'bde', 'admin'] as const).map((r) => <label key={r} className={`flex flex-1 cursor-pointer items-start gap-2 rounded-lg border p-2 ${role === r ? 'border-accent bg-accent/5' : 'border-line'}`}><input type="radio" className="mt-0.5" checked={role === r} onChange={() => setRole(r)} /><span><b className="text-ink">{ROLE_LABEL[r]}</b><br /><span className="text-ink-3">{ROLE_DESC[r]}</span></span></label>)}
           </div>
         </div>
         <div className="text-[11px] font-medium text-ink-3">Password<div className="mt-1"><PasswordField value={password} onChange={setPassword} /></div></div>

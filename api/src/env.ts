@@ -23,8 +23,9 @@ export interface Env {
   EXPORT_ROW_CAP?: string;
 }
 
-/** admin = manages accounts + admin actions; analyst = full lead details; viewer = PII masked (AUTH_MODE=none only) */
-export type Role = 'admin' | 'analyst' | 'viewer';
+/** admin = manages accounts + admin actions; analyst = full lead details (account role "user" = Manager);
+ *  bde = phone numbers masked, no Lead explorer, no downloads (account role "bde"); viewer = all PII masked (AUTH_MODE=none only) */
+export type Role = 'admin' | 'analyst' | 'bde' | 'viewer';
 export interface User { email: string; role: Role; id?: number; name?: string; }
 
 export type AppEnv = { Bindings: Env; Variables: { user: User } };

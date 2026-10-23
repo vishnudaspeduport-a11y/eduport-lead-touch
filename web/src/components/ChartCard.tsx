@@ -2,6 +2,7 @@ import { useRef, useState, type ReactNode } from 'react';
 import { EmptyState, ErrorBoundary, ErrorNote, Icon, Popover, Skeleton } from './ui';
 import { downloadText, toCsv } from '../lib/format';
 import { useExportGate, verifyExportPassword } from '../lib/exportGate';
+import { useAuth, canDownload } from '../lib/auth';
 import { DataTable, type Col } from './DataTable';
 
 export interface ChartCardProps<Row extends object> {
@@ -29,6 +30,7 @@ export interface ChartCardProps<Row extends object> {
 export function ChartCard<Row extends object>(p: ChartCardProps<Row>) {
   const [table, setTable] = useState(false);
   const requestExport = useExportGate();
+  const { user } = useAuth();
   const ref = useRef<HTMLDivElement>(null);
   const name = (p.fileName ?? p.title).replace(/[^a-z0-9]+/gi, '_').toLowerCase();
   const h = p.height ?? 220;
@@ -89,14 +91,14 @@ export function ChartCard<Row extends object>(p: ChartCardProps<Row>) {
               {table ? <Icon.Chart /> : <Icon.Table />}
             </button>
           )}
-          <Popover align="right" width="w-36" trigger={<button className="btn !px-1.5" title="Download"><Icon.Download /></button>}>
+          {canDownload(user?.role) && <Popover align="right" width="w-36" trigger={<button className="btn !px-1.5" title="Download"><Icon.Download /></button>}>
             {(close) => (
               <div className="flex flex-col gap-1">
                 <button className="btn justify-start" onClick={() => { downloadPng().catch((e) => alert(String(e))); close(); }}>PNG image</button>
                 <button className="btn justify-start" disabled={!p.rows?.length} onClick={() => { close(); requestExport({ title: `${p.title} (CSV)`, run: async (pw) => { await verifyExportPassword(pw, `${name}.csv`); downloadText(`${name}.csv`, toCsv((p.rows ?? []) as unknown as Record<string, unknown>[], p.columns?.map((c) => String(c.key)))); } }); }}>CSV data</button>
               </div>
             )}
-          </Popover>
+          </Popover>}
         </div>
       </header>
       <div ref={ref} className="relative min-h-0 overflow-hidden" style={{ height: h, flex: `1 1 ${h}px` }}>{body()}</div>

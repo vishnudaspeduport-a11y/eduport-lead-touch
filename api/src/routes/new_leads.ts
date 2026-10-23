@@ -138,7 +138,7 @@ function searchCond(sql: Sql, raw: string): Frag {
 }
 
 function maskRow(r: Rec, role: Role): Rec {
-  return { ...r, mobile: maskPhone(r.mobile as string | null, role), email: maskEmail(r.email as string | null, role), first_name: maskName(r.first_name as string | null, role), last_name: maskName(r.last_name as string | null, role) };
+  return { ...r, mobile: maskPhone(r.mobile as string | null, role), phone_key: maskPhone(r.phone_key as string | null, role), email: maskEmail(r.email as string | null, role), first_name: maskName(r.first_name as string | null, role), last_name: maskName(r.last_name as string | null, role) };
 }
 
 const SORTABLE: Record<string, string> = {

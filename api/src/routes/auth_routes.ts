@@ -21,8 +21,8 @@ const MAX_FAILS = 8; const LOCK_MIN = 15;
 const email = z.string().trim().toLowerCase().email().max(200);
 const Login = z.object({ email, password: z.string().min(1).max(128) });
 const Setup = z.object({ email, name: z.string().trim().max(120).default(''), password: z.string() });
-const NewUser = z.object({ email, name: z.string().trim().max(120).default(''), role: z.enum(['admin', 'user']), password: z.string() });
-const Patch = z.object({ name: z.string().trim().max(120).optional(), role: z.enum(['admin', 'user']).optional(), is_active: z.boolean().optional() });
+const NewUser = z.object({ email, name: z.string().trim().max(120).default(''), role: z.enum(['admin', 'user', 'bde']), password: z.string() });
+const Patch = z.object({ name: z.string().trim().max(120).optional(), role: z.enum(['admin', 'user', 'bde']).optional(), is_active: z.boolean().optional() });
 const SetPw = z.object({ password: z.string() });
 const ChangePw = z.object({ current: z.string(), password: z.string() });
 

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { authCall, useAuth } from '../lib/auth';
+import { authCall, useAuth, ROLE_LABEL } from '../lib/auth';
 import { Icon, Popover } from './ui';
 
 /** Header avatar: name / e-mail / role, Access link (admins), change password, sign out. */
@@ -15,7 +15,7 @@ export function UserMenu() {
           <div className="text-xs">
             <div className="font-semibold text-ink">{user?.name || user?.email}</div>
             <div className="text-ink-3">{user?.email}</div>
-            <div className="mt-1"><span className={`chip ${user?.role === 'admin' ? 'border-accent/40 text-accent' : ''}`}>{user?.role === 'admin' ? 'Admin' : 'User'}</span></div>
+            <div className="mt-1"><span className={`chip ${user?.role === 'admin' ? 'border-accent/40 text-accent' : ''}`}>{user ? ROLE_LABEL[user.role] : 'User'}</span></div>
             {mode === 'password' && (
               <div className="mt-3 space-y-1 border-t border-line pt-2">
                 {user?.role === 'admin' && <Link to="/access" onClick={close} className="flex items-center gap-2 rounded-lg px-2 py-1.5 hover:bg-surface-2"><Icon.Users /> Manage access</Link>}
