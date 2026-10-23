@@ -25,6 +25,7 @@ export default function Analysis() {
   const [results, setResults] = useState<Row[] | null>(null);
   const [view, setView] = useState<'all' | 'matched' | 'unmatched' | 'converted' | 'multi'>('all');
   const [stages, setStages] = useState<string[]>([]);
+  const [ay, setAy] = useState<{ kind: 'converted_academic_year' | 'last_paid_academic_year'; year: string } | null>(null);
   const requestExport = useExportGate();
   const [leadId, setLeadId] = useState<string | null>(null);
 
@@ -84,7 +85,7 @@ export default function Analysis() {
       // results in the order of the uploaded file (the API answers sorted by number); a number with several leads keeps them together, newest lead first
       const order = new Map(phones.map((k, i) => [k, i]));
       out.sort((x, y) => (order.get(String(x.phone_key)) ?? 1e9) - (order.get(String(y.phone_key)) ?? 1e9));
-      setStages([]);
+      setStages([]); setAy(null);
       setResults(out.map((r) => { const src = byPhone.get(String(r.phone_key)) ?? {}; const o: Row = { input_phone: src[phoneCol] ?? r.phone_key, ...r }; for (const h of extra) o[`file: ${h}`] = src[h]; return o; }));
     } catch (e) { setError((e as Error).message); }
     finally { setBusy(null); }
@@ -102,7 +103,14 @@ export default function Analysis() {
     for (const r of leads) perPhone.set(String(r.phone_key), (perPhone.get(String(r.phone_key)) ?? 0) + 1);
     const multiPhones = [...perPhone.entries()].filter(([, n]) => n > 1);
     const multiLeads = multiPhones.reduce((a, [, n]) => a + n, 0);
-    return { phones: phonesSeen.size, matched: matchedPhones.size, leads: leads.length, converted: converted.size, revenue, multiPhones: multiPhones.length, multiLeads, maxLeads: Math.max(0, ...multiPhones.map(([, n]) => n)) };
+    // converted numbers split by academic year (first valid payment = converted in; latest valid payment = last paid), one count per number
+    const split = (key: 'converted_academic_year' | 'last_paid_academic_year') => {
+      const m = new Map<string, Set<string>>();
+      for (const r of results) if (r.converted) { const y = (r[key] as string | null) || '(unknown)'; (m.get(y) ?? m.set(y, new Set()).get(y)!).add(String(r.phone_key)); }
+      return [...m.entries()].map(([year, set]) => ({ year, n: set.size })).sort((a, b) => b.year.localeCompare(a.year));
+    };
+    return { phones: phonesSeen.size, matched: matchedPhones.size, leads: leads.length, converted: converted.size, revenue, multiPhones: multiPhones.length, multiLeads, maxLeads: Math.max(0, ...multiPhones.map(([, n]) => n)),
+             byConvertedYear: split('converted_academic_year'), byLastPaidYear: split('last_paid_academic_year') };
   }, [results]);
 
   // lead stage of every lead record found (one row per lead); converted share inside each stage
@@ -128,8 +136,9 @@ export default function Analysis() {
     else if (view === 'converted') out = out.filter((r) => r.converted);
     else if (view === 'multi') { const n = new Map<string, number>(); for (const r of results) if (r.matched) n.set(String(r.phone_key), (n.get(String(r.phone_key)) ?? 0) + 1); out = out.filter((r) => r.matched && (n.get(String(r.phone_key)) ?? 0) > 1); }
     if (stages.length) out = out.filter((r) => r.matched && stages.includes((r.lead_stage as string | null) || '(no stage)'));
+    if (ay) out = out.filter((r) => r.converted && ((r[ay.kind] as string | null) || '(unknown)') === ay.year);
     return out;
-  }, [results, view, stages]);
+  }, [results, view, stages, ay]);
 
   const extraCols: Col<Row>[] = (parsed?.headers ?? []).filter((h) => h !== phoneCol).map((h) => ({ key: `file: ${h}`, header: `File · ${h}` }));
   const cols: Col<Row>[] = [
@@ -200,9 +209,27 @@ export default function Analysis() {
               ['Converted', fmtInt(summary.converted), `${fmtPct(summary.phones ? Math.round((summary.converted / summary.phones) * 10000) / 100 : null)} of numbers have a valid payment`, 'converted'],
               ['Revenue', fmtINR(summary.revenue), 'all valid payments of these numbers', 'converted'],
             ] as [string, string, string, typeof view][]).map(([t, v, sub, target]) => (
-              <button key={t} className={`card !p-2.5 text-left transition hover:border-accent/40 hover:shadow-pop ${view === target && t !== 'Revenue' ? 'border-accent ring-1 ring-accent/30' : ''}`} onClick={() => setView(target)} title="Click to filter the results">
+              <div key={t} role="button" tabIndex={0} className={`card !p-2.5 cursor-pointer text-left transition hover:border-accent/40 hover:shadow-pop ${t === 'Converted' ? 'col-span-2' : ''} ${view === target && t !== 'Revenue' ? 'border-accent ring-1 ring-accent/30' : ''}`} onClick={() => { setView(target); if (t !== 'Converted') setAy(null); }} onKeyDown={(e) => { if (e.key === 'Enter') setView(target); }} title="Click to filter the results">
                 <div className="text-[10px] font-semibold uppercase tracking-wide text-ink-3">{t}</div><div className="text-xl font-semibold tabular-nums">{v}</div><div className="text-[10px] text-ink-3">{sub}</div>
-              </button>
+                {t === 'Converted' && summary.converted > 0 && (
+                  <div className="mt-1.5 space-y-1 border-t border-line pt-1.5">
+                    {([['converted_academic_year', 'Converted in', summary.byConvertedYear], ['last_paid_academic_year', 'Last paid', summary.byLastPaidYear]] as const).map(([kind, label, rows]) => (
+                      <div key={kind} className="flex flex-wrap items-center gap-1">
+                        <span className="w-[72px] text-[10px] text-ink-3">{label}</span>
+                        {rows.map((r) => {
+                          const on = ay?.kind === kind && ay.year === r.year;
+                          return (
+                            <button key={r.year} className={`chip !py-0 text-[10px] ${on ? 'border-accent bg-accent/10 text-accent' : ''}`} title={`${label} ${r.year}: ${fmtInt(r.n)} numbers · click to filter the results`}
+                              onClick={(e) => { e.stopPropagation(); setView('converted'); setAy(on ? null : { kind, year: r.year }); }}>
+                              {r.year} <b className="tabular-nums">{fmtInt(r.n)}</b>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
             ))}
           </div>
 
@@ -221,6 +248,7 @@ export default function Analysis() {
                 <h3 className="text-xs font-bold">Results</h3>
                 <Segmented size="xs" value={view} onChange={setView} options={[{ value: 'all', label: `All (${fmtInt(results.length)})` }, { value: 'matched', label: 'Leads found' }, { value: 'unmatched', label: 'Not found' }, { value: 'converted', label: 'Converted' }, { value: 'multi', label: 'Several leads' }]} />
                 {stages.length > 0 && <button className="chip" onClick={() => setStages([])} title="Clear the stage filter">Stage: {stages.join(', ')} ×</button>}
+                {ay && <button className="chip" onClick={() => setAy(null)} title="Clear the academic-year filter">{ay.kind === 'converted_academic_year' ? 'Converted in' : 'Last paid'}: {ay.year} ×</button>}
                 <span className="text-[11px] text-ink-3">one row per lead · a number with several leads appears more than once · click a row for the full record</span>
               </div>
               <button className="btn" onClick={() => { const file = `analysis_${(parsed?.fileName ?? 'phones').replace(/\.[^.]+$/, '')}.csv`; requestExport({ title: `${file} · ${fmtInt(shown.length)} rows`, run: async (pw) => { await verifyExportPassword(pw, file); downloadText(file, toCsv(shown as Record<string, unknown>[], cols.map((c) => String(c.key)))); } }); }}><Icon.Download /> CSV ({fmtInt(shown.length)} rows)</button>
