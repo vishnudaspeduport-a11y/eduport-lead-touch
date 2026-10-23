@@ -330,13 +330,14 @@ const APP_TABLES: AppTableSpec[] = [
     name: 'home_payment', stampCol: 'created',
     select: (src, since) => (since
       ? src`SELECT p.id, p.user_id, p.payment_method, p.payment_type, p.deleted, p.is_success, p.payment_success, p.payment_date, p.payment_time, p.created,
-                   p.amount, p.total, p.tuition_fees, p.discount, p.refund_amount, p.course_id, p.course_new_id, p.batch_id, p.sales_person_id, p.enrollment_id,
+                   -- course_id was dropped from the production table on 2026-10-22 (course_new_id remains); our column stays, as NULL
+                   p.amount, p.total, p.tuition_fees, p.discount, p.refund_amount, NULL::integer AS course_id, p.course_new_id, p.batch_id, p.sales_person_id, p.enrollment_id,
                    he.batch_id AS enrollment_batch_id, he.fee AS enrollment_fee, he.discount AS enrollment_discount
             FROM public.home_payment p LEFT JOIN public.home_enrollment he ON he.id = p.enrollment_id
             WHERE p.created > ${since}::timestamptz - interval '45 days' OR p.payment_date >= (${since}::date - 45)
             ORDER BY p.id`.cursor(5000)
       : src.unsafe(`SELECT p.id, p.user_id, p.payment_method, p.payment_type, p.deleted, p.is_success, p.payment_success, p.payment_date, p.payment_time, p.created,
-                   p.amount, p.total, p.tuition_fees, p.discount, p.refund_amount, p.course_id, p.course_new_id, p.batch_id, p.sales_person_id, p.enrollment_id,
+                   p.amount, p.total, p.tuition_fees, p.discount, p.refund_amount, NULL::integer AS course_id, p.course_new_id, p.batch_id, p.sales_person_id, p.enrollment_id,
                    he.batch_id AS enrollment_batch_id, he.fee AS enrollment_fee, he.discount AS enrollment_discount
             FROM public.home_payment p LEFT JOIN public.home_enrollment he ON he.id = p.enrollment_id WHERE ${VALID} ORDER BY p.id`).cursor(5000)),
   },
