@@ -143,7 +143,7 @@ export default function Analysis() {
     { key: 'last_touch_at', header: 'Last touch time', render: (v) => fmtDateTime(v as string) }, { key: 'days_since_last_touch', header: 'Days since touch', align: 'right' },
     { key: 'lm_last_activity_at', header: 'LM last activity', render: (v) => fmtDateTime(v as string) }, { key: 'ic_last_activity_at', header: 'IC last activity', render: (v) => fmtDateTime(v as string) }, { key: 'last_touch_staff', header: 'Last touch staff' },
     { key: 'touch_points', header: 'All touch points' }, { key: 'campaigns', header: 'Campaigns' },
-    { key: 'converted', header: 'Converted', render: (v) => (v ? 'Yes' : 'No') }, { key: 'payments', header: 'Payments', align: 'right' }, { key: 'first_payment_date', header: 'First payment' }, { key: 'last_payment_date', header: 'Last payment' },
+    { key: 'converted', header: 'Converted', render: (v) => (v ? 'Yes' : 'No') }, { key: 'payments', header: 'Payments', align: 'right' }, { key: 'first_payment_date', header: 'First payment' }, { key: 'converted_academic_year', header: 'Converted in (academic year)' }, { key: 'last_payment_date', header: 'Last payment' }, { key: 'last_paid_academic_year', header: 'Last paid academic year' }, { key: 'academic_years', header: 'Academic years paid' },
     { key: 'revenue', header: 'Revenue', render: (v) => (v == null ? '–' : fmtINR(v as number)) }, { key: 'courses', header: 'Courses bought' },
     { key: 'sf_is_converted', header: 'SF converted flag', render: (v) => (v ? 'Yes' : 'No') }, { key: 'is_duplicate', header: 'Duplicate', render: (v) => (v ? 'Yes' : 'No') }, { key: 'lead_id', header: 'Salesforce Id' },
     ...extraCols,
@@ -160,6 +160,7 @@ export default function Analysis() {
           <li><b>New activity brings a lead in.</b> As soon as an older lead gets a new lead touch it is picked up by the next sync (daily at 10 am, or when an admin presses Sync now) and will show here with its full history.</li>
           <li><b>Call reasons and comments</b> are available for calls logged since <b>1 May 2026</b>; stage-change dates since 1 March 2026.</li>
           <li>Payments are matched on the number, so a paying number shows as converted on every lead that shares it.</li>
+          <li><b>Academic year</b> of a payment comes from the batch title, e.g. "(2026-27)"; when the title has no year (Ujra programmes, older batches) the payment date decides, with the year starting in April. "Converted in" is the year of the first valid payment, "Last paid" the year of the latest one.</li>
           <li><b>Last activity</b> = the latest of the lead's touches, logged calls and stage changes (LM activity) and of its interested courses' creation and status changes (IC activity); the type column says which one it was.</li>
         </ul>
       </div>
