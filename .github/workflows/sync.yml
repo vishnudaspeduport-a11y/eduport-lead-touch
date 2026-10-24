@@ -6,7 +6,7 @@ name: sync
 on:
   schedule:
     - cron: '30 4 * * *'     # once a day at 10:00 IST (04:30 UTC) - the free GitHub Actions minutes ran low with six runs a day (2026-10-17); use "Sync now" for an intraday refresh
-    - cron: '0 22 23 10 *'    # one-off 2026-10-24 03:30 IST: full reload of the call summary + stage history for every held lead (cleanup used to prune untouched leads); remove after it has run
+    - cron: '0 22 24 10 *'    # one-off 2026-10-25 03:30 IST: full reload of the stage history (month-chunked; the 24 Oct attempt timed out in Salesforce); remove after it has run
   workflow_dispatch:
     inputs:
       full:
@@ -68,5 +68,5 @@ jobs:
       - name: Sync
         if: inputs.sql == ''
         run: |
-          if [ "${{ github.event.schedule }}" = "0 22 23 10 *" ]; then SYNC_OBJECTS=Lead_Calls,Lead_Master__History npm run sync:full;
+          if [ "${{ github.event.schedule }}" = "0 22 24 10 *" ]; then SYNC_OBJECTS=Lead_Master__History npm run sync:full;
           elif [ "${{ inputs.full }}" = "true" ]; then npm run sync:full; else npm run sync; fi

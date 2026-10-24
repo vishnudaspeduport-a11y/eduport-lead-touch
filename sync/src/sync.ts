@@ -169,12 +169,27 @@ async function syncSalesforceObject(s: SfSession, spec: ObjectSpec): Promise<voi
 // ---------------------------------------------------------------- Salesforce stage history -> one row per lead
 // Lead_Master__History (Field = Lead_Stage__c) is 1.5 M rows since March 2026; we keep only each lead's LATEST change:
 // salesforce.lead_stage (lead_id, stage, prev_stage, changed_at). Watermark = history CreatedDate (the object has no SystemModstamp).
+/** Full loads of history / task objects are split into month windows: one SOQL over a year of rows hits Salesforce's QUERY_TIMEOUT
+ *  (seen 2026-10-24 on Lead_Master__History since 2025-01-01). An incremental run keeps its single "CreatedDate > watermark" term. */
+function dateTerms(since: Date | null, floor: string): string[][] {
+  if (since) return [[`CreatedDate > ${since.toISOString()}`]];
+  const out: string[][] = [];
+  let a = new Date(floor); a = new Date(Date.UTC(a.getUTCFullYear(), a.getUTCMonth(), 1));
+  const end = new Date(Date.now() + 86400_000);
+  while (a < end) {
+    const b = new Date(Date.UTC(a.getUTCFullYear(), a.getUTCMonth() + 1, 1));
+    out.push([`CreatedDate >= ${a.toISOString()}`, `CreatedDate < ${b.toISOString()}`]);
+    a = b;
+  }
+  return out;
+}
+
 const STAGE_HISTORY_KEY = 'Lead_Master__History';
 async function syncStageHistory(s: SfSession): Promise<void> {
   const since = await getState(STAGE_HISTORY_KEY);
   const floor = process.env.STAGE_HISTORY_SINCE || process.env.LEAD_SINCE || '2026-03-01T00:00:00Z';
-  const where = [`Field = 'Lead_Stage__c'`, since ? `CreatedDate > ${since.toISOString()}` : `CreatedDate >= ${floor}`];
-  const q = `SELECT Id, ParentId, OldValue, NewValue, CreatedDate FROM Lead_Master__History WHERE ${where.join(' AND ')} ORDER BY CreatedDate ASC`;
+  const qFor = (dt: string[]) => `SELECT Id, ParentId, OldValue, NewValue, CreatedDate FROM Lead_Master__History WHERE ${[`Field = 'Lead_Stage__c'`, ...dt].join(' AND ')} ORDER BY CreatedDate ASC`;
+  const windows = dateTerms(since, floor);
   console.log(`[${STAGE_HISTORY_KEY}] ${since ? `incremental since ${since.toISOString()}` : `FULL load (since ${floor})`}`);
   let n = 0; let maxStamp: string | null = since?.toISOString() ?? null; const t0 = Date.now();
   const flush = async (buf: Map<string, Record<string, unknown>>) => {
@@ -188,7 +203,7 @@ async function syncStageHistory(s: SfSession): Promise<void> {
   };
   try {
     let buf = new Map<string, Record<string, unknown>>();   // lead_id -> latest row in this batch (ON CONFLICT cannot hit a row twice)
-    for await (const page of soql(s, q, false)) {
+    for (const dt of windows) for await (const page of soql(s, qFor(dt), false)) {
       for (const rec of page) {
         const lead = String(rec.ParentId); const at = String(rec.CreatedDate);
         const prev = buf.get(lead);
@@ -222,8 +237,8 @@ async function syncIcStatusHistory(s: SfSession): Promise<void> {
   const since = await getState(IC_HISTORY_KEY);
   if (!since && process.env.IC_HISTORY_INIT !== '1') { console.log(`[${IC_HISTORY_KEY}] no watermark yet and IC_HISTORY_INIT is not set - skipping (the initial load runs at night)`); return; }
   const floor = process.env.STAGE_HISTORY_SINCE || '2026-03-01T00:00:00Z';
-  const where = [`Field = 'Status__c'`, since ? `CreatedDate > ${since.toISOString()}` : `CreatedDate >= ${floor}`];
-  const q = `SELECT Id, ParentId, OldValue, NewValue, CreatedDate FROM Interested_Course__History WHERE ${where.join(' AND ')} ORDER BY CreatedDate ASC`;
+  const qFor = (dt: string[]) => `SELECT Id, ParentId, OldValue, NewValue, CreatedDate FROM Interested_Course__History WHERE ${[`Field = 'Status__c'`, ...dt].join(' AND ')} ORDER BY CreatedDate ASC`;
+  const windows = dateTerms(since, floor);
   console.log(`[${IC_HISTORY_KEY}] ${since ? `incremental since ${since.toISOString()}` : `FULL load (since ${floor})`}`);
   let n = 0; let maxStamp: string | null = since?.toISOString() ?? null; const t0 = Date.now();
   const flush = async (buf: Map<string, Record<string, unknown>>) => {
@@ -237,7 +252,7 @@ async function syncIcStatusHistory(s: SfSession): Promise<void> {
   };
   try {
     let buf = new Map<string, Record<string, unknown>>();
-    for await (const page of soql(s, q, false)) {
+    for (const dt of windows) for await (const page of soql(s, qFor(dt), false)) {
       for (const rec of page) {
         const ic = String(rec.ParentId); const at = String(rec.CreatedDate);
         const prev = buf.get(ic);
@@ -265,7 +280,8 @@ async function syncCallSummary(s: SfSession): Promise<void> {
   const since = await getState(CALLS_KEY);
   const floor = process.env.CALLS_SINCE || process.env.LEAD_SINCE || '2026-03-01T00:00:00Z';   // repo variable CALLS_SINCE (2026-05-01)
   if (!since) await sql`TRUNCATE salesforce.lead_calls`;
-  const q = `SELECT Id, WhatId, CreatedDate, Reason__c, Call_Status__c, OwnerId, Subject, Activity_Comments__c, TYPEOF What WHEN Interested_Course__c THEN Lead_Master__c WHEN Lead_Master__c THEN Id END FROM Task WHERE What.Type IN ('Lead_Master__c', 'Interested_Course__c') AND ${since ? `CreatedDate > ${since.toISOString()}` : `CreatedDate >= ${floor}`} ORDER BY CreatedDate ASC`;
+  const qFor = (dt: string[]) => `SELECT Id, WhatId, CreatedDate, Reason__c, Call_Status__c, OwnerId, Subject, Activity_Comments__c, TYPEOF What WHEN Interested_Course__c THEN Lead_Master__c WHEN Lead_Master__c THEN Id END FROM Task WHERE What.Type IN ('Lead_Master__c', 'Interested_Course__c') AND ${dt.join(' AND ')} ORDER BY CreatedDate ASC`;
+  const windows = dateTerms(since, floor);
   console.log(`[${CALLS_KEY}] ${since ? `incremental since ${since.toISOString()}` : `FULL load (since ${floor})`}`);
   let n = 0; let maxStamp: string | null = since?.toISOString() ?? null; const t0 = Date.now();
   const flush = async (buf: Map<string, CallAgg>) => {
@@ -286,7 +302,7 @@ async function syncCallSummary(s: SfSession): Promise<void> {
   };
   try {
     let buf = new Map<string, CallAgg>();
-    for await (const page of soql(s, q, false)) {
+    for (const dt of windows) for await (const page of soql(s, qFor(dt), false)) {
       for (const rec of page) {
         const what = rec.What as { Lead_Master__c?: string | null; Id?: string | null } | null;
         const lead = what?.Lead_Master__c ?? what?.Id ?? (String(rec.WhatId).startsWith('a02') ? String(rec.WhatId) : null);
