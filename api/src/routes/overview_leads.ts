@@ -32,7 +32,7 @@ const COLS = [
   'lead_id', 'lead_name', 'eps_id', 'first_name', 'last_name', 'mobile', 'email', 'lead_created_date', 'lead_source', 'lead_stage', 'lead_type', 'priority',
   'class_raw', 'class_group', 'district', 'city', 'owner_name', 'best_ic_status', 'lm_reason', 'is_duplicate',
   'touches_in_window', 'n_touches_all', 'first_touch_in_window', 'last_touch_in_window', 'last_touch_any', 'days_since_last_touch', 'touch_points', 'sources', 'staff',
-  'tab_converted', 'first_touch_point', 'last_touch_point', 'converted_first', 'converted', 'converted_at', 'last_payment_date', 'revenue', 'courses', 'sf_is_converted', 'sf_touch_count',
+  'tab_converted', 'first_touch_point', 'last_any_touch_point', 'last_touch_point', 'converted_first', 'converted', 'converted_at', 'last_payment_date', 'revenue', 'courses', 'sf_is_converted', 'sf_touch_count',
   'stage_since', 'touches_after_stage', 'calls', 'first_call_at', 'last_call_at', 'last_call_reason', 'last_call_status',
   'payments_in_range', 'fee_received', 'proposed_fee',
 ];
@@ -187,7 +187,7 @@ function leadQuery(sql: Sql, f: Filters, periods: { current: Period }, q: Record
            pg.district, x.city, pg.owner_name, x.best_ic_status, x.lm_reason, x.is_duplicate,
            pg.touches_in_window, pg.n_touches_all, pg.first_touch_in_window::text AS first_touch_in_window, pg.last_touch_in_window::text AS last_touch_in_window,
            la.last_touch_any::text AS last_touch_any, floor(EXTRACT(epoch FROM now() - la.last_touch_any) / 86400)::int AS days_since_last_touch,
-           x.touch_points, x.sources, x.staff, x.tab_converted, x.first_touch_point, x.last_touch_point, x.converted_first, x.converted,
+           x.touch_points, x.sources, x.staff, x.tab_converted, x.first_touch_point, x.last_any_touch_point, x.last_touch_point, x.converted_first, x.converted,
            pg.converted_at::text AS converted_at, pg.last_payment_date::text AS last_payment_date, pg.revenue::float8 AS revenue, x.courses,
            x.sf_is_converted, x.sf_touch_count,
            ss.stage_since::text AS stage_since,
@@ -217,7 +217,8 @@ function leadQuery(sql: Sql, f: Filters, periods: { current: Period }, q: Record
              string_agg(DISTINCT t.staff, ', ') FILTER (WHERE t.staff IS NOT NULL) AS staff,
              bool_or(t.tab_converted) AS tab_converted, bool_or(t.converted AND t.is_pre_conversion) AS converted_first, bool_or(t.converted) AS converted,
              max(t.courses) AS courses,
-             (array_agg(t.touch_point ORDER BY t.touch_at, t.touch_id))[1] AS first_touch_point,   -- the lead's very first touch (within the selection), not the attribution window's selected first touch
+             (array_agg(t.touch_point ORDER BY t.touch_at, t.touch_id))[1] AS first_touch_point,
+             (array_agg(t.touch_point ORDER BY t.touch_at DESC, t.touch_id DESC))[1] AS last_any_touch_point,   -- the lead's latest touch of any kind (within the selection)   -- the lead's very first touch (within the selection), not the attribution window's selected first touch
              max(t.touch_point) FILTER (WHERE t.tab_is_last_touch) AS last_touch_point,
              bool_or(t.lead_sf_is_converted) AS sf_is_converted, max(t.sf_touch_count)::int AS sf_touch_count,
              max(t.app_user_id)::int AS eps_id

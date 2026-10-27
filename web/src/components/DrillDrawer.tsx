@@ -45,6 +45,7 @@ const COLS: Col<Row>[] = [
   { key: 'n_touches_all', header: 'Touches (all)', align: 'right' },
   { key: 'touch_points', header: 'Touch points' },
   { key: 'first_touch_point', header: 'First touch point' },
+  { key: 'last_any_touch_point', header: 'Last touch point' },
   { key: 'last_touch_point', header: 'Last valid touch' },
   { key: 'last_touch_in_window', header: 'Last touch (window)', render: (v) => fmtDateTime(v as string) },
   { key: 'last_touch_any', header: 'Last touch (any)', render: (v) => fmtDateTime(v as string) },
