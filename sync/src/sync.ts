@@ -580,6 +580,14 @@ async function refreshViews(): Promise<void> {
     return tx<{ view_name: string; row_count: number; seconds: number }[]>`SELECT * FROM analytics.refresh_all()`;
   });
   for (const r of rows) console.log(`[refresh] ${r.view_name}: ${r.row_count} rows in ${r.seconds}s`);
+  // A concurrent refresh rewrites most rows and leaves the visibility map stale, so the Overview's index-only counts fall back to
+  // heap fetches (392k of them on mv_lead_lite, 12 s instead of 0.3 s) until the view is vacuumed; autovacuum does not trigger for
+  // days (dead rows stay under its 20% threshold). VACUUM must run outside a transaction, one statement each.
+  for (const r of rows) {
+    const t1 = Date.now();
+    await sql.unsafe(`VACUUM (ANALYZE) ${r.view_name}`).catch((e: unknown) => console.log(`[refresh] vacuum ${r.view_name} failed: ${e instanceof Error ? e.message : String(e)}`));
+    console.log(`[refresh] vacuumed ${r.view_name} in ${((Date.now() - t1) / 1000).toFixed(1)}s`);
+  }
   console.log(`[refresh] total ${((Date.now() - t0) / 1000).toFixed(1)}s`);
 }
 
