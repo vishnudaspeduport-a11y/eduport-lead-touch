@@ -54,6 +54,7 @@ jobs:
       TASK_SINCE: ${{ vars.TASK_SINCE || '2026-01-01T00:00:00Z' }}
       SYNC_OBJECTS: ${{ inputs.objects }}
       SKIP_OBJECTS: ${{ vars.SKIP_OBJECTS }}
+      WARM_SECRET: ${{ secrets.WARM_SECRET }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -72,7 +73,5 @@ jobs:
           elif [ "${{ inputs.full }}" = "true" ]; then npm run sync:full; else npm run sync; fi
       - name: Warm the dashboard cache
         # a sync changes the data version, which empties the response cache: fill the default views before anyone opens the page
-        if: inputs.sql == '' && secrets.WARM_SECRET != ''
-        env:
-          WARM_SECRET: ${{ secrets.WARM_SECRET }}
+        if: inputs.sql == '' && env.WARM_SECRET != ''
         run: curl -sS -m 600 -o /dev/null -w "warm HTTP %{http_code} in %{time_total}s\n" -X POST -H "x-warm-secret: $WARM_SECRET" https://eduport-lead-touch.vishnudasp-eduport.workers.dev/api/admin/warm || true
