@@ -149,7 +149,7 @@ export default function Analysis() {
     { key: 'first_name', header: 'Name', render: (v, r) => `${v ?? ''} ${r.last_name ?? ''}`.trim() || '–' }, { key: 'mobile', header: 'Mobile (Salesforce)' },
     { key: 'created_at', header: 'Created', render: (v) => fmtDateTime(v as string) }, { key: 'lead_stage', header: 'Stage' },
     { key: 'last_activity_at', header: 'Last activity', render: (v) => fmtDateTime(v as string) }, { key: 'last_activity_type', header: 'Activity type' }, { key: 'days_since_activity', header: 'Days since activity', align: 'right' }, { key: 'class_raw', header: 'Class' },
-    { key: 'lead_source', header: 'Lead source' }, { key: 'owner_name', header: 'Owner' }, { key: 'district', header: 'District' }, { key: 'lm_reason', header: 'LM reason' }, { key: 'best_ic_status', header: 'IC status' },
+    { key: 'lead_source', header: 'Primary source' }, { key: 'owner_name', header: 'Owner' }, { key: 'district', header: 'District' }, { key: 'lm_reason', header: 'LM reason' }, { key: 'best_ic_status', header: 'IC status' },
     { key: 'touches', header: 'Touches', align: 'right' }, { key: 'first_touch_point', header: 'First touch' }, { key: 'last_touch_point', header: 'Last touch' },
     { key: 'last_touch_at', header: 'Last touch time', render: (v) => fmtDateTime(v as string) }, { key: 'days_since_last_touch', header: 'Days since touch', align: 'right' },
     { key: 'lm_last_activity_at', header: 'LM last activity', render: (v) => fmtDateTime(v as string) }, { key: 'ic_last_activity_at', header: 'IC last activity', render: (v) => fmtDateTime(v as string) }, { key: 'last_touch_staff', header: 'Last touch staff' },

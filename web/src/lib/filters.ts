@@ -20,7 +20,7 @@ export type ListDim = (typeof LIST_DIMS)[number];
 
 /** The filter chips shown in the "Add filter" menu, in this order */
 export const FILTER_MENU: { key: ListDim; label: string; group: string }[] = [
-  { key: 'lead_source', label: 'Lead Source (Salesforce field)', group: 'Lead' },
+  { key: 'lead_source', label: 'Primary source (Salesforce Lead Source)', group: 'Lead' },
   { key: 'lead_stage', label: 'Lead Stage', group: 'Lead' },
   { key: 'class_group', label: 'Class', group: 'Lead' },
   { key: 'district', label: 'District', group: 'Lead' },

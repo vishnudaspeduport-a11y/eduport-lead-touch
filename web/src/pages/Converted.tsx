@@ -31,7 +31,7 @@ const USER_COLS: Col<Row>[] = [
   { key: 'last_touch_point', header: 'Last touch point' }, { key: 'last_touch_source', header: 'Last touch source' }, { key: 'last_touch_medium', header: 'Last touch medium' },
   { key: 'last_touch_campaign', header: 'Last touch campaign' }, { key: 'last_touch_staff', header: 'Last touch staff' },
   { key: 'last_touch_at', header: 'Last touch time', render: (v) => fmtDateTime(v as string) }, { key: 'touches_before_payment', header: 'Touches before payment', align: 'right' },
-  { key: 'lead_source', header: 'Lead source' }, { key: 'owner_name', header: 'Owner' }, { key: 'no_lead', header: 'No lead', render: yesNo }, { key: 'lead_id', header: 'Salesforce Id' },
+  { key: 'lead_source', header: 'Primary source' }, { key: 'owner_name', header: 'Owner' }, { key: 'no_lead', header: 'No lead', render: yesNo }, { key: 'lead_id', header: 'Salesforce Id' },
 ];
 const USER_SORTS: [string, string][] = [['last_payment_date', 'Last payment'], ['first_payment_date', 'First payment'], ['revenue', 'Revenue'], ['payments', 'Payments'], ['touches_before_payment', 'Touches before payment'], ['last_touch_at', 'Last touch time'], ['lead_name', 'Lead ID'], ['lead_stage', 'Stage']];
 

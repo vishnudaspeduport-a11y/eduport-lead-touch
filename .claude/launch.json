@@ -75,6 +75,15 @@
         "PUBLIC_ROLE:admin"
       ],
       "port": 8789
+    },
+    {
+      "name": "web-local-api-8789",
+      "runtimeExecutable": "cmd",
+      "runtimeArgs": [
+        "/c",
+        "set API_PROXY=http://127.0.0.1:8789&& npm run dev:local --prefix web"
+      ],
+      "port": 5173
     }
   ]
 }
