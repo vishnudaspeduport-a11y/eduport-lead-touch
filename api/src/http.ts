@@ -33,7 +33,7 @@ export async function handle<T>(c: Context<AppEnv>, fn: (x: Ctx) => Promise<T>, 
   const isDev = c.env.CACHE_SCOPE === 'dev' || /^(localhost|127.0.0.1|[::1])$/.test(new URL(c.req.url).hostname);
   const build = isDev ? devBuildId() : (c.env.BUILD_ID ?? 'nobuild');
   if (edge && c.req.method === 'GET') {
-    const mask = user.role === 'viewer' ? 'viewer' : 'full';   // a new deploy never serves answers computed by the previous code; in `wrangler dev` every restart starts clean
+    const mask = user.role === 'viewer' || user.role === 'bde' ? 'masked' : 'full';   // masked roles never read an answer computed for a full one (and vice versa)
     if (edge === 'version') key = await cacheKey({ version: await dataVersion(c.env, c.executionCtx), build, mask, path: c.req.path, query: q });
     else { ttl = edge.ttl; key = await cacheKey({ version: `ttl${edge.ttl}`, build, mask, path: c.req.path, query: q, user: edge.perUser ? String(user.id ?? user.email) : undefined }); }
     if (!wantsFresh(c.req.raw, q)) {
@@ -42,12 +42,22 @@ export async function handle<T>(c: Context<AppEnv>, fn: (x: Ctx) => Promise<T>, 
     }
   }
 
-  const t0 = Date.now();
-  const data = await withSql(c.env, c.executionCtx, (sql) => fn({ sql, f, periods, q, role: user.role }));
-  const body = JSON.stringify({ data, meta: { period: periods.current, previous: periods.previous, basis: f.basis, tookMs: Date.now() - t0, cachedAt: key ? new Date().toISOString() : undefined, build: key ? build : undefined } });
-  if (key) cachePut(c.env, c.executionCtx, key, body, ttl);
-  return new Response(body, { status: 200, headers: { ...headers, 'Content-Type': 'application/json; charset=UTF-8', 'X-LT-Cache': key ? 'miss' : 'bypass' } });
+  const json = (body: string, tag: string) => new Response(body, { status: 200, headers: { ...headers, 'Content-Type': 'application/json; charset=UTF-8', 'X-LT-Cache': tag } });
+  // single flight: a second identical request while the first is still computing (the warm-up and the first visitor, two users on the
+  // same view) waits for that answer instead of running the same fan-out again on the two-core database
+  const running = key ? inflight.get(key) : undefined;
+  if (running) return json(await running, 'hit-inflight');
+  const work = (async () => {
+    const t0 = Date.now();
+    const data = await withSql(c.env, c.executionCtx, (sql) => fn({ sql, f, periods, q, role: user.role }));
+    const body = JSON.stringify({ data, meta: { period: periods.current, previous: periods.previous, basis: f.basis, tookMs: Date.now() - t0, cachedAt: key ? new Date().toISOString() : undefined, build: key ? build : undefined } });
+    if (key) cachePut(c.env, c.executionCtx, key, body, ttl);
+    return body;
+  })();
+  if (key) { inflight.set(key, work); work.catch(() => undefined).finally(() => inflight.delete(key)); }
+  return json(await work, key ? 'miss' : 'bypass');
 }
+const inflight = new Map<string, Promise<string>>();
 
 /**
  * Promise.all for a page's query fan-out that records how long each query took. Slow ones (> 3 s) are logged

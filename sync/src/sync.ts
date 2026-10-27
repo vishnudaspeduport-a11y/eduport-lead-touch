@@ -593,9 +593,11 @@ async function refreshViews(): Promise<void> {
 
 // ---------------------------------------------------------------- compaction (free tier: 500 MB hard limit)
 // REFRESH CONCURRENTLY and the daily upserts leave dead space that only VACUUM FULL returns. Run it whenever
-// the database passes COMPACT_ABOVE_MB (default 420) so usage never creeps up to the quota.
+// the database passes COMPACT_ABOVE_MB (default 3000; the Pro plan holds 8 GB) so usage never creeps up to the quota.
+// VACUUM FULL holds exclusive locks (~25 s in which every dashboard query waits), so a manual daytime "Sync now" never compacts.
 async function compactIfNeeded(): Promise<void> {
-  const limit = Number(process.env.COMPACT_ABOVE_MB ?? 420);
+  if (process.env.GITHUB_EVENT_NAME === 'workflow_dispatch') { console.log('[compact] skipped on a manual run'); return; }
+  const limit = Number(process.env.COMPACT_ABOVE_MB ?? 3000);
   const [{ mb }] = await sql<{ mb: number }[]>`SELECT round(pg_database_size(current_database())/1048576.0)::int AS mb`;
   console.log(`[compact] database size ${mb} MB (threshold ${limit} MB)`);
   if (mb < limit) return;

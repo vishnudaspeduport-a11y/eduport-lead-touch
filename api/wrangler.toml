@@ -35,7 +35,7 @@ id = "cdb9b0b1bde44c7f90613ea02870a1c5"
 # the pooled connection can be cut mid-transaction and leave the views locked. The Worker cron only WARMS the
 # response cache (default views of every page) so the first visitor after a sync does not wait for the database.
 [triggers]
-crons = ["*/20 * * * *"]
+crons = ["*/10 * * * *"]
 
 # --- Non-secret config ---------------------------------------------------------
 [vars]

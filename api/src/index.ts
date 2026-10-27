@@ -49,7 +49,7 @@ api.post('/admin/refresh', async (c) => {
   return c.json({ data: out });
 });
 
-// Admin: cache warm-up on demand (the cron does the same every 20 minutes) + a peek at the memory layer
+// Admin: cache warm-up on demand (the cron does the same every 10 minutes; the deploy script and the sync job call it with X-Warm-Secret) + a peek at the memory layer
 api.post('/admin/warm', async (c) => {
   if (c.get('user').role !== 'admin') return c.json({ error: { code: 'forbidden', message: 'admin only' } }, 403);
   const out = await warmCache(c.env, c.executionCtx);

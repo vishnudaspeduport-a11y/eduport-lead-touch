@@ -88,6 +88,12 @@ export const authMiddleware = createMiddleware<AppEnv>(async (c, next) => {
   }
   if (PUBLIC.has(new URL(c.req.url).pathname)) { await next(); return; }
   if (c.req.header(INTERNAL_HEADER) === INTERNAL_TOKEN()) { c.set('user', { email: 'warm-up', role: 'analyst' }); await next(); return; }
+  // the deploy script and the sync job warm the cache as soon as they finish (a deploy empties it, a sync changes the data version):
+  // the shared secret opens exactly one endpoint
+  const warm = c.req.header('x-warm-secret');
+  if (warm && env.WARM_SECRET && c.req.method === 'POST' && new URL(c.req.url).pathname === '/api/admin/warm' && safeEqual(warm, env.WARM_SECRET)) {
+    c.set('user', { email: 'warm-secret', role: 'admin' }); await next(); return;
+  }
 
   const token = getCookie(c, COOKIE);
   if (!token) return c.json({ error: { code: 'unauthenticated', message: 'Sign in required' } }, 401);
@@ -102,6 +108,12 @@ export const authMiddleware = createMiddleware<AppEnv>(async (c, next) => {
   c.set('user', user);
   await next();
 });
+
+function safeEqual(a: string, b: string): boolean {
+  if (a.length !== b.length) return false;
+  let r = 0; for (let i = 0; i < a.length; i++) r |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  return r === 0;
+}
 
 export const requireAdmin = createMiddleware<AppEnv>(async (c, next) => {
   if (c.get('user')?.role !== 'admin') return c.json({ error: { code: 'forbidden', message: 'admin only' } }, 403);

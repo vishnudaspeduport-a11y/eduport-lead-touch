@@ -111,6 +111,33 @@ async function byDim(sql: Sql, w: Frag, col: string, conv: Frag, convFirst: Frag
   return rows.map((r) => ({ ...r, conv_rate: pct(r.converted, r.leads) }));
 }
 
+/** Dimension columns of the Overview cards (one GROUPING SETS statement when they share the main WHERE) */
+const CARD_DIMS = ['touch_point', 'source', 'class_raw', 'medium', 'campaign', 'staff', 'lm_reason'] as const;
+type CardDim = (typeof CARD_DIMS)[number];
+const joinFrags = (sql: Sql, parts: Frag[], sep: Frag) => parts.reduce((a, x) => sql`${a}${sep}${x}`);
+
+/**
+ * Every card whose dim is not in the filter bar shares the same WHERE, so they are answered by a single scan of the window's touch rows
+ * (GROUPING SETS) instead of one statement per card: ~0.4 s for seven cards instead of 7 x 0.13 s plus seven pooled connections.
+ * A card whose own dim IS filtered keeps its separate byDim (its WHERE drops that filter).
+ */
+async function byDims(sql: Sql, w: Frag, cols: CardDim[], conv: Frag, convFirst: Frag): Promise<Record<string, DimRow[]>> {
+  const out: Record<string, DimRow[]> = Object.fromEntries(cols.map((c) => [c, []]));
+  if (!cols.length) return out;
+  const dimCase = joinFrags(sql, cols.map((c) => sql`WHEN GROUPING(t.${sql(c)}) = 0 THEN ${c}`), sql` `);
+  const keyCase = joinFrags(sql, cols.map((c) => sql`WHEN GROUPING(t.${sql(c)}) = 0 THEN COALESCE(t.${sql(c)}::text, '(null)')`), sql` `);
+  const sets = joinFrags(sql, cols.map((c) => sql`(t.${sql(c)})`), sql`, `);
+  const rows = await sql<(DimRow & { dim: string })[]>`
+    SELECT CASE ${dimCase} END AS dim, CASE ${keyCase} END AS key,
+           count(*)::int AS touches, count(DISTINCT t.lead_id)::int AS leads,
+           count(DISTINCT t.lead_id) FILTER (WHERE ${conv})::int AS converted,
+           count(DISTINCT t.lead_id) FILTER (WHERE ${convFirst})::int AS converted_first
+    FROM analytics.mv_touch_flat t WHERE ${w} GROUP BY GROUPING SETS (${sets})`;
+  for (const r of rows) { const { dim, ...rest } = r; out[dim]?.push({ ...rest, conv_rate: pct(rest.converted, rest.leads) }); }
+  for (const c of cols) out[c] = out[c]!.sort((a, b) => b.touches - a.touches).slice(0, 2000);
+  return out;
+}
+
 overview.get('/overview', (c) =>
   handle(c, async ({ sql, f, periods, q }) => {
     const w = flatWhere(sql, f, periods.current);
@@ -121,6 +148,10 @@ overview.get('/overview', (c) =>
     const pp = paymentPeriod(f);
     const feeWin = pp ?? periods.current;   // payments counted for the fee KPIs: the payment-date window when it is on, else the main date range
     const staleDays = Math.max(1, Math.min(365, Number.parseInt(q.stale_days ?? '5', 10) || 5));
+    // cards: one grouping-sets scan for every dim without its own filter; a filtered dim keeps its separate statement (its WHERE skips that filter)
+    const sharedDims = CARD_DIMS.filter((d) => !f[d]?.length);
+    const cardsP = byDims(sql, w, sharedDims, conv, convFirst);
+    const card = (d: CardDim) => (f[d]?.length ? byDim(sql, wx(d), d, conv, convFirst, 2000, f[d] ?? []) : cardsP.then((x) => x[d] ?? []));
     const QN = ['kpis', 'stale', 'avg_window', 'avg_alltime', 'stages', 'ic_status', 'touch_point', 'source', 'class_raw', 'call_reason', 'medium', 'campaign', 'staff', 'daily', 'stage_react', 'lm_reason', 'new_leads', 'stages_revised', 'tat', 'leads_union', 'fees', 'ic_status_revised', 'ic_course'];
     const [[k], [stale], [avgWin], [avgAll], stages, icStatus, touchPoint, source, classRaw, reason, medium, campaign, staff, daily, reactRows, lmReason, [newLeads], stagesRevised, tatRows, [leadsUnion], [fees], icStatusRevised, icCourse] = await timedAll(QN, [
       sql<{ touches: number; leads: number; converted: number; converted_first: number; sf_converted: number; stage_conv_total: number; stage_conv_unpaid: number; paid_other_stage: number; touches_of_converted: number }[]>`
@@ -164,12 +195,12 @@ overview.get('/overview', (c) =>
         JOIN salesforce.interested_course__c ic ON ic.lead_master__c = k.lead_id AND ic.isdeleted = false
         WHERE NULLIF(btrim(ic.status__c),'') IS NOT NULL
         GROUP BY 1 ORDER BY leads DESC`,
-      byDim(sql, wx('touch_point'), 'touch_point', conv, convFirst, 2000, f.touch_point ?? []), byDim(sql, wx('source'), 'source', conv, convFirst, 2000, f.source ?? []), byDim(sql, wx('class_raw'), 'class_raw', conv, convFirst, 2000, f.class_raw ?? []), sql<DimRow[]>`
+      card('touch_point'), card('source'), card('class_raw'), sql<DimRow[]>`
         SELECT CASE WHEN c.lead_id IS NULL THEN '(no call)' WHEN c.last_reason IS NULL THEN '(no reason recorded)' ELSE c.last_reason END AS key, count(*)::int AS touches, count(DISTINCT t.lead_id)::int AS leads,
                count(DISTINCT t.lead_id) FILTER (WHERE ${conv})::int AS converted, count(DISTINCT t.lead_id) FILTER (WHERE ${convFirst})::int AS converted_first
         FROM analytics.mv_touch_flat t LEFT JOIN salesforce.lead_calls c ON c.lead_id = t.lead_id
         WHERE ${wx('call_reason')} GROUP BY 1 ORDER BY leads DESC LIMIT 500`,
-      byDim(sql, wx('medium'), 'medium', conv, convFirst, 2000, f.medium ?? []), byDim(sql, wx('campaign'), 'campaign', conv, convFirst, 2000, f.campaign ?? []), byDim(sql, wx('staff'), 'staff', conv, convFirst, 2000, f.staff ?? []),
+      card('medium'), card('campaign'), card('staff'),
       sql<{ d: string; touches: number; leads: number; converted: number }[]>`
         SELECT t.touch_date::text AS d, count(*)::int AS touches, count(DISTINCT t.lead_id)::int AS leads,
                count(DISTINCT t.lead_id) FILTER (WHERE ${conv})::int AS converted
@@ -180,9 +211,11 @@ overview.get('/overview', (c) =>
           SELECT t.lead_id, max(t.lead_stage) AS stage, max(t.lead_created_date)::timestamptz AS created,
                  (SELECT max(t2.touch_at) FROM analytics.mv_touch_flat t2 WHERE t2.lead_id = t.lead_id) AS last_touch
           FROM analytics.mv_touch_flat t WHERE ${w} AND t.lead_stage IN ('Not Willing Now', 'Disqualified', 'Not Connected', 'P2 Completed') GROUP BY t.lead_id)
-        SELECT stage, count(*)::int AS total, count(*) FILTER (WHERE last_touch > analytics.stage_since(lead_id, stage, created))::int AS reactivated
-        FROM r GROUP BY stage ORDER BY reactivated DESC`,
-      byDim(sql, wx('lm_reason'), 'lm_reason', conv, convFirst, 2000, f.lm_reason ?? []),
+        SELECT r.stage, count(*)::int AS total,
+               count(*) FILTER (WHERE r.last_touch > COALESCE(ls.changed_at, GREATEST(r.created, '2026-03-01 00:00:00+00'::timestamptz)))::int AS reactivated
+        FROM r LEFT JOIN salesforce.lead_stage ls ON ls.lead_id = r.lead_id AND ls.stage = r.stage
+        GROUP BY r.stage ORDER BY reactivated DESC`,
+      card('lm_reason'),
       // New leads: every Salesforce lead created inside the window (most have no touch yet, so this reads the lead view, not the touch table).
       // Keep the touched test as a correlated EXISTS (index probe, ~0.1 s): `lead_id IN (SELECT ...)` inside the FILTER ran row by row (150 s).
       sql<{ new_leads: number; new_leads_touched: number }[]>`
@@ -226,7 +259,7 @@ overview.get('/overview', (c) =>
       sql<{ fee_payers: number; fee_payments: number; fee_received: number; proposed_fee: number; fee_enrollments: number; fee_enrollments_unknown: number }[]>`
         WITH lk AS (SELECT DISTINCT t.lead_id FROM analytics.mv_touch_flat t WHERE ${w}),
         -- leads of the selection -> their phone keys -> every app / Ujra account on those numbers (mv_user_phone, indexed) -> valid payments in the window
-        pk AS (SELECT DISTINCT analytics.phone_key(m.mobile_number__c) AS pk FROM lk JOIN salesforce.lead_master__c m ON m.id = lk.lead_id WHERE analytics.phone_key_valid(m.mobile_number__c)),
+        pk AS (SELECT DISTINCT m.phone_key AS pk FROM lk JOIN analytics.mv_lead_lite m ON m.lead_id = lk.lead_id WHERE m.phone_valid),
         ok AS (SELECT DISTINCT up.user_id FROM pk JOIN analytics.mv_user_phone up ON up.phone_key = pk.pk),
         pay AS (
           SELECT hp.id, hp.user_id, hp.amount, hp.enrollment_id, hp.enrollment_fee, hp.enrollment_discount

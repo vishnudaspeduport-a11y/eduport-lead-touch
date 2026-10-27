@@ -18,6 +18,8 @@ export interface Env {
   APP_VERSION?: string;
   /** set per deploy by scripts/deploy.mjs (git sha + time); part of every cache key so a deploy invalidates cached answers */
   BUILD_ID?: string;
+  /** shared secret (wrangler secret) that lets the deploy script and the sync job call POST /api/admin/warm right after they finish */
+  WARM_SECRET?: string;
   /** "dev" under wrangler dev (set by .claude/launch.json): cache keys get a per-isolate id instead of BUILD_ID */
   CACHE_SCOPE?: string;
   EXPORT_ROW_CAP?: string;
