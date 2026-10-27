@@ -358,16 +358,17 @@ const APP_TABLES: AppTableSpec[] = [
             FROM public.home_payment p LEFT JOIN public.home_enrollment he ON he.id = p.enrollment_id WHERE ${VALID} ORDER BY p.id`).cursor(5000)),
   },
   {
+    // every app account with a phone number, paying or not (until 2026-10-27 only paying accounts were copied, so the EPS ID of a
+    // freshly installed account showed "-"); ~770k rows, increment by created / updated_at
     name: 'home_customuser', stampCol: 'updated_at',
     select: (src, since) => (since
       ? src`SELECT u.id, u.phone, u.alternative_number, u.is_deleted, u.created, u.updated_at
             FROM public.home_customuser u
-            WHERE u.id IN (SELECT p.user_id FROM public.home_payment p WHERE p.created > ${since}::timestamptz - interval '45 days')
-               OR (u.updated_at > ${since}::timestamptz AND EXISTS (SELECT 1 FROM public.home_payment p WHERE p.user_id = u.id AND p.is_success = true))
+            WHERE (u.updated_at > ${since}::timestamptz - interval '1 day' OR u.created > ${since}::timestamptz - interval '1 day')
+              AND u.phone IS NOT NULL AND u.phone <> ''
             ORDER BY u.id`.cursor(5000)
       : src.unsafe(`SELECT u.id, u.phone, u.alternative_number, u.is_deleted, u.created, u.updated_at
-            FROM public.home_customuser u
-            WHERE u.id IN (SELECT p.user_id FROM public.home_payment p WHERE ${VALID}) ORDER BY u.id`).cursor(5000)),
+            FROM public.home_customuser u WHERE u.phone IS NOT NULL AND u.phone <> '' ORDER BY u.id`).cursor(5000)),
   },
   {
     // batch / course lookup (~3.6k rows) so the dashboard can show names instead of ids

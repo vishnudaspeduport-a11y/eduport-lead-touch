@@ -55,6 +55,26 @@
         "set API_PROXY=http://127.0.0.1:8788&& npm run dev:local --prefix web"
       ],
       "port": 5173
+    },
+    {
+      "name": "api-noauth",
+      "runtimeExecutable": "node",
+      "runtimeArgs": [
+        "api/node_modules/wrangler/bin/wrangler.js",
+        "dev",
+        "--remote",
+        "-c",
+        "api/wrangler.toml",
+        "--port",
+        "8789",
+        "--var",
+        "CACHE_SCOPE:dev",
+        "--var",
+        "AUTH_MODE:none",
+        "--var",
+        "PUBLIC_ROLE:admin"
+      ],
+      "port": 8789
     }
   ]
 }

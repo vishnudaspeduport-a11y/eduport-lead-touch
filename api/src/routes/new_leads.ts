@@ -180,7 +180,8 @@ function leadQuery(sql: Sql, f: Filters, p: Period, q: Record<string, string>, p
     ${page ? sql`LIMIT ${page.limit} OFFSET ${page.offset}` : sql``}`;
   const inner = LEAD_SORT.has(sortCol) ? enrich(paged(base)) : paged(enrich(base));
   return sql<Rec[]>`
-    SELECT pg.lead_id, pg.lead_name, COALESCE(pg.eps_id, pg.payer_user_id)::int AS eps_id, pg.first_name, pg.last_name, pg.mobile, pg.email,
+    SELECT pg.lead_id, pg.lead_name,
+           COALESCE(pg.eps_id, pg.payer_user_id, (SELECT min(up.user_id) FROM analytics.mv_user_phone up WHERE up.phone_key = pg.phone_key))::int AS eps_id, pg.first_name, pg.last_name, pg.mobile, pg.email,
            pg.created_date::text AS lead_created_date, pg.lead_source, pg.lead_stage, pg.lead_type, pg.priority, pg.class_raw, pg.class_group,
            pg.district, pg.city, pg.owner_name, pg.best_ic_status, pg.lm_reason, pg.is_duplicate, pg.sf_is_converted, pg.sf_touch_count,
            COALESCE(pg.n_touches_all, 0) AS n_touches_all, pg.first_touch_any::text AS first_touch_any, pg.last_touch_any::text AS last_touch_any,

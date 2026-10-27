@@ -180,7 +180,9 @@ function leadQuery(sql: Sql, f: Filters, periods: { current: Period }, q: Record
       ORDER BY ${sql(sortCol)} ${dir}, lead_id
       ${page ? sql`LIMIT ${page.limit} OFFSET ${page.offset}` : sql``}
     )
-    SELECT pg.lead_id, pg.lead_name, x.eps_id, l.first_name__c AS first_name, l.last_name__c AS last_name, l.mobile_number__c AS mobile, l.email__c AS email,
+    SELECT pg.lead_id, pg.lead_name,
+           COALESCE(x.eps_id, (SELECT min(up.user_id) FROM analytics.mv_user_phone up WHERE up.phone_key = analytics.phone_key(l.mobile_number__c)))::int AS eps_id,
+           l.first_name__c AS first_name, l.last_name__c AS last_name, l.mobile_number__c AS mobile, l.email__c AS email,
            pg.lead_created_date::text AS lead_created_date, pg.lead_source, pg.lead_stage, x.lead_type, x.priority, pg.class_raw, x.class_group,
            pg.district, x.city, pg.owner_name, x.best_ic_status, x.lm_reason, x.is_duplicate,
            pg.touches_in_window, pg.n_touches_all, pg.first_touch_in_window::text AS first_touch_in_window, pg.last_touch_in_window::text AS last_touch_in_window,

@@ -145,7 +145,7 @@ export default function Analysis() {
   const extraCols: Col<Row>[] = (parsed?.headers ?? []).filter((h) => h !== phoneCol).map((h) => ({ key: `file: ${h}`, header: `File · ${h}` }));
   const cols: Col<Row>[] = [
     { key: 'input_phone', header: 'Phone (file)' }, { key: 'matched', header: 'Lead found', render: (v) => (v ? 'Yes' : 'No') },
-    { key: 'lead_name', header: 'Lead ID' }, { key: 'eps_id', header: 'EPS ID', render: (v) => (v == null ? '–' : String(v)) },
+    { key: 'lead_name', header: 'Lead ID' }, { key: 'eps_id', header: 'EPS ID', render: (v) => (v == null ? '–' : String(v)) }, { key: 'has_app_account', header: 'App account', render: (v) => (v ? 'Yes' : 'No') },
     { key: 'first_name', header: 'Name', render: (v, r) => `${v ?? ''} ${r.last_name ?? ''}`.trim() || '–' }, { key: 'mobile', header: 'Mobile (Salesforce)' },
     { key: 'created_at', header: 'Created', render: (v) => fmtDateTime(v as string) }, { key: 'lead_stage', header: 'Stage' },
     { key: 'last_activity_at', header: 'Last activity', render: (v) => fmtDateTime(v as string) }, { key: 'last_activity_type', header: 'Activity type' }, { key: 'days_since_activity', header: 'Days since activity', align: 'right' }, { key: 'class_raw', header: 'Class' },

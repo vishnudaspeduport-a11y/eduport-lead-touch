@@ -51,6 +51,8 @@ analysis.post('/analysis/phones', async (c) => {
         JOIN analytics.v_payment_all hp ON hp.user_id = cu.user_id AND hp.payment_method = 0 AND hp.deleted = false AND hp.is_success = true AND hp.payment_success = true
         LEFT JOIN app.core_batch b ON b.id = COALESCE(hp.enrollment_batch_id, hp.batch_id)
         GROUP BY 1),
+      -- any app account on the number (paying or not); the EPS ID shown prefers the paying account
+      acct AS (SELECT p.phone_key, min(cu.user_id)::int AS eps_id FROM p JOIN analytics.mv_user_phone cu ON cu.phone_key = p.phone_key GROUP BY 1),
       tch AS (
         SELECT t.lead_id, count(*)::int AS touches, min(t.touch_at) AS first_touch_at, max(t.touch_at) AS last_touch_at,
                (array_agg(t.touch_point ORDER BY t.touch_at))[1] AS first_touch_point, (array_agg(t.touch_point ORDER BY t.touch_at DESC))[1] AS last_touch_point,
@@ -81,7 +83,7 @@ analysis.post('/analysis/phones', async (c) => {
              leads.lead_id, leads.lead_name, leads.first_name, leads.last_name, leads.mobile, leads.email, leads.created_at::text AS created_at,
              leads.lead_stage, leads.class_raw, leads.class_group, leads.lead_source, leads.lead_type, leads.district, leads.city, leads.owner_name,
              leads.lm_reason, leads.best_ic_status, leads.sf_is_converted, leads.sf_touch_count, leads.is_duplicate,
-             pay.eps_id, (pay.payments IS NOT NULL) AS converted, pay.first_payment_date::text AS first_payment_date, pay.last_payment_date::text AS last_payment_date,
+             COALESCE(pay.eps_id, acct.eps_id)::int AS eps_id, (acct.eps_id IS NOT NULL) AS has_app_account, (pay.payments IS NOT NULL) AS converted, pay.first_payment_date::text AS first_payment_date, pay.last_payment_date::text AS last_payment_date,
              pay.payments, pay.revenue, pay.courses, pay.converted_academic_year, pay.last_paid_academic_year, pay.academic_years,
              tch.touches, tch.first_touch_at::text AS first_touch_at, tch.first_touch_point, tch.last_touch_at::text AS last_touch_at, tch.last_touch_point, tch.last_touch_staff,
              tch.touch_points, tch.campaigns,
@@ -91,6 +93,7 @@ analysis.post('/analysis/phones', async (c) => {
       FROM p
       LEFT JOIN leads ON leads.phone_key = p.phone_key
       LEFT JOIN pay ON pay.phone_key = p.phone_key
+      LEFT JOIN acct ON acct.phone_key = p.phone_key
       LEFT JOIN tch ON tch.lead_id = leads.lead_id
       LEFT JOIN act ON act.lead_id = leads.lead_id
       LEFT JOIN lm ON lm.lead_id = leads.lead_id
