@@ -74,4 +74,5 @@ jobs:
       - name: Warm the dashboard cache
         # a sync changes the data version, which empties the response cache: fill the default views before anyone opens the page
         if: inputs.sql == '' && env.WARM_SECRET != ''
-        run: curl -sS -m 600 -o /dev/null -w "warm HTTP %{http_code} in %{time_total}s\n" -X POST -H "x-warm-secret: $WARM_SECRET" https://eduport-lead-touch.vishnudasp-eduport.workers.dev/api/admin/warm || true
+        run: |
+          curl -sS -m 600 -o /dev/null -w "warm HTTP %{http_code} in %{time_total}s\n" -X POST -H "x-warm-secret: $WARM_SECRET" https://eduport-lead-touch.vishnudasp-eduport.workers.dev/api/admin/warm || true
