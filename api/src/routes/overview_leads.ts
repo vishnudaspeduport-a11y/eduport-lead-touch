@@ -217,7 +217,8 @@ function leadQuery(sql: Sql, f: Filters, periods: { current: Period }, q: Record
              string_agg(DISTINCT t.staff, ', ') FILTER (WHERE t.staff IS NOT NULL) AS staff,
              bool_or(t.tab_converted) AS tab_converted, bool_or(t.converted AND t.is_pre_conversion) AS converted_first, bool_or(t.converted) AS converted,
              max(t.courses) AS courses,
-             max(t.touch_point) FILTER (WHERE t.tab_is_first_touch) AS first_touch_point, max(t.touch_point) FILTER (WHERE t.tab_is_last_touch) AS last_touch_point,
+             (array_agg(t.touch_point ORDER BY t.touch_at, t.touch_id))[1] AS first_touch_point,   -- the lead's very first touch (within the selection), not the attribution window's selected first touch
+             max(t.touch_point) FILTER (WHERE t.tab_is_last_touch) AS last_touch_point,
              bool_or(t.lead_sf_is_converted) AS sf_is_converted, max(t.sf_touch_count)::int AS sf_touch_count,
              max(t.app_user_id)::int AS eps_id
       FROM analytics.mv_touch_flat t WHERE t.lead_id = pg.lead_id AND ${sel}
