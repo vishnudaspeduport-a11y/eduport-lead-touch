@@ -6,7 +6,6 @@ name: sync
 on:
   schedule:
     - cron: '30 4 * * *'     # once a day at 10:00 IST (04:30 UTC) - the free GitHub Actions minutes ran low with six runs a day (2026-10-17); use "Sync now" for an intraday refresh
-    - cron: '0 22 27 10 *'    # one-off 2026-10-28 03:30 IST: full copy of every app account (home_customuser, ~770k rows; was paying accounts only); remove after it has run
   workflow_dispatch:
     inputs:
       full:
@@ -69,8 +68,7 @@ jobs:
       - name: Sync
         if: inputs.sql == ''
         run: |
-          if [ "${{ github.event.schedule }}" = "0 22 27 10 *" ]; then SYNC_OBJECTS=home_customuser npm run sync:full;
-          elif [ "${{ inputs.full }}" = "true" ]; then npm run sync:full; else npm run sync; fi
+          if [ "${{ inputs.full }}" = "true" ]; then npm run sync:full; else npm run sync; fi
       - name: Warm the dashboard cache
         # a sync changes the data version, which empties the response cache: fill the default views before anyone opens the page
         if: inputs.sql == '' && env.WARM_SECRET != ''
