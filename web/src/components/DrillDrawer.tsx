@@ -66,7 +66,6 @@ const COLS: Col<Row>[] = [
   { key: 'sf_is_converted', header: 'SF converted', render: yesNo },
   { key: 'is_duplicate', header: 'Duplicate', render: yesNo },
   { key: 'email', header: 'Email' },
-  { key: 'lead_id', header: 'Salesforce Id' },
 ];
 
 /** columns of the Proposed fee / Fee received list: the money columns first */
@@ -91,7 +90,6 @@ export const FEE_COLS: Col<Row>[] = [
   { key: 'owner_name', header: 'Owner' },
   { key: 'last_call_at', header: 'Last call', render: (v) => fmtDateTime(v as string) },
   { key: 'last_call_reason', header: 'Last call reason' },
-  { key: 'lead_id', header: 'Salesforce Id' },
 ];
 
 /** columns of the New leads list (lead grain; touches and purchases are all-time) */
@@ -122,7 +120,6 @@ export const NEW_LEAD_COLS: Col<Row>[] = [
   { key: 'owner_name', header: 'Owner' },
   { key: 'lm_reason', header: 'LM reason' },
   { key: 'sf_is_converted', header: 'SF converted', render: yesNo },
-  { key: 'lead_id', header: 'Salesforce Id' },
 ];
 export const NEW_LEAD_SORTS: [string, string][] = [['created_date', 'Created'], ['n_touches_all', 'Touches (all)'], ['last_touch_any', 'Last touch'], ['converted_at', 'First payment'], ['last_payment_date', 'Last payment'], ['revenue', 'Revenue'], ['lead_name', 'Lead ID'], ['lead_stage', 'Stage'], ['class_raw', 'Class'], ['owner_name', 'Owner']];
 
