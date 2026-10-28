@@ -81,7 +81,7 @@ export default function TouchAttribution({ mode }: { mode: 'first' | 'last' }) {
       </div>
 
       <div className="grid gap-4 xl:grid-cols-2">
-        {card('Touch point analysis (converted leads)', d?.touch_point, 'touch_point', 'tone-teal')}
+        {card('Touch point analysis', d?.touch_point, 'touch_point', 'tone-teal')}
         {card('Class wise distribution', d?.class_raw, 'class_raw', 'tone-violet')}
         {card('Lead source distribution', d?.source, 'source', 'tone-orange', { asTable: true })}
         {card('Medium', d?.medium, 'medium', 'tone-green', { asTable: true })}

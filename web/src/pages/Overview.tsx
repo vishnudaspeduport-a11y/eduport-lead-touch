@@ -163,7 +163,7 @@ export default function Overview() {
       </div>
 
       <div className="grid gap-4 xl:grid-cols-2">
-        {dimCard('Touch point analysis (converted leads)', d?.touch_point, 'touch_point', ['touches', 'converted'], 'tone-teal', { colorful: true, height: 270 })}
+        {dimCard('Touch point analysis', d?.touch_point, 'touch_point', ['touches', 'converted'], 'tone-teal', { colorful: true, height: 270 })}
         {dimCard('Lead source distribution', d?.source, 'source', ['touches', 'converted'], 'tone-orange', { asTable: true, height: 270, help: 'Source recorded on the touch: total lead touches, converted leads and total leads per source.' })}
         {dimCard('Class (Lead Master)', d?.class_raw, 'class_raw', ['touches', 'converted'], 'tone-violet', { limit: 14, height: 300, colorful: true, help: 'The Class field on the Salesforce lead record (Lead Master), not the interested course and not the purchased course: lead touches in the window of converted leads, grouped by that class. Purchased course and grade are on the Converted page; interested courses have their own card and filter.' })}
         {dimCard('LM Reason', d?.lm_reason, 'lm_reason', ['leads'], 'tone-amber', { limit: 14, height: 300, help: def.lm_reason, subtitle: 'Total leads by the LM Reason field on the lead · click a row to filter every card' })}
