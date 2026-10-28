@@ -143,7 +143,7 @@ export default function Converted() {
           ]} />}>
           <HBars data={(d?.tat?.[tat]?.buckets ?? []).map((b) => ({ key: b.key, value: b.leads, secondary: d?.tat?.[tat]?.leads ? (b.leads / d.tat[tat].leads) * 100 : null }))} valueLabel="Paying users" secondaryLabel="share" />
         </ChartCard>
-        <ChartCard title="Payments per day" tone="tone-teal" subtitle="paying users and payments by payment date" loading={q.isLoading} error={q.error} rows={d?.daily ?? []} height={260} className="xl:col-span-2">
+        <ChartCard title="Payments per day" tone="tone-teal" subtitle="paying users and payments by payment date" loading={q.isLoading} error={q.error} rows={d?.daily ?? []} height={260}>
           <DailyLines data={(d?.daily ?? []).map((r) => ({ d: r.d.slice(5), users: r.users, payments: r.payments }))} xKey="d" lines={[{ key: 'users', label: 'Users' }, { key: 'payments', label: 'Payments' }]} />
         </ChartCard>
       </div>
