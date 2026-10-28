@@ -3,6 +3,7 @@ import type { Sql } from 'postgres';
 import type { AppEnv, Role } from '../env';
 import { handle, intParam, maskEmail, maskName, maskPhone, pct, csvStream } from '../http';
 import { LIST_KEYS, parseFilters, resolvePeriods, type Filters, type Frag, type Period } from '../filters';
+import { shapeTat, tatBucket, type TatRow } from './overview';
 
 /**
  * "Converted" page = Tableau workbook "Converted", dashboard "Lead Touch - Converted".
@@ -99,7 +100,8 @@ converted.get('/converted', (c) =>
     const pm = payMethod(q);
     const V = VALID(sql, pm);
     const R = payRestrict(sql, q);   // payments / revenue / course / grade / daily count only payments matching the grade or course selection
-    const [[k], [pk], byStage, byPoint, bySource, byMedium, byCampaign, byStaff, byCourse, byGrade, daily, grades] = await Promise.all([
+    const firstPay = pm === 'm0' ? sql`m.first_payment_date_m0` : sql`m.first_payment_date`;
+    const [[k], [pk], byStage, byPoint, bySource, byMedium, byCampaign, byStaff, byCourse, byGrade, daily, grades, tatRows] = await Promise.all([
       sql<{ users: number; new_users: number; no_touch: number; no_lead: number; revenue: number; touches: number }[]>`
         SELECT count(*)::int AS users, count(*) FILTER (WHERE ${pm === 'm0' ? sql`m.first_payment_date_m0` : sql`m.first_payment_date`} BETWEEN ${p.from} AND ${p.to})::int AS new_users,
                count(*) FILTER (WHERE m.last_touch_id IS NULL)::int AS no_touch, count(*) FILTER (WHERE m.no_lead)::int AS no_lead,
@@ -128,12 +130,26 @@ converted.get('/converted', (c) =>
         FROM analytics.v_payment_all hp LEFT JOIN app.core_batch b ON b.id = COALESCE(hp.enrollment_batch_id, hp.batch_id) WHERE ${V} AND ${R} AND hp.payment_date BETWEEN ${p.from} AND ${p.to} AND hp.user_id IN (SELECT m.user_id FROM analytics.mv_payer m WHERE ${w})
         GROUP BY 1 ORDER BY 1`,
       sql<{ key: string }[]>`SELECT DISTINCT COALESCE(grade_title, 'No Grade On Batch') AS key FROM app.core_batch ORDER BY 1`,
+      // Turnaround time of the paying users in the selection: lead created -> the user's first valid payment day, and the latest touch
+      // on/before that day -> that day (same bands as the Overview card). "created" needs a Salesforce lead on the phone.
+      sql<TatRow[]>`
+        WITH c AS (
+          SELECT m.user_id, ${firstPay} AS paid, ll.created_date AS created,
+                 (SELECT max(t.touch_date) FROM analytics.mv_touch_flat t WHERE t.lead_id = m.lead_id AND t.touch_date <= ${firstPay}) AS last_touch
+          FROM analytics.mv_payer m LEFT JOIN analytics.mv_lead_lite ll ON ll.lead_id = m.lead_id
+          WHERE ${w} AND ${firstPay} IS NOT NULL),
+        d AS (SELECT 'created' AS kind, (paid - created)::int AS days FROM c WHERE created IS NOT NULL
+              UNION ALL SELECT 'touch', (paid - last_touch)::int FROM c)
+        SELECT kind, ${tatBucket(sql, sql`days`)} AS key, count(*)::int AS leads, NULL::float8 AS avg_days, NULL::float8 AS median_days FROM d GROUP BY 1, 2
+        UNION ALL
+        SELECT kind, '_all', count(*)::int, avg(days)::float8, percentile_cont(0.5) WITHIN GROUP (ORDER BY days)::float8 FROM d GROUP BY 1`,
     ]);
     return {
       period: p, pm,
       kpis: { ...k, ...pk, no_touch_pct: pct(k.no_touch, k.users), no_lead_pct: pct(k.no_lead, k.users) },
       by_stage: byStage, by_last_touch_point: byPoint, by_last_source: bySource, by_last_medium: byMedium, by_last_campaign: byCampaign, by_last_staff: byStaff,
       by_course: byCourse, by_grade: byGrade, daily, grades: grades.map((g) => g.key),
+      tat: { created: shapeTat(tatRows, 'created'), touch: shapeTat(tatRows, 'touch') },
       definitions: {
         users: pm === 'm0'
           ? 'Distinct paying app users with a valid payment (payment_method 0, not deleted, is_success, payment_success) whose payment date is in the window. This counts paying app accounts, including people with no Salesforce lead.'
@@ -141,6 +157,7 @@ converted.get('/converted', (c) =>
             ? 'Paying users with a valid payment of payment_method 1 (gateway EMI instalments; every such row carries an emi_id) dated in the window.'
             : 'Distinct paying app users with ANY valid payment (any payment_method; not deleted, is_success, payment_success) dated in the window. Switch to "Method 0" to count payment_method 0 only, as the Overview does.',
         new_users: 'Paying users whose FIRST ever valid payment is inside the window (new customers).',
+        tat: 'Turnaround time of the paying users in the selection, in calendar days, measured to the user\'s FIRST valid payment day (first method-0 payment in M0 mode). "Lead created → paid": from the creation day of the user\'s Salesforce lead (the most recent lead on the phone) to that payment day; users with no lead are left out; "before lead created" = the lead was created after the first payment. "Last touch → paid": from the latest lead touch on or before that payment day to the payment day; "no prior touch" = no touch before the first payment. Median = half the users were faster.',
         no_touch: 'Users with no lead touch on/before their payment: no Salesforce lead on that phone, or all touches came after the payment. Shown as "No Touch Before Payment" in the tables.',
         no_lead: 'Paying users whose phone matches no Salesforce lead.',
         credit: 'Every user is credited to ONE touch: the latest touch dated on/before its last valid payment day, across all Salesforce leads with the same phone. If that last touch is an Eduport App touch made less than 2 hours before the payment, the credit goes to the touch before it; when the app touch is the only touch, it keeps the credit. Touch point, source, medium, campaign and staff come from that touch.',

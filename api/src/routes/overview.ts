@@ -96,6 +96,15 @@ export function tatBucket(sql: Sql, days: Frag): Frag {
                 WHEN ${days} <= 14 THEN '8–14 d' WHEN ${days} <= 30 THEN '15–30 d' ELSE '31+ d' END`;
 }
 export const TAT_BUCKETS = ['before lead created', 'same day', '1–3 d', '4–7 d', '8–14 d', '15–30 d', '31+ d', 'no prior touch'];
+export interface TatRow { kind: string; key: string; leads: number; avg_days: number | null; median_days: number | null }
+export interface TatShape { leads: number; avg_days: number | null; median_days: number | null; buckets: { key: string; leads: number }[] }
+/** Rows of the turnaround statement (one per kind x band plus a kind x '_all' total) -> the chart shape for one kind */
+export function shapeTat(rows: TatRow[], kind: 'created' | 'touch'): TatShape {
+  const all = rows.find((r) => r.kind === kind && r.key === '_all');
+  const buckets = TAT_BUCKETS.map((key) => ({ key, leads: rows.find((r) => r.kind === kind && r.key === key)?.leads ?? 0 }))
+    .filter((b) => (b.key !== 'before lead created' && b.key !== 'no prior touch') || b.leads > 0);
+  return { leads: all?.leads ?? 0, avg_days: all?.avg_days ?? null, median_days: all?.median_days ?? null, buckets };
+}
 
 export interface DimRow { key: string; touches: number; leads: number; converted: number; converted_first: number; conv_rate?: number | null }
 
@@ -302,12 +311,7 @@ overview.get('/overview', (c) =>
         WHERE ${icCourseExpr(sql)} IS NOT NULL
         GROUP BY 1 ORDER BY leads DESC LIMIT 2000`,
     ]);
-    const tatShape = (kind: 'created' | 'touch') => {
-      const all = tatRows.find((r) => r.kind === kind && r.key === '_all');
-      const buckets = TAT_BUCKETS.map((key) => ({ key, leads: tatRows.find((r) => r.kind === kind && r.key === key)?.leads ?? 0 }))
-        .filter((b) => (b.key !== 'before lead created' && b.key !== 'no prior touch') || b.leads > 0);
-      return { leads: all?.leads ?? 0, avg_days: all?.avg_days ?? null, median_days: all?.median_days ?? null, buckets };
-    };
+    const tatShape = (kind: 'created' | 'touch') => shapeTat(tatRows, kind);
     const leadsAll = f.basis === 'created' ? (leadsUnion?.n ?? k.leads) : k.leads;
     return {
       period: periods.current, payment_period: pp, basis: f.basis === 'created' ? 'created' : 'touch',

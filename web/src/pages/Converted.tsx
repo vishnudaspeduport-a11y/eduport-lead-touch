@@ -1,7 +1,7 @@
 import { useState, type ReactNode } from 'react';
 import { useApi } from '../lib/api';
 import { useFilters, type ListDim } from '../lib/filters';
-import { fmtINR, fmtInt, fmtPct, fmtDateTime } from '../lib/format';
+import { fmt1, fmtINR, fmtInt, fmtPct, fmtDateTime } from '../lib/format';
 import { ChartCard } from '../components/ChartCard';
 import { DataTable, type Col } from '../components/DataTable';
 import { DailyLines, Donut, HBars } from '../charts';
@@ -15,6 +15,7 @@ interface Resp {
   kpis: { users: number; new_users: number; no_touch: number; no_lead: number; payments_all: number; revenue_all: number; touches: number; no_touch_pct: number | null; no_lead_pct: number | null; };
   by_stage: Dim[]; by_last_touch_point: Dim[]; by_last_source: Dim[]; by_last_medium: Dim[]; by_last_campaign: Dim[]; by_last_staff: Dim[]; by_course: Dim[]; by_grade: Dim[];
   daily: { d: string; users: number; payments: number; revenue: number }[];
+  tat: Record<'created' | 'touch', { leads: number; avg_days: number | null; median_days: number | null; buckets: { key: string; leads: number }[] }>;
   grades: string[];
   definitions: Record<string, string>;
 }
@@ -73,6 +74,7 @@ export default function Converted() {
   const [pm, setPm] = useState<'all' | 'm0' | 'm1'>(() => { try { return (localStorage.getItem('lt-pm') as 'all' | 'm0' | 'm1') || 'all'; } catch { return 'all'; } });
   const changePm = (v: 'all' | 'm0' | 'm1') => { setPm(v); try { localStorage.setItem('lt-pm', v); } catch { /* ignore */ } };
   const q = useApi<Resp>('/converted', { ...params, grade, course, pm });
+  const [tat, setTat] = useState<'created' | 'touch'>('created');
   const d = q.data?.data;
   const k = d?.kpis;
   const def = d?.definitions ?? {};
@@ -133,6 +135,14 @@ export default function Converted() {
         {card('Lead source distribution (last touch)', d?.by_last_source, 'last_touch_source', 'tone-orange', { filterDim: 'source', asTable: true })}
         {card('Medium wise conversion (last touch)', d?.by_last_medium, 'last_touch_medium', 'tone-green', { filterDim: 'medium', asTable: true })}
         {card('Campaign wise conversion (last touch)', d?.by_last_campaign, 'last_touch_campaign', 'tone-brand', { filterDim: 'campaign', asTable: true })}
+        <ChartCard title="Turnaround time" tone="tone-green" help={def.tat} loading={q.isLoading} error={q.error} rows={d?.tat?.[tat]?.buckets ?? []} height={240}
+          subtitle={d?.tat ? `${fmtInt(d.tat[tat].leads)} paying users · median ${d.tat[tat].median_days == null ? '–' : fmt1(d.tat[tat].median_days)} d · average ${d.tat[tat].avg_days == null ? '–' : fmt1(d.tat[tat].avg_days)} d` : 'days to the first payment'}
+          actions={<Segmented size="xs" value={tat} onChange={setTat} options={[
+            { value: 'created', label: 'Lead created → paid', title: 'days from the lead\'s creation day to the user\'s first valid payment day' },
+            { value: 'touch', label: 'Last touch → paid', title: 'days from the latest touch on or before the first payment to that payment day' },
+          ]} />}>
+          <HBars data={(d?.tat?.[tat]?.buckets ?? []).map((b) => ({ key: b.key, value: b.leads, secondary: d?.tat?.[tat]?.leads ? (b.leads / d.tat[tat].leads) * 100 : null }))} valueLabel="Paying users" secondaryLabel="share" />
+        </ChartCard>
         <ChartCard title="Payments per day" tone="tone-teal" subtitle="paying users and payments by payment date" loading={q.isLoading} error={q.error} rows={d?.daily ?? []} height={260} className="xl:col-span-2">
           <DailyLines data={(d?.daily ?? []).map((r) => ({ d: r.d.slice(5), users: r.users, payments: r.payments }))} xKey="d" lines={[{ key: 'users', label: 'Users' }, { key: 'payments', label: 'Payments' }]} />
         </ChartCard>
