@@ -129,7 +129,8 @@ export default function Overview() {
       <PageHeader title="Overview" subtitle={`${f.basis === 'created' ? 'lead created' : 'touch date'} ${f.from} → ${f.to}${f.pay ? ` · payment date ${f.pfrom} → ${f.pto}` : ''} · touch-level view of every lead touched in the range`} />
       {q.error && <Note>⚠ {q.error.message}</Note>}
 
-      <div className="grid grid-cols-2 gap-4 sm:grid-cols-4 xl:grid-cols-6">
+      {/* 13 column units (New leads and Fee received span 2) -> two rows of 7 on wide screens */}
+      <div className="grid grid-cols-2 gap-4 sm:grid-cols-4 xl:grid-cols-7">
         {q.isLoading && Array.from({ length: 12 }).map((_, i) => <Skeleton key={i} className="h-[92px]" />)}
         {k && <>
           <Kpi className="col-span-2" tone="tone-green" icon={<Icon.Plus />} title="New leads" value={fmtInt(k.new_leads)} sub={`Salesforce leads created ${f.from} → ${f.to} · touched or not`} def={def.new_leads} onClick={() => openNew()}
@@ -153,7 +154,7 @@ export default function Overview() {
             onClick={() => open('stage_react', 'Lost leads with new activity')} />
           <Kpi tone="tone-red" icon={<Icon.Spark />} title="Proposed fee" value={fmtINR(k.proposed_fee)} def={def.proposed_fee} onClick={() => openFee('Proposed fee')}
             sub={`fee − discount of ${fmtInt(k.fee_enrollments)} enrollments paid ${k.fee_window.from} → ${k.fee_window.to}${k.fee_enrollments_unknown ? ` · ${fmtInt(k.fee_enrollments_unknown)} without a fee on record` : ''}`} />
-          <Kpi tone="tone-amber" icon={<Icon.Check />} title="Fee received" value={fmtINR(k.fee_received)} def={def.fee_received} onClick={() => openFee('Fee received')}
+          <Kpi className="xl:col-span-2" tone="tone-amber" icon={<Icon.Check />} title="Fee received" value={fmtINR(k.fee_received)} def={def.fee_received} onClick={() => openFee('Fee received')}
             sub={`${fmtInt(k.fee_payments)} payments by ${fmtInt(k.fee_payers)} users · ${k.fee_window.from} → ${k.fee_window.to}${k.proposed_fee ? ` · ${fmtPct((k.fee_received / k.proposed_fee) * 100)} of the proposed fee` : ''}`} />
         </>}
       </div>
