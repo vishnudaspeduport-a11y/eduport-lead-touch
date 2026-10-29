@@ -17,12 +17,18 @@ export default function Access() {
   const [modal, setModal] = useState<{ kind: 'new' } | { kind: 'password'; row: Row } | { kind: 'export' } | null>(null);
   const [exp, setExp] = useState<{ configured: boolean; updated_at: string | null; updated_by: string | null } | null>(null);
   const loadExport = async () => { try { setExp(await authCall('/export/status')); } catch { /* shown as unknown */ } };
+  // can passwords be e-mailed? (RESEND_API_KEY + MAIL_FROM on the Worker)
+  const [mail, setMail] = useState<{ configured: boolean; from: string | null } | null>(null);
+  const loadMail = async () => { try { setMail(await authCall('/auth/mail/status')); } catch { setMail({ configured: false, from: null }); } };
+  const [notice, setNotice] = useState<{ ok: boolean; text: string } | null>(null);
+  const mailResult = (what: string, to: string, r: { email_sent?: boolean; email_error?: string }, wanted: boolean) =>
+    setNotice(!wanted ? { ok: true, text: `${what} · the password was not e-mailed` } : r.email_sent ? { ok: true, text: `${what} · the password was e-mailed to ${to}` } : { ok: false, text: `${what} · the e-mail could not be sent (${r.email_error ?? 'unknown error'}) - share the password another way` });
 
   const load = async () => {
     try { const d = await authCall<{ users: Row[]; audit: Audit[] }>('/auth/users'); setRows(d.users); setAudit(d.audit); setErr(null); }
     catch (e) { setErr((e as Error).message); }
   };
-  useEffect(() => { if (me?.role === 'admin') { load(); loadExport(); } }, [me?.role]);
+  useEffect(() => { if (me?.role === 'admin') { load(); loadExport(); loadMail(); } }, [me?.role]);
   if (me?.role !== 'admin') return <Navigate to="/" replace />;
 
   const act = async (fn: () => Promise<unknown>) => { try { await fn(); await load(); } catch (e) { alert((e as Error).message); } };
@@ -35,7 +41,8 @@ export default function Access() {
   return (
     <div className="space-y-4">
       <PageHeader title="Access" subtitle="Who can open this dashboard. Admins create every account and set every password. Manager = every page with full details and downloads; BDE = phone numbers masked, no Lead explorer, no downloads."
-        right={<button className="btn btn-primary" onClick={() => setModal({ kind: 'new' })}><Icon.Plus /> Add account</button>} />
+        right={<button className="btn btn-primary" onClick={() => setModal({ kind: 'new' })}><Icon.Plus />
+      {notice && <div className={`rounded-lg border px-3 py-2 text-xs ${notice.ok ? 'border-emerald-300 bg-emerald-50 text-emerald-800' : 'border-red-300 bg-red-50 text-red-700'}`}>{notice.text} <button className="ml-2 underline" onClick={() => setNotice(null)}>dismiss</button></div>} Add account</button>} />
 
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-5">
         <Stat label="Accounts" value={rows?.length ?? 0} />
@@ -112,9 +119,9 @@ export default function Access() {
         )}
       </div>
 
-      {modal?.kind === 'new' && <NewAccount onClose={() => setModal(null)} onDone={() => { setModal(null); load(); }} />}
+            {modal?.kind === 'new' && <NewAccount mail={mail} onClose={() => setModal(null)} onDone={(email, r, wanted) => { setModal(null); load(); mailResult(`Account created for ${email}`, email, r, wanted); }} />}
       {modal?.kind === 'export' && <SetExportPassword onClose={() => setModal(null)} onDone={() => { setModal(null); loadExport(); load(); }} />}
-      {modal?.kind === 'password' && <SetPassword row={modal.row} self={modal.row.id === me.id} onClose={() => setModal(null)} onDone={() => { setModal(null); load(); }} />}
+      {modal?.kind === 'password' && <SetPassword row={modal.row} self={modal.row.id === me.id} mail={mail} onClose={() => setModal(null)} onDone={(r, wanted) => { setModal(null); load(); mailResult(`Password set for ${modal.row.email}`, modal.row.email, r, wanted); }} />}
     </div>
   );
 }
@@ -153,16 +160,32 @@ function PasswordField({ value, onChange }: { value: string; onChange: (v: strin
   );
 }
 
-function NewAccount({ onClose, onDone }: { onClose: () => void; onDone: () => void }) {
+type MailInfo = { configured: boolean; from: string | null } | null;
+type MailResult = { email_sent?: boolean; email_error?: string };
+/** "E-mail the password" checkbox: on by default when the Worker can send mail, disabled with a hint otherwise */
+function MailOption({ mail, checked, onChange, who }: { mail: MailInfo; checked: boolean; onChange: (v: boolean) => void; who: string }) {
+  const can = !!mail?.configured;
+  return (
+    <label className={`flex items-start gap-2 rounded-lg border border-line p-2 text-[11px] ${can ? 'cursor-pointer' : 'opacity-70'}`}>
+      <input type="checkbox" className="mt-0.5" checked={can && checked} disabled={!can} onChange={(e) => onChange(e.target.checked)} />
+      <span><b className="text-ink">E-mail the password to {who}</b><br />
+        <span className="text-ink-3">{can ? `Sent from ${mail?.from} with the dashboard link, the login e-mail and this password.` : 'E-mail is not set up on the server (RESEND_API_KEY / MAIL_FROM), so share the password another way.'}</span></span>
+    </label>
+  );
+}
+
+function NewAccount({ mail, onClose, onDone }: { mail: MailInfo; onClose: () => void; onDone: (email: string, r: MailResult, wanted: boolean) => void }) {
   const [email, setEmail] = useState(''); const [name, setName] = useState(''); const [role, setRole] = useState<AccountRole>('user'); const [password, setPassword] = useState(generatePassword());
+  const [sendEmail, setSendEmail] = useState(true);
   const [busy, setBusy] = useState(false); const [err, setErr] = useState<string | null>(null);
+  const wanted = sendEmail && !!mail?.configured;
   const submit = async (e: React.FormEvent) => {
     e.preventDefault(); setBusy(true); setErr(null);
-    try { await authCall('/auth/users', { body: { email, name, role, password } }); onDone(); }
+    try { const r = await authCall<MailResult>('/auth/users', { body: { email, name, role, password, send_email: wanted } }); onDone(email, r, wanted); }
     catch (x) {
       // the first try may have been created even though its response was lost; treat a duplicate as done
       const e = x as { status?: number; retried?: boolean };
-      if (e.status === 409 && e.retried) { onDone(); return; }
+      if (e.status === 409 && e.retried) { onDone(email, { email_sent: false, email_error: 'the account was created on a retried request; the e-mail status is unknown' }, wanted); return; }
       setErr((x as Error).message);
     } finally { setBusy(false); }
   };
@@ -177,6 +200,7 @@ function NewAccount({ onClose, onDone }: { onClose: () => void; onDone: () => vo
           </div>
         </div>
         <div className="text-[11px] font-medium text-ink-3">Password<div className="mt-1"><PasswordField value={password} onChange={setPassword} /></div></div>
+        <MailOption mail={mail} checked={sendEmail} onChange={setSendEmail} who={email || 'this person'} />
         {err && <div className="text-xs text-red-600">{err}</div>}
         <div className="flex justify-end gap-2"><button type="button" className="btn" onClick={onClose}>Cancel</button><button className="btn btn-primary" disabled={busy}>{busy ? 'Creating…' : 'Create account'}</button></div>
       </form>
@@ -202,16 +226,19 @@ function SetExportPassword({ onClose, onDone }: { onClose: () => void; onDone: (
   );
 }
 
-function SetPassword({ row, self, onClose, onDone }: { row: Row; self: boolean; onClose: () => void; onDone: () => void }) {
+function SetPassword({ row, self, mail, onClose, onDone }: { row: Row; self: boolean; mail: MailInfo; onClose: () => void; onDone: (r: MailResult, wanted: boolean) => void }) {
   const [password, setPassword] = useState(generatePassword()); const [busy, setBusy] = useState(false); const [err, setErr] = useState<string | null>(null);
+  const [sendEmail, setSendEmail] = useState(!self);
+  const wanted = sendEmail && !!mail?.configured;
   const submit = async (e: React.FormEvent) => {
     e.preventDefault(); setBusy(true); setErr(null);
-    try { await authCall(`/auth/users/${row.id}/password`, { body: { password } }); onDone(); } catch (x) { setErr((x as Error).message); } finally { setBusy(false); }
+    try { const r = await authCall<MailResult>(`/auth/users/${row.id}/password`, { body: { password, send_email: wanted } }); onDone(r, wanted); } catch (x) { setErr((x as Error).message); } finally { setBusy(false); }
   };
   return (
     <Modal title={`Set password · ${row.email}`} onClose={onClose}>
       <form className="space-y-3" onSubmit={submit}>
         <PasswordField value={password} onChange={setPassword} />
+        <MailOption mail={mail} checked={sendEmail} onChange={setSendEmail} who={row.email} />
         <div className="text-[11px] text-ink-3">{self ? 'Your other devices will be signed out.' : 'The person will be signed out everywhere and must use the new password.'}</div>
         {err && <div className="text-xs text-red-600">{err}</div>}
         <div className="flex justify-end gap-2"><button type="button" className="btn" onClick={onClose}>Cancel</button><button className="btn btn-primary" disabled={busy}>{busy ? 'Saving…' : 'Set password'}</button></div>

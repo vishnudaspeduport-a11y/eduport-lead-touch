@@ -23,6 +23,9 @@ export interface Env {
   /** "dev" under wrangler dev (set by .claude/launch.json): cache keys get a per-isolate id instead of BUILD_ID */
   CACHE_SCOPE?: string;
   EXPORT_ROW_CAP?: string;
+  /** account e-mails (new account / password set) through Resend: API key = Worker secret, MAIL_FROM = wrangler.toml var (verified domain) */
+  RESEND_API_KEY?: string;
+  MAIL_FROM?: string;
 }
 
 /** admin = manages accounts + admin actions; analyst = full lead details (account role "user" = Manager);

@@ -5,6 +5,7 @@ import type { AppEnv } from '../env';
 import { getSql, release, withSql } from '../db';
 import { hashPassword, verifyPassword, passwordProblem, sha256Hex } from '../password';
 import { COOKIE, endSession, forgetAll, forgetSession, requireAdmin, startSession, type Account } from '../auth';
+import { accountMail, mailConfigured, sendMail } from '../email';
 
 /**
  * /api/auth/*  - login, logout, own password, first-admin setup
@@ -21,9 +22,9 @@ const MAX_FAILS = 8; const LOCK_MIN = 15;
 const email = z.string().trim().toLowerCase().email().max(200);
 const Login = z.object({ email, password: z.string().min(1).max(128) });
 const Setup = z.object({ email, name: z.string().trim().max(120).default(''), password: z.string() });
-const NewUser = z.object({ email, name: z.string().trim().max(120).default(''), role: z.enum(['admin', 'user', 'bde']), password: z.string() });
+const NewUser = z.object({ email, name: z.string().trim().max(120).default(''), role: z.enum(['admin', 'user', 'bde']), password: z.string(), send_email: z.boolean().default(false) });
 const Patch = z.object({ name: z.string().trim().max(120).optional(), role: z.enum(['admin', 'user', 'bde']).optional(), is_active: z.boolean().optional() });
-const SetPw = z.object({ password: z.string() });
+const SetPw = z.object({ password: z.string(), send_email: z.boolean().default(false) });
 const ChangePw = z.object({ current: z.string(), password: z.string() });
 const SavedFilter = z.object({ query: z.string().max(4000) });
 
@@ -170,6 +171,16 @@ authRoutes.post('/auth/password', async (c) => {
 // ---------------------------------------------------------------- admin: accounts (requireAdmin is scoped to /auth/users* above)
 const admin = authRoutes;
 
+/** GET /auth/mail/status : can the app e-mail passwords? (RESEND_API_KEY + MAIL_FROM) - admin only */
+admin.get('/auth/mail/status', requireAdmin, (c) => c.json({ data: { configured: mailConfigured(c.env), from: c.env.MAIL_FROM ?? null } }));
+
+/** e-mail the account details; never throws - the account change itself has already happened */
+async function mailPassword(c: { env: Parameters<typeof sendMail>[0]; req: { url: string } }, o: { to: string; name: string; password: string; kind: 'new' | 'reset'; by: string }): Promise<{ email_sent: boolean; email_error?: string }> {
+  const origin = new URL(c.req.url).origin;
+  const r = await sendMail(c.env, accountMail({ ...o, origin }));
+  return r.ok ? { email_sent: true } : { email_sent: false, email_error: r.error };
+}
+
 const USER_COLS = (sql: ReturnType<typeof getSql>) => sql`u.id::int AS id, u.email, u.name, u.role, u.is_active, u.last_login_at::text, u.password_set_at::text, u.created_at::text, u.created_by, u.locked_until::text,
   (SELECT count(*)::int FROM app_auth.sessions s WHERE s.user_id = u.id AND s.expires_at > now()) AS active_sessions`;
 
@@ -190,8 +201,9 @@ admin.post('/auth/users', async (c) => {
     const [dup] = await sql`SELECT 1 FROM app_auth.users WHERE lower(email) = ${b.email} AND created_at <= now()`;
     if (dup) return c.json({ error: { code: 'conflict', message: 'An account with this e-mail already exists' } }, 409);
     const [u] = await sql`INSERT INTO app_auth.users (email, name, role, password_hash, created_by) VALUES (${b.email}, ${b.name || b.email.split('@')[0]!}, ${b.role}, ${await hashPassword(b.password)}, ${me.email}) RETURNING id::int AS id, email, name, role, is_active`;
-    await sql`INSERT INTO app_auth.audit (actor, action, target, detail) VALUES (${me.email}, 'create_user', ${b.email}, ${`role=${b.role}`})`;
-    return c.json({ data: { user: u } }, 201);
+    const mail = b.send_email ? await mailPassword(c, { to: b.email, name: b.name ?? '', password: b.password, kind: 'new', by: me.name || me.email }) : { email_sent: false };
+    await sql`INSERT INTO app_auth.audit (actor, action, target, detail) VALUES (${me.email}, 'create_user', ${b.email}, ${`role=${b.role}${b.send_email ? (mail.email_sent ? ' · password e-mailed' : ` · e-mail failed: ${mail.email_error}`) : ''}`})`;
+    return c.json({ data: { user: u, ...mail } }, 201);
   } finally { release(sql, c.executionCtx); }
 });
 
@@ -229,13 +241,14 @@ admin.post('/auth/users/:id/password', async (c) => {
   const pwErr = passwordProblem(b.password); if (pwErr) return bad(c, pwErr);
   const sql = getSql(c.env);
   try {
-    const [u] = await sql`UPDATE app_auth.users SET password_hash = ${await hashPassword(b.password)}, password_set_at = now(), failed_attempts = 0, locked_until = NULL, updated_at = now() WHERE id = ${id} RETURNING email`;
+    const [u] = await sql`UPDATE app_auth.users SET password_hash = ${await hashPassword(b.password)}, password_set_at = now(), failed_attempts = 0, locked_until = NULL, updated_at = now() WHERE id = ${id} RETURNING email, name`;
     if (!u) return c.json({ error: { code: 'not_found', message: 'No such account' } }, 404);
     const token = getCookie(c, COOKIE); const keep = id === me.id && token ? await sha256Hex(token) : '';
     await sql`DELETE FROM app_auth.sessions WHERE user_id = ${id} AND token_hash <> ${keep}`;
     await sql`INSERT INTO app_auth.audit (actor, action, target) VALUES (${me.email}, 'set_password', ${u.email as string})`;
     forgetAll();
-    return c.json({ data: { ok: true } });
+    const mail = b.send_email ? await mailPassword(c, { to: u.email as string, name: (u.name as string) ?? '', password: b.password, kind: 'reset', by: me.name || me.email }) : { email_sent: false };
+    return c.json({ data: { ok: true, ...mail } });
   } finally { release(sql, c.executionCtx); }
 });
 
