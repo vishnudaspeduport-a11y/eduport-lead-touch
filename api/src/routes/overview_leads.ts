@@ -82,7 +82,7 @@ function dimCond(sql: Sql, q: Record<string, string>, f?: Filters, p?: Period | 
     // correlated subquery was planned badly and hit the 90 s statement timeout.
     const ay = sql`COALESCE((SELECT NULLIF(btrim(b.academic_year), '')
                              FROM analytics.v_valid_payment_x vp LEFT JOIN app.core_batch b ON b.id = vp.batch_id
-                             WHERE vp.phone_key = m.phone_key
+                             WHERE vp.phone_key = m.phone_key AND NULLIF(btrim(b.academic_year), '') IS NOT NULL
                              ORDER BY vp.payment_date DESC, vp.payment_time DESC NULLS LAST, vp.payment_id DESC LIMIT 1), '(no academic year)')`;
     const w = f ? flatWhere(sql, f, p ?? null) : sql`true`;
     let test: Frag;

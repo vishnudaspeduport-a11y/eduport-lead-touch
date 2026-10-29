@@ -320,8 +320,8 @@ overview.get('/overview', (c) =>
         WHERE ${icCourseExpr(sql)} IS NOT NULL
         GROUP BY 1 ORDER BY leads DESC LIMIT 2000`,
       // Academic-year split of the two conversion KPIs: the academic year of the course (core_syllabusstructure.academic_year, copied onto
-      // app.core_batch) of the lead's LATEST valid payment; no batch or no year on the course = '(no academic year)' (Ujra bookings, old
-      // payments). The year written in a batch title is NOT used. The payment is looked up on the lead's phone key.
+      // app.core_batch) of the lead's LATEST valid payment THAT HAS one; Ujra bookings and old payments without a batch carry no year, so
+      // a lead whose only payments are such = '(no academic year)'. The year written in a batch title is NOT used. Lookup on the lead's phone key.
       sql<{ kind: string; key: string; leads: number }[]>`
         WITH c AS (
           SELECT t.lead_id, bool_or(${convFirst}) AS after_touch, bool_or(${convBefore}) AS before_win, max(t.converted_at) AS converted_at
@@ -331,7 +331,7 @@ overview.get('/overview', (c) =>
           SELECT c.after_touch, c.before_win,
                  COALESCE((SELECT NULLIF(btrim(b.academic_year), '')
                            FROM analytics.v_valid_payment_x vp LEFT JOIN app.core_batch b ON b.id = vp.batch_id
-                           WHERE vp.phone_key = m.phone_key
+                           WHERE vp.phone_key = m.phone_key AND NULLIF(btrim(b.academic_year), '') IS NOT NULL
                            ORDER BY vp.payment_date DESC, vp.payment_time DESC NULLS LAST, vp.payment_id DESC LIMIT 1), '(no academic year)') AS ay
           FROM c JOIN analytics.mv_lead_lite m ON m.lead_id = c.lead_id)
         SELECT 'after' AS kind, ay AS key, count(*)::int AS leads FROM a WHERE after_touch GROUP BY 2
@@ -397,7 +397,7 @@ overview.get('/overview', (c) =>
         stage_conv_unpaid: 'Leads whose Salesforce Lead Stage is "Converted" but with NO valid payment on their phone (any date): marked converted without a purchase.',
         paid_other_stage: 'Leads counted in Total converted (valid payment on/after a touch, inside the payment window when it is on) whose Lead Stage is NOT "Converted": paid, but the stage was never updated.',
         converted_before: 'Leads of the selection (created or touched in the range, per the basis) that were ALREADY customers when the window started: their first valid payment (app or Ujra, matched by phone or alternative number) is dated before the window start (the payment window start when the Payment date filter is on). They are not in Total converted.',
-        conv_ay: 'Academic-year split: the academic year of the course (the Academic Year field of the course in the app, as in Metabase) of the lead\'s LATEST valid payment. The year written in a batch title is not used. "(no academic year)" = the payment has no app batch (Ujra bookings, old payments) or the course has no year; those are folded into "other".',
+        conv_ay: 'Academic-year split: the academic year of the course (the Academic Year field of the course in the app, as in Metabase) of the lead\x27s LATEST valid payment that has one. Ujra bookings and old payments without a batch carry no academic year and are skipped; "(no academic year)" = none of the lead\x27s payments has one, folded into "other". The year written in a batch title is not used.',
         avg_touches_alltime: 'Average number of touches a paying lead received, no date filter. The headline is weighted by touch rows (a lead with 6 touches counts 6 times), the caption shows the plain per-lead average.',
         avg_touches_window: 'Same as the all-time average, restricted to touches dated inside the window.',
         avg_per_lead: 'Per-lead variant (each converted lead counted once): the honest average number of touches a paying lead received.',

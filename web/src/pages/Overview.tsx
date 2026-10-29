@@ -103,10 +103,10 @@ export default function Overview() {
     const known = rows.filter((r) => isYear(r.key)).sort((a, b) => b.key.localeCompare(a.key));
     const top = known.slice(0, 3);
     const rest = known.slice(3).reduce((a, r) => a + r.leads, 0) + rows.filter((r) => !isYear(r.key)).reduce((a, r) => a + r.leads, 0);
-    const out = top.map((r) => ({ label: r.key, value: fmtInt(r.leads), title: `latest payment in academic year ${r.key} · click for the leads`,
-      onClick: () => open(metric, title, 'academic_year', r.key, `latest payment in academic year ${r.key}`) }));
-    if (rest) out.push({ label: 'other', value: fmtInt(rest), title: 'latest payment in an earlier academic year, or no academic year on the course (Ujra bookings, old payments) · click for the leads',
-      onClick: () => open(metric, title, 'academic_year', 'other:' + top.map((r) => r.key).join(','), 'latest payment in an earlier academic year, or no academic year on the course') });
+    const out = top.map((r) => ({ label: r.key, value: fmtInt(r.leads), title: `latest paid course with an academic year is in ${r.key} · click for the leads`,
+      onClick: () => open(metric, title, 'academic_year', r.key, `latest paid course with an academic year is in ${r.key}`) }));
+    if (rest) out.push({ label: 'other', value: fmtInt(rest), title: 'latest paid course with an academic year is in an earlier year, or no payment of the lead has an academic year (Ujra bookings, old payments without a batch) · click for the leads',
+      onClick: () => open(metric, title, 'academic_year', 'other:' + top.map((r) => r.key).join(','), 'latest paid course with an academic year is in an earlier year, or no payment has one') });
     return out;
   };
   const openFee = (title: string) => setDrill({ metric: 'fee_paid', title, columns: FEE_COLS, summary: true,
