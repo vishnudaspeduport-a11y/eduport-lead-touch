@@ -19,7 +19,7 @@ import { paymentPeriod } from '../filters';
 export const overviewLeads = new Hono<AppEnv>();
 
 type Rec = Record<string, unknown>;
-const METRICS = ['leads', 'touches', 'converted', 'first_touch', 'last_touch', 'stale_new', 'stale_not_connected', 'converted_first', 'sf_converted', 'stage_conv_unpaid', 'paid_other_stage', 'stage_react', 'avg_alltime', 'avg_window', 'fee_paid'] as const;
+const METRICS = ['leads', 'touches', 'converted', 'first_touch', 'last_touch', 'stale_new', 'stale_not_connected', 'converted_first', 'converted_before', 'sf_converted', 'stage_conv_unpaid', 'paid_other_stage', 'stage_react', 'avg_alltime', 'avg_window', 'fee_paid'] as const;
 type Metric = (typeof METRICS)[number];
 
 const SORTABLE: Record<string, string> = {
@@ -39,7 +39,7 @@ const COLS = [
 
 const VALID_PAY = (sql: Sql) => sql`hp.payment_method = 0 AND hp.deleted = false AND hp.is_success = true AND hp.payment_success = true`;
 
-function dimCond(sql: Sql, q: Record<string, string>): Frag {
+function dimCond(sql: Sql, q: Record<string, string>, f?: Filters, p?: Period | null): Frag {
   const dim = q.dim; const value = q.value;
   if (!dim || value === undefined) return sql`true`;
   if (dim === 'call_reason') {
@@ -75,6 +75,25 @@ function dimCond(sql: Sql, q: Record<string, string>): Frag {
     if (IC_PARKED.includes(value)) return icIn(sql`btrim(ic.status__c) = ${value} AND NOT (${lastTouch} > ${since})`);
     return icIn(sql`btrim(ic.status__c) = ${value}`);
   }
+  if (dim === 'academic_year') {
+    // academic year of the course of the lead's LATEST valid payment (same lookup as the Overview's conv_ay split); value = a year such as 2026-27,
+    // or 'other:<year>,<year>,...' = every year NOT in that list (older years and '(no academic year)').
+    // Evaluated ONCE PER CONVERTED LEAD of the selection (a semi-join), not per touch row: the per-row form with the lead lookup inside the
+    // correlated subquery was planned badly and hit the 90 s statement timeout.
+    const ay = sql`COALESCE((SELECT NULLIF(btrim(b.academic_year), '')
+                             FROM analytics.v_valid_payment_x vp LEFT JOIN app.core_batch b ON b.id = vp.batch_id
+                             WHERE vp.phone_key = m.phone_key
+                             ORDER BY vp.payment_date DESC, vp.payment_time DESC NULLS LAST, vp.payment_id DESC LIMIT 1), '(no academic year)')`;
+    const w = f ? flatWhere(sql, f, p ?? null) : sql`true`;
+    let test: Frag;
+    if (value.startsWith('other:')) {
+      const list = value.slice(6).split(',').map((x) => x.trim()).filter(Boolean);
+      test = list.length ? sql`${ay} NOT IN ${sql(list)}` : sql`true`;
+    } else test = sql`${ay} = ${value}`;
+    return sql`(t.converted AND t.lead_id IN (
+      SELECT x.lead_id FROM (SELECT DISTINCT t.lead_id FROM analytics.mv_touch_flat t WHERE ${w} AND t.converted) x
+      JOIN analytics.mv_lead_lite m ON m.lead_id = x.lead_id WHERE ${test}))`;
+  }
   if (dim === 'course' || dim === 'grade') {
     // purchased course / grade: any valid payment of the lead's app user on that batch
     const keyExpr = dim === 'course' ? sql`COALESCE(hp.course_label, analytics.course_label(b.title, b.course_title, COALESCE(hp.enrollment_batch_id, hp.batch_id)))` : sql`COALESCE(hp.grade_label, b.grade_title, 'No Grade On Batch')`;
@@ -104,7 +123,10 @@ function metricHaving(sql: Sql, metric: Metric, p: Period, f?: Filters, q: Recor
     case 'converted': return sql`bool_or(${conv})`;
     case 'first_touch': return sql`bool_or(t.tab_is_first_touch AND ${conv})`;
     case 'last_touch': return sql`bool_or(t.tab_is_last_touch AND ${conv})`;
-    case 'converted_first': return sql`bool_or(${f ? convFirstCond(sql, f) : sql`(t.converted AND t.is_pre_conversion)`})`;
+    // Total converted: first valid payment on/after a touch AND not before the window start (same rule as the Overview KPI)
+    case 'converted_first': return sql`bool_or(${f ? convFirstCond(sql, f) : sql`(t.converted AND t.is_pre_conversion)`} AND t.converted_at >= ${(f && paymentPeriod(f))?.from ?? p.from})`;
+    // already a customer when the window started: first valid payment before the window start (payment window when it is on)
+    case 'converted_before': return sql`bool_or(t.converted AND t.converted_at < ${(f && paymentPeriod(f))?.from ?? p.from})`;
     case 'sf_converted': return sql`bool_or(t.lead_sf_is_converted)`;
     case 'stage_conv_unpaid': return sql`max(t.lead_stage) = 'Converted' AND NOT bool_or(t.converted)`;
     case 'stage_react': return sql`max(t.lead_stage) IN ('Not Willing Now', 'Disqualified', 'Not Connected', 'P2 Completed')
@@ -151,7 +173,7 @@ function feeLeads(sql: Sql, win: Period): Frag {
 function selection(sql: Sql, f: Filters, periods: { current: Period }, q: Record<string, string>) {
   const metric = (METRICS as readonly string[]).includes(q.metric ?? '') ? (q.metric as Metric) : 'leads';
   const w = flatWhere(sql, f, metric === 'avg_alltime' ? null : periods.current);
-  const sel = sql`${w} AND ${dimCond(sql, q)} AND ${searchCond(sql, q.q ?? '')}`;
+  const sel = sql`${w} AND ${dimCond(sql, q, f, metric === 'avg_alltime' ? null : periods.current)} AND ${searchCond(sql, q.q ?? '')}`;
   // pick = the condition that chooses the leads (evaluated once); sel alone is reused per lead for the touch columns
   const pick = metric === 'fee_paid' ? sql`${sel} AND ${feeLeads(sql, feeWindow(f, periods.current))}` : sel;
   const having = metricHaving(sql, metric, periods.current, f, q);
