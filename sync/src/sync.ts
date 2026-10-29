@@ -398,7 +398,11 @@ const UJRA_TABLES: AppTableSpec[] = [
     name: 'ujra_booking', stampCol: 'updated_at',
     select: (src, since) => src`
       SELECT b.id, b.student_id, b.status, c.title AS course_title, ca.title AS campus_title, b.advance_amount,
-             d.proposed_course_fee, d.proposed_registration_fee, d.proposed_material_fee, d.proposed_hostel_fee,
+             -- proposed fee per component = fee - discount - concession - scholarship - special request (the Ujra proposed_* columns are always 0)
+             (COALESCE(d.course_fee, 0) - COALESCE(d.course_discount, 0) - COALESCE(d.course_concession, 0) - COALESCE(d.course_scholarship, 0) - COALESCE(d.course_special_request, 0)) AS proposed_course_fee,
+             (COALESCE(d.registration_fee, 0) - COALESCE(d.registration_fee_discount, 0) - COALESCE(d.registration_fee_scholarship, 0) - COALESCE(d.registration_fee_special_request, 0)) AS proposed_registration_fee,
+             (COALESCE(d.material_fee, 0) - COALESCE(d.material_fee_discount, 0) - COALESCE(d.material_fee_scholarship, 0) - COALESCE(d.material_fee_special_request, 0)) AS proposed_material_fee,
+             (COALESCE(d.hostel_fee, 0) - COALESCE(d.hostel_discount, 0) - COALESCE(d.hostel_concession, 0) - COALESCE(d.hostel_scholarship, 0) - COALESCE(d.hostel_special_request, 0)) AS proposed_hostel_fee,
              b.is_deleted, b.created_at, GREATEST(b.updated_at, d.updated_at) AS updated_at
       FROM public.booking_booking b
       LEFT JOIN public.hostel_room_course c ON c.id = b.course_id
@@ -429,12 +433,13 @@ async function syncAppTables(): Promise<void> {
 // The API key's group may only VIEW saved questions, so three saved questions in the Metabase collection "Ujra" do the reading:
 // each returns one page of 2000 rows ordered by id, with the template tags after_id (paging) and since (updated_at lower bound).
 // Metabase returns JSON rows with real booleans and numbers. Questions 6973 / 6974 / 6975 were created on 2026-10-06; their
-// template-tag ids change if the question's SQL is edited, so override them here when that happens.
+// template-tag ids change if the question's SQL is edited, so override them here when that happens (6975 edited 2026-10-29: proposed
+// fees = fee - discount - concession - scholarship - special request per component, same formula as the direct-DB path above).
 interface UjraCard { card: number; afterId: string; since: string }
 const UJRA_CARDS: Record<string, UjraCard> = {
   ujra_payment: { card: 6973, afterId: '442b7d61-d700-4ae8-8b82-c86bc87e7fba', since: 'cd389254-8bbd-4d56-98c1-d5c0f370fecd' },
   ujra_student: { card: 6974, afterId: '67cca53b-018f-40d6-a561-dccdc70c2d5b', since: '316ba16a-b531-47bc-8c1f-af1691efdf74' },
-  ujra_booking: { card: 6975, afterId: '45064c33-7af8-47d6-a0d5-cf87ade1cb3a', since: 'c17d34fd-b1ad-4159-b8d5-54395dc7cf6b' },
+  ujra_booking: { card: 6975, afterId: '8603e085-9312-4d81-aa1d-1721dd26d1ee', since: '684237bf-3279-43f5-8421-817c4960f9d6' },
 };
 const UJRA_PAGE = 2000;
 
