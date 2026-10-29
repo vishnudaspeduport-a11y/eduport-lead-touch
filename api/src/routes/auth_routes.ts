@@ -25,6 +25,7 @@ const NewUser = z.object({ email, name: z.string().trim().max(120).default(''), 
 const Patch = z.object({ name: z.string().trim().max(120).optional(), role: z.enum(['admin', 'user', 'bde']).optional(), is_active: z.boolean().optional() });
 const SetPw = z.object({ password: z.string() });
 const ChangePw = z.object({ current: z.string(), password: z.string() });
+const SavedFilter = z.object({ query: z.string().max(4000) });
 
 const adminList = (s: string | undefined) => (s ?? '').split(',').map((x) => x.trim().toLowerCase()).filter(Boolean);
 const bad = (c: { json: (b: unknown, s: 400) => Response }, message: string) => c.json({ error: { code: 'bad_request', message } }, 400);
@@ -116,6 +117,36 @@ authRoutes.post('/auth/logout', async (c) => {
 authRoutes.get('/auth/me', (c) => {
   const u = c.get('user');
   return c.json({ data: { id: u.id ?? null, email: u.email, name: u.name ?? '', role: u.role === 'admin' ? 'admin' : 'user' } });
+});
+
+// ---------------------------------------------------------------- saved filter set (one per user; sql/043)
+/** GET /auth/filter : { query, saved_at } of the caller's saved filter set, or { query: null } */
+authRoutes.get('/auth/filter', async (c) => {
+  const me = c.get('user');
+  const sql = getSql(c.env);
+  try {
+    const [r] = await sql<{ query: string; saved_at: string }[]>`SELECT query, saved_at::text FROM app_auth.user_filters WHERE email = ${me.email.toLowerCase()} AND saved_at <= now()`;
+    return c.json({ data: { query: r?.query ?? null, saved_at: r?.saved_at ?? null } });
+  } finally { release(sql, c.executionCtx); }
+});
+/** PUT /auth/filter { query } : save the caller's filter set (the filter bar's URL query string) */
+authRoutes.put('/auth/filter', async (c) => {
+  const me = c.get('user'); const b = await body(c, SavedFilter);
+  const sql = getSql(c.env);
+  try {
+    await sql`INSERT INTO app_auth.user_filters (email, query, saved_at) VALUES (${me.email.toLowerCase()}, ${b.query}, now())
+              ON CONFLICT (email) DO UPDATE SET query = EXCLUDED.query, saved_at = now()`;
+    return c.json({ data: { ok: true } });
+  } finally { release(sql, c.executionCtx); }
+});
+/** DELETE /auth/filter : forget the caller's saved filter set */
+authRoutes.delete('/auth/filter', async (c) => {
+  const me = c.get('user');
+  const sql = getSql(c.env);
+  try {
+    await sql`DELETE FROM app_auth.user_filters WHERE email = ${me.email.toLowerCase()}`;
+    return c.json({ data: { ok: true } });
+  } finally { release(sql, c.executionCtx); }
 });
 
 /** POST /auth/password { current, password } : change own password; other sessions are signed out */

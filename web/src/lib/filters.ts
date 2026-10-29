@@ -2,8 +2,9 @@
  * Global filter state = the URL search params (sticky via localStorage,
  * shareable via link). Every page reads `params` and passes it to the API.
  */
-import { useCallback, useEffect, useMemo } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
+import { authCall } from './auth';
 
 export type Basis = 'created' | 'touch' | 'payment';
 
@@ -74,6 +75,15 @@ export const PRESETS: { key: string; label: string; range: () => [string, string
 ];
 
 const STORAGE_KEY = 'lt-filters-v1';
+// the user's saved filter set (server side, per account - see /auth/filter): fetched once per page load, shared by every useFilters()
+let savedFetch: Promise<string | null> | null = null;
+let savedQueryCache: string | null = null;
+const savedListeners = new Set<(q: string | null) => void>();
+const setSavedQuery = (q: string | null) => { savedQueryCache = q; savedListeners.forEach((l) => l(q)); };
+async function fetchSavedFilter(): Promise<string | null> {
+  if (!savedFetch) savedFetch = authCall<{ query: string | null }>('/auth/filter').then((r) => { setSavedQuery(r?.query ?? null); return r?.query ?? null; }).catch(() => null);
+  return savedFetch;
+}
 
 function parse(sp: URLSearchParams): FilterState {
   const preset = sp.get('preset') ?? '30d';
@@ -124,13 +134,15 @@ export function toApiParams(f: FilterState): Record<string, string> {
 export function useFilters() {
   const [sp, setSp] = useSearchParams();
 
-  // sticky: restore the last filter set when arriving with a bare URL
+  // sticky: on a bare URL apply the user's SAVED filter set (server, per account) when there is one, else the browser's last filter set
   useEffect(() => {
-    if ([...sp.keys()].length === 0) {
-      try { const saved = localStorage.getItem(STORAGE_KEY); if (saved) setSp(new URLSearchParams(saved), { replace: true }); } catch { /* ignore */ }
-    }
+    const bare = [...sp.keys()].length === 0;
+    if (bare) { try { const saved = localStorage.getItem(STORAGE_KEY); if (saved) setSp(new URLSearchParams(saved), { replace: true }); } catch { /* ignore */ } }
+    fetchSavedFilter().then((q) => { if (bare && q) setSp(new URLSearchParams(q), { replace: true }); });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+  const [savedQuery, setSavedLocal] = useState<string | null>(savedQueryCache);
+  useEffect(() => { savedListeners.add(setSavedLocal); return () => { savedListeners.delete(setSavedLocal); }; }, []);
 
   const f = useMemo(() => parse(sp), [sp]);
   useEffect(() => { try { localStorage.setItem(STORAGE_KEY, serialize(f).toString()); } catch { /* ignore */ } }, [f]);
@@ -151,8 +163,13 @@ export function useFilters() {
     return { ...p, lists: { ...p.lists, [dim]: nxt.length ? nxt : undefined } };
   }), [set]);
   const clearAll = useCallback(() => set((p) => ({ ...p, lists: {}, flags: {}, paid: undefined, converted: false, pay: false })), [set]);
+  /** save the current filter set as this user's default (applied on every new visit) */
+  const saveFilter = useCallback(async () => { const q = serialize(f).toString(); await authCall('/auth/filter', { method: 'PUT', body: { query: q } }); setSavedQuery(q); }, [f]);
+  /** forget the saved filter set */
+  const forgetFilter = useCallback(async () => { await authCall('/auth/filter', { method: 'DELETE' }); setSavedQuery(null); }, []);
+  const isSaved = savedQuery != null && savedQuery === serialize(f).toString();
 
   const params = useMemo(() => toApiParams(f), [f]);
   const activeCount = Object.values(f.lists).filter((v) => v?.length).length + Object.values(f.flags).filter(Boolean).length + (f.paid ? 1 : 0) + (f.converted ? 1 : 0) + (f.pay ? 1 : 0);
-  return { f, set, setList, toggleValue, clearAll, params, activeCount };
+  return { f, set, setList, toggleValue, clearAll, params, activeCount, saveFilter, forgetFilter, savedQuery, isSaved };
 }

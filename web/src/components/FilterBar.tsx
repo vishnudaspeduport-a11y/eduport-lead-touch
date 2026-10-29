@@ -11,8 +11,11 @@ const QUICK: { key: ListDim; label: string }[] = [
 const QUICK_KEYS = new Set<string>(QUICK.map((q) => q.key));
 
 export function FilterBar({ mode }: { mode?: 'payment' } = {}) {
-  const { f, set, setList, clearAll, activeCount } = useFilters();
+  const { f, set, setList, clearAll, activeCount, saveFilter, forgetFilter, savedQuery, isSaved } = useFilters();
   const [openDim, setOpenDim] = useState<ListDim | null>(null);
+  const [saving, setSaving] = useState<'idle' | 'busy' | 'done' | 'error'>('idle');
+  const onSave = async () => { setSaving('busy'); try { await saveFilter(); setSaving('done'); setTimeout(() => setSaving('idle'), 1500); } catch { setSaving('error'); setTimeout(() => setSaving('idle'), 2500); } };
+  const onForget = async () => { setSaving('busy'); try { await forgetFilter(); setSaving('idle'); } catch { setSaving('error'); setTimeout(() => setSaving('idle'), 2500); } };
 
   const chips: { label: string; onRemove: () => void }[] = [];
   for (const [k, vals] of Object.entries(f.lists)) if (vals?.length && !QUICK_KEYS.has(k)) chips.push({ label: `${DIM_LABEL[k] ?? k}: ${vals.length > 2 ? `${vals.slice(0, 2).join(', ')} +${vals.length - 2}` : vals.join(', ')}`, onRemove: () => setList(k as ListDim, []) });
@@ -68,6 +71,12 @@ export function FilterBar({ mode }: { mode?: 'payment' } = {}) {
           )}
         </Popover>
         {activeCount > 0 && <button className="btn" onClick={clearAll}><Icon.Close /> Clear {activeCount}</button>}
+        {/* saved filter set: one per user (server side); applied automatically on the next visit */}
+        <button className={`btn ${isSaved ? 'border-accent/40 text-accent' : ''}`} disabled={saving === 'busy' || isSaved} onClick={onSave}
+          title={isSaved ? 'This filter set is your saved default: it is applied every time you open the dashboard' : 'Save the current filters (dates, class, touch point ...) as your default: they are applied every time you open the dashboard'}>
+          <Icon.Check /> {saving === 'busy' ? 'Saving…' : saving === 'done' || isSaved ? 'Saved filter' : saving === 'error' ? 'Could not save' : 'Save filter'}
+        </button>
+        {savedQuery != null && !isSaved && <button className="btn" onClick={onForget} title="Remove your saved default filters (the dashboard then opens with the browser's last filters)"><Icon.Close /> Forget saved</button>}
       </div>
 
       {chips.length > 0 && (
