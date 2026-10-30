@@ -27,7 +27,7 @@ interface OverviewResponse {
   };
   stages: { key: string; leads: number; converted: number }[];
   stages_revised: { key: string; leads: number; converted: number; revived: number }[];
-  tat: Record<'created' | 'touch', { leads: number; avg_days: number | null; median_days: number | null; buckets: { key: string; leads: number }[] }>;
+  tat: Record<'created' | 'touch' | 'activity', { leads: number; avg_days: number | null; median_days: number | null; buckets: { key: string; leads: number }[] }>;
   ic_status: { key: string; leads: number; ics: number }[];
   ic_status_revised: { key: string; leads: number; ics: number; revived: number }[];
   ic_course: DimRow[];
@@ -87,7 +87,8 @@ export default function Overview() {
   const k = d?.kpis;
   const def = d?.definitions ?? {};
   const [drill, setDrill] = useState<Drill | null>(null);
-  const [tat, setTat] = useState<'created' | 'touch'>('created');
+  const [tat, setTat] = useState<'created' | 'touch' | 'activity'>('created');
+  const tatIsCall = tat === 'activity';
   const tatData = d?.tat?.[tat];
   const staleRows: { stage: string; metric: DrillMetric; total: number; stale: number; share: number | null; untouched: number }[] = k ? [
     { stage: 'New', metric: 'stale_new', total: k.new_total, stale: k.stale_new, share: k.new_total ? (k.stale_new / k.new_total) * 100 : null, untouched: k.stale_new_untouched },
@@ -216,13 +217,16 @@ export default function Overview() {
           <DailyLines data={(d?.daily ?? []).map((r) => ({ d: r.d.slice(5), touches: r.touches, leads: r.leads, converted: r.converted }))} xKey="d" lines={[{ key: 'touches', label: 'Touches' }, { key: 'leads', label: 'Leads' }, { key: 'converted', label: 'Converted' }]} onClick={(key) => { const row = (d?.daily ?? []).find((r) => r.d.slice(5) === key); if (row) set({ preset: 'custom', from: row.d, to: row.d }); }} />
         </ChartCard>
         <ChartCard title="Turnaround time" tone="tone-green" help={def.tat} loading={q.isLoading} error={q.error} rows={tatData?.buckets ?? []} height={240}
-          subtitle={tatData ? `${fmtInt(tatData.leads)} converted leads · median ${tatData.median_days == null ? '–' : fmt1(tatData.median_days)} d · average ${tatData.avg_days == null ? '–' : fmt1(tatData.avg_days)} d · click a band for the leads` : 'days to the first payment, converted leads only'}
+          subtitle={tatData ? `${fmtInt(tatData.leads)} ${tatIsCall ? 'leads' : 'converted leads'} · median ${tatData.median_days == null ? '–' : fmt1(tatData.median_days)} d · average ${tatData.avg_days == null ? '–' : fmt1(tatData.avg_days)} d${tatIsCall ? ' (leads with a call)' : ''} · click a band for the leads` : tatIsCall ? 'days from the first touch to the first call' : 'days to the first payment, converted leads only'}
           actions={<Segmented size="xs" value={tat} onChange={setTat} options={[
             { value: 'created', label: 'Lead created → paid', title: 'days from the lead\'s creation day to its first valid payment day' },
             { value: 'touch', label: 'Last touch → paid', title: 'days from the latest touch on or before the payment to the payment day' },
+            { value: 'activity', label: 'First touch → first call', title: 'every lead of the selection: days from its earliest touch to its first call (Salesforce Task)' },
           ]} />}>
-          <HBars data={(tatData?.buckets ?? []).map((b) => ({ key: b.key, value: b.leads, secondary: tatData?.leads ? (b.leads / tatData.leads) * 100 : null }))} valueLabel="Converted leads" secondaryLabel="share"
-            onClick={(key) => open('converted', `Turnaround · ${key}`, tat === 'created' ? 'tat_created' : 'tat_touch', key, tat === 'created' ? `converted leads whose first payment came ${key} after the lead was created` : `converted leads whose first payment came ${key} after their last touch`)} />
+          <HBars data={(tatData?.buckets ?? []).map((b) => ({ key: b.key, value: b.leads, secondary: tatData?.leads ? (b.leads / tatData.leads) * 100 : null }))} valueLabel={tatIsCall ? 'Leads' : 'Converted leads'} secondaryLabel="share"
+            onClick={(key) => tatIsCall
+              ? open('leads', `Turnaround · ${key}`, 'tat_activity', key, key === 'no call' ? 'leads of the selection with no call on record' : `leads whose first call came ${key} after their first touch`)
+              : open('converted', `Turnaround · ${key}`, tat === 'created' ? 'tat_created' : 'tat_touch', key, tat === 'created' ? `converted leads whose first payment came ${key} after the lead was created` : `converted leads whose first payment came ${key} after their last touch`)} />
         </ChartCard>
       </div>
 

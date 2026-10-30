@@ -3,7 +3,7 @@ import type { Sql } from 'postgres';
 import type { AppEnv, Role } from '../env';
 import { handle, intParam, maskEmail, maskName, maskPhone, csvStream } from '../http';
 import { parseFilters, resolvePeriods, icCourseIn, type Filters, type Frag, type Period } from '../filters';
-import { flatWhere, FLAT_COLS, convCond, convFirstCond, tatBucket, IC_PARKED } from './overview';
+import { flatWhere, FLAT_COLS, convCond, convFirstCond, tatBucket, activityBucket, IC_PARKED } from './overview';
 import { paymentPeriod } from '../filters';
 
 /**
@@ -74,6 +74,14 @@ function dimCond(sql: Sql, q: Record<string, string>, f?: Filters, p?: Period | 
     if (value === 'New') return sql`(${icIn(sql`btrim(ic.status__c) = 'New'`)} OR ${icIn(sql`btrim(ic.status__c) IN ${sql(IC_PARKED)} AND ${lastTouch} > ${since}`)})`;
     if (IC_PARKED.includes(value)) return icIn(sql`btrim(ic.status__c) = ${value} AND NOT (${lastTouch} > ${since})`);
     return icIn(sql`btrim(ic.status__c) = ${value}`);
+  }
+  if (dim === 'tat_activity') {
+    // first touch -> first call band (Overview Turnaround card), evaluated once per lead of the selection
+    const w = f ? flatWhere(sql, f, p ?? null) : sql`true`;
+    return sql`t.lead_id IN (
+      SELECT x.lead_id FROM (SELECT t.lead_id, min(t.touch_date) AS first_touch FROM analytics.mv_touch_flat t WHERE ${w} GROUP BY t.lead_id) x
+      LEFT JOIN salesforce.lead_calls lc ON lc.lead_id = x.lead_id
+      WHERE ${activityBucket(sql, sql`(analytics.ist_date(lc.first_call_at) - x.first_touch)::int`)} = ${value})`;
   }
   if (dim === 'academic_year') {
     // academic year of the course of the lead's LATEST valid payment (same lookup as the Overview's conv_ay split); value = a year such as 2026-27,
