@@ -23,7 +23,13 @@ export interface Env {
   /** "dev" under wrangler dev (set by .claude/launch.json): cache keys get a per-isolate id instead of BUILD_ID */
   CACHE_SCOPE?: string;
   EXPORT_ROW_CAP?: string;
-  /** account e-mails (new account / password set) through Resend: API key = Worker secret, MAIL_FROM = wrangler.toml var (verified domain) */
+  /** account e-mails (new account / password set), api/src/email.ts. SMTP (Gmail mailbox): secrets SMTP_USER + SMTP_PASS, vars SMTP_HOST /
+   *  SMTP_PORT / MAIL_FROM_NAME. Or Resend: secret RESEND_API_KEY + var MAIL_FROM (verified domain). */
+  SMTP_HOST?: string;
+  SMTP_PORT?: string;
+  SMTP_USER?: string;
+  SMTP_PASS?: string;
+  MAIL_FROM_NAME?: string;
   RESEND_API_KEY?: string;
   MAIL_FROM?: string;
 }

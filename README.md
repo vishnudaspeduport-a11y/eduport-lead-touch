@@ -52,7 +52,7 @@ public.home_customuser / home_payment (app DB) ───────────
 | Cloudflare | Hyperdrive config | holds the `lt_app_ro` connection string (never in the repo) |
 | `api/wrangler.toml [vars]` | `AUTH_MODE` (password / none), `PUBLIC_ROLE`, `ADMIN_EMAILS` (who may create the first admin), `APP_VERSION`, `EXPORT_ROW_CAP` | non-secret config |
 | `api/.dev.vars` | `AUTH_MODE=none`, `WRANGLER_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE` | local dev only |
-| Worker secret | `RESEND_API_KEY` (`cd api && npx wrangler secret put RESEND_API_KEY`) + `MAIL_FROM` in `[vars]` | account e-mails: when an admin adds an account or sets a password, the Access dialog can e-mail the login link, e-mail and password to the person (api/src/email.ts, Resend HTTP API). The sending domain of `MAIL_FROM` must be verified in Resend (DNS records). Without the key the checkbox is disabled and the admin shares the password by hand. |
+| Worker secrets | `SMTP_USER` + `SMTP_PASS` (`cd api && npx wrangler secret put SMTP_USER`, then `SMTP_PASS`); vars `SMTP_HOST`, `SMTP_PORT`, `MAIL_FROM_NAME` | account e-mails: when an admin adds an account or sets a password, the Access dialog can e-mail the login link, e-mail and password to the person (api/src/email.ts, SMTP over a Workers TCP socket via worker-mailer). `SMTP_USER` = a Google mailbox such as bi_team@eduport.ai, `SMTP_PASS` = a Google App Password of that account (2-Step Verification must be on). Alternative: `RESEND_API_KEY` + `MAIL_FROM` (domain verified in Resend). Without secrets the checkbox is disabled and the admin shares the password by hand. |
 
 Passwords for the two roles are set in `sql/001_schema_roles.sql` (`CHANGE_ME_*`) - change them before running, or `ALTER ROLE ... PASSWORD` afterwards.
 

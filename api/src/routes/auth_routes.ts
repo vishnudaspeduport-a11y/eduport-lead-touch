@@ -5,7 +5,7 @@ import type { AppEnv } from '../env';
 import { getSql, release, withSql } from '../db';
 import { hashPassword, verifyPassword, passwordProblem, sha256Hex } from '../password';
 import { COOKIE, endSession, forgetAll, forgetSession, requireAdmin, startSession, type Account } from '../auth';
-import { accountMail, mailConfigured, sendMail } from '../email';
+import { accountMail, mailConfigured, mailFrom, mailTransport, sendMail } from '../email';
 
 /**
  * /api/auth/*  - login, logout, own password, first-admin setup
@@ -171,8 +171,8 @@ authRoutes.post('/auth/password', async (c) => {
 // ---------------------------------------------------------------- admin: accounts (requireAdmin is scoped to /auth/users* above)
 const admin = authRoutes;
 
-/** GET /auth/mail/status : can the app e-mail passwords? (RESEND_API_KEY + MAIL_FROM) - admin only */
-admin.get('/auth/mail/status', requireAdmin, (c) => c.json({ data: { configured: mailConfigured(c.env), from: c.env.MAIL_FROM ?? null } }));
+/** GET /auth/mail/status : can the app e-mail passwords? (SMTP mailbox or Resend, see email.ts) - admin only */
+admin.get('/auth/mail/status', requireAdmin, (c) => c.json({ data: { configured: mailConfigured(c.env), from: mailFrom(c.env), transport: mailTransport(c.env) } }));
 
 /** e-mail the account details; never throws - the account change itself has already happened */
 async function mailPassword(c: { env: Parameters<typeof sendMail>[0]; req: { url: string } }, o: { to: string; name: string; password: string; kind: 'new' | 'reset'; by: string }): Promise<{ email_sent: boolean; email_error?: string }> {

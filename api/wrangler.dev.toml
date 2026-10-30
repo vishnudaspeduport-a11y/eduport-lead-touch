@@ -44,6 +44,10 @@ ADMIN_EMAILS = "bi_team@eduport.ai"                           # comma list: e-ma
 GITHUB_REPO = "vishnudaspeduport-a11y/eduport-lead-touch"           # manual "Sync now" button; token via: npx wrangler secret put GITHUB_TOKEN
 APP_VERSION = "1.0.0"
 EXPORT_ROW_CAP = "50000"
-MAIL_FROM = "Eduport Lead Touch <noreply@eduport.ai>"               # sender of account e-mails (new account / password set); the domain must be verified in Resend. Secret: npx wrangler secret put RESEND_API_KEY
+# Account e-mails (new account / password set): sent from a Google mailbox over SMTP. Secrets: npx wrangler secret put SMTP_USER (the mailbox,
+# e.g. bi_team@eduport.ai) and SMTP_PASS (a Google App Password). Alternative: RESEND_API_KEY secret + MAIL_FROM = "Name <addr@verified-domain>".
+SMTP_HOST = "smtp.gmail.com"
+SMTP_PORT = "465"
+MAIL_FROM_NAME = "Eduport Lead Touch"
 
 # Local dev overrides live in .dev.vars (git-ignored), e.g. AUTH_MODE=dev, DATABASE_URL=...

@@ -169,7 +169,7 @@ function MailOption({ mail, checked, onChange, who }: { mail: MailInfo; checked:
     <label className={`flex items-start gap-2 rounded-lg border border-line p-2 text-[11px] ${can ? 'cursor-pointer' : 'opacity-70'}`}>
       <input type="checkbox" className="mt-0.5" checked={can && checked} disabled={!can} onChange={(e) => onChange(e.target.checked)} />
       <span><b className="text-ink">E-mail the password to {who}</b><br />
-        <span className="text-ink-3">{can ? `Sent from ${mail?.from} with the dashboard link, the login e-mail and this password.` : 'E-mail is not set up on the server (RESEND_API_KEY / MAIL_FROM), so share the password another way.'}</span></span>
+        <span className="text-ink-3">{can ? `Sent from ${mail?.from} with the dashboard link, the login e-mail and this password.` : 'E-mail is not set up on the server yet (SMTP mailbox secrets), so share the password another way.'}</span></span>
     </label>
   );
 }
