@@ -13,7 +13,10 @@ type Row = Record<string, unknown>;
 interface Parsed { headers: string[]; rows: Row[]; fileName: string; sheet: string }
 
 const CHUNK = 1000;
-const normalise = (v: unknown): string | null => { const d = String(v ?? '').replace(/\D/g, ''); return d.length >= 10 ? d.slice(-10) : null; };
+/** cell -> text. Numbers are printed in full: Excel shows a 12-digit phone stored as a number as 9.19948E+11 and the sheet's formatted
+ *  text would keep that, losing the digits; the raw value is an exact integer. */
+const cellText = (v: unknown): unknown => (typeof v === 'number' && Number.isFinite(v) ? (Math.abs(v) >= 1e6 ? Math.round(v).toString() : String(v)) : v);
+const normalise = (v: unknown): string | null => { const d = String(cellText(v) ?? '').replace(/\D/g, ''); return d.length >= 10 ? d.slice(-10) : null; };
 const looksLikePhone = (name: string) => /phone|mobile|contact|number|whatsapp|ph\b/i.test(name);
 
 /** Analysis: upload a spreadsheet with phone numbers, get every lead detail back. Parsed in the browser, nothing is stored anywhere. */
@@ -38,18 +41,19 @@ export default function Analysis() {
       const buf = await file.arrayBuffer();
       const wb = XLSX.read(buf, { type: 'array' });
       const sheet = wb.SheetNames[0];
-      let rows = XLSX.utils.sheet_to_json<Row>(wb.Sheets[sheet], { defval: null, raw: false });
-      if (!rows.length) throw new Error('The first sheet is empty');
-      let headers = Object.keys(rows[0]);
-      // no header row: when the first row itself is a phone number (10+ digits), the sheet is read again without a header
-      // so that number is looked up too, and the columns are named Phone, Column B, Column C, ...
-      if (headers.some((h) => /\d{10,}/.test(h.replace(/\D/g, '')))) {
-        const raw = XLSX.utils.sheet_to_json<unknown[]>(wb.Sheets[sheet], { header: 1, defval: null, raw: false });
-        const width = Math.max(...raw.map((r) => r.length));
-        const names = Array.from({ length: width }, (_, i) => (i === 0 ? 'Phone' : `Column ${String.fromCharCode(65 + i)}`));
-        rows = raw.filter((r) => r.some((v) => v != null && v !== '')).map((r) => Object.fromEntries(names.map((n, i) => [n, r[i] ?? null])) as Row);
-        headers = names;
-      }
+      // raw values (not Excel's display text): a phone stored as a number would otherwise arrive as "9.19948E+11"
+      const grid = XLSX.utils.sheet_to_json<unknown[]>(wb.Sheets[sheet], { header: 1, defval: null, raw: true })
+        .map((r) => r.map(cellText)).filter((r) => r.some((v) => v != null && v !== ''));
+      if (!grid.length) throw new Error('The first sheet is empty');
+      const width = Math.max(...grid.map((r) => r.length));
+      // header row = the first row, unless it already holds a phone number (10+ digits): then there is no header, the columns are
+      // named Phone, Column B, Column C, ... and that first row is looked up too
+      const noHeader = grid[0].some((v) => /\d{10,}/.test(String(v ?? '').replace(/\D/g, '')));
+      const headers = noHeader
+        ? Array.from({ length: width }, (_, i) => (i === 0 ? 'Phone' : `Column ${String.fromCharCode(65 + i)}`))
+        : Array.from({ length: width }, (_, i) => { const h = String(grid[0][i] ?? '').trim(); return h || `Column ${String.fromCharCode(65 + i)}`; });
+      const rows: Row[] = (noHeader ? grid : grid.slice(1)).map((r) => Object.fromEntries(headers.map((n, i) => [n, r[i] ?? null])) as Row);
+      if (!rows.length) throw new Error('The first sheet has a header row but no data');
       // pick the phone column: header name first, otherwise the column with most phone-looking values
       let best = headers.find(looksLikePhone) ?? '';
       if (!best) {
