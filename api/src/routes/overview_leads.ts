@@ -284,10 +284,16 @@ overviewLeads.get('/overview/leads/summary', (c) =>
     // after-stage mode (re-touched KPI): every touch-level figure counts only touches AFTER the lead entered its current stage
     const afterStage = q.metric === 'stage_react';
     const touchJoin = afterStage ? sql`t.lead_id = s.lead_id AND t.touch_at > s.since` : sql`t.lead_id = s.lead_id AND ${sel}`;
+    // One statement. The lead-level splits count the rows of sel (one per lead); only the touch-level splits re-read the touch rows.
+    // The three after-stage figures (paid / called after the stage change, days to the first re-touch) and the stage moment itself are
+    // computed only for the re-touched drill: the drawer shows them in that mode alone, and together they cost ~13 s of a 21 s statement
+    // on a 28k-lead selection (a per-lead stage_since() call, a merge join over every call record, a correlated min() per lead).
     const rows = await sql<{ dim: string; key: string | null; leads: number; revenue: number | null }[]>`
       WITH sel AS (
         SELECT t.lead_id, max(t.app_user_id) AS app_user_id, max(t.revenue) AS revenue, count(*)::int AS touches_in_window,
-               analytics.stage_since(t.lead_id, max(t.lead_stage), max(t.lead_created_date)::timestamptz) AS since
+               max(t.lead_stage) AS lead_stage, max(t.class_group) AS class_group, max(t.lead_source) AS lead_source, max(t.owner_name) AS owner,
+               max(t.district) AS district, max(t.best_ic_status) AS ic_status, max(t.lm_reason) AS lm_reason,
+               ${afterStage ? sql`analytics.stage_since(t.lead_id, max(t.lead_stage), max(t.lead_created_date)::timestamptz)` : sql`NULL::timestamptz`} AS since
         FROM analytics.mv_touch_flat t WHERE ${pick} GROUP BY t.lead_id HAVING ${having}
       )
       SELECT '_total' AS dim, NULL AS key, count(*)::int AS leads, sum(revenue)::float8 AS revenue FROM sel
@@ -295,6 +301,7 @@ overviewLeads.get('/overview/leads/summary', (c) =>
       SELECT '_touches' AS dim, NULL AS key, ${afterStage
         ? sql`(SELECT count(*) FROM analytics.mv_touch_flat t JOIN sel s ON t.lead_id = s.lead_id AND t.touch_at > s.since)::int`
         : sql`sum(touches_in_window)::int`} AS leads, NULL::float8 AS revenue FROM sel
+      ${afterStage ? sql`
       UNION ALL
       SELECT '_paid_after' AS dim, NULL AS key, count(*)::int AS leads,
              (SELECT sum(hp.amount) FROM sel s2 JOIN analytics.v_payment_all hp ON hp.user_id = s2.app_user_id WHERE ${VALID_PAY(sql)} AND hp.payment_date >= s2.since::date)::float8 AS revenue
@@ -305,18 +312,23 @@ overviewLeads.get('/overview/leads/summary', (c) =>
       UNION ALL
       SELECT '_days_to_retouch' AS dim, NULL AS key, count(*)::int AS leads,
              avg(EXTRACT(epoch FROM x.first_after - x.since) / 86400)::float8 AS revenue
-      FROM (SELECT s.since, (SELECT min(t.touch_at) FROM analytics.mv_touch_flat t WHERE t.lead_id = s.lead_id AND t.touch_at > s.since) AS first_after FROM sel s) x
-      WHERE x.first_after IS NOT NULL
+      FROM (SELECT s.since, min(t.touch_at) AS first_after FROM sel s JOIN analytics.mv_touch_flat t ON t.lead_id = s.lead_id AND t.touch_at > s.since GROUP BY s.lead_id, s.since) x` : sql``}
       UNION ALL
       SELECT '_payers' AS dim, NULL AS key, count(*)::int AS leads, NULL::float8 AS revenue FROM sel s
       WHERE EXISTS (SELECT 1 FROM analytics.v_payment_all hp WHERE hp.user_id = s.app_user_id AND ${VALID_PAY(sql)} ${payWin})
       UNION ALL
+      -- lead-level splits: one row per lead in sel, so a plain count
+      SELECT d.dim, d.key, count(*)::int AS leads, NULL::float8 AS revenue
+      FROM sel s LEFT JOIN salesforce.lead_calls c ON c.lead_id = s.lead_id
+      CROSS JOIN LATERAL (VALUES ('lead_stage', s.lead_stage), ('class_group', s.class_group), ('lead_source', s.lead_source),
+                                 ('owner', s.owner), ('district', s.district), ('ic_status', s.ic_status), ('lm_reason', s.lm_reason),
+                                 ('call_reason', CASE WHEN c.lead_id IS NULL THEN '(no call)' WHEN c.last_reason IS NULL THEN '(no reason recorded)' ELSE c.last_reason END)) AS d(dim, key)
+      GROUP BY d.dim, d.key
+      UNION ALL
+      -- touch-level splits: the selection's touch rows (after-stage mode: only the touches after the stage change)
       SELECT d.dim, d.key, count(DISTINCT t.lead_id)::int AS leads, NULL::float8 AS revenue
-      FROM analytics.mv_touch_flat t JOIN sel s ON ${touchJoin} LEFT JOIN salesforce.lead_calls c ON c.lead_id = t.lead_id
-      CROSS JOIN LATERAL (VALUES ('lead_stage', t.lead_stage), ('class_group', t.class_group), ('lead_source', t.lead_source),
-                                 ('touch_point', t.touch_point), ('source', t.source), ('medium', t.medium),
-                                 ('owner', t.owner_name), ('district', t.district), ('ic_status', t.best_ic_status), ('lm_reason', t.lm_reason),
-                                 ('campaign', t.campaign), ('staff', t.staff), ('call_reason', CASE WHEN c.lead_id IS NULL THEN '(no call)' WHEN c.last_reason IS NULL THEN '(no reason recorded)' ELSE c.last_reason END)) AS d(dim, key)
+      FROM analytics.mv_touch_flat t JOIN sel s ON ${touchJoin}
+      CROSS JOIN LATERAL (VALUES ('touch_point', t.touch_point), ('source', t.source), ('medium', t.medium), ('campaign', t.campaign), ('staff', t.staff)) AS d(dim, key)
       GROUP BY d.dim, d.key
       UNION ALL
       SELECT p.dim, p.key, count(DISTINCT p.lead_id)::int AS leads, sum(p.amount)::float8 AS revenue
