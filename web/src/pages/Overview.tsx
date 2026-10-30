@@ -217,15 +217,15 @@ export default function Overview() {
           <DailyLines data={(d?.daily ?? []).map((r) => ({ d: r.d.slice(5), touches: r.touches, leads: r.leads, converted: r.converted }))} xKey="d" lines={[{ key: 'touches', label: 'Touches' }, { key: 'leads', label: 'Leads' }, { key: 'converted', label: 'Converted' }]} onClick={(key) => { const row = (d?.daily ?? []).find((r) => r.d.slice(5) === key); if (row) set({ preset: 'custom', from: row.d, to: row.d }); }} />
         </ChartCard>
         <ChartCard title="Turnaround time" tone="tone-green" help={def.tat} loading={q.isLoading} error={q.error} rows={tatData?.buckets ?? []} height={240}
-          subtitle={tatData ? `${fmtInt(tatData.leads)} ${tatIsCall ? 'leads' : 'converted leads'} · median ${tatData.median_days == null ? '–' : fmt1(tatData.median_days)} d · average ${tatData.avg_days == null ? '–' : fmt1(tatData.avg_days)} d${tatIsCall ? ' (leads with a call)' : ''} · click a band for the leads` : tatIsCall ? 'days from the first touch to the first call' : 'days to the first payment, converted leads only'}
+          subtitle={tatData ? `${fmtInt(tatData.leads)} ${tatIsCall ? 'leads' : 'converted leads'} · median ${tatData.median_days == null ? '–' : fmt1(tatData.median_days)} d · average ${tatData.avg_days == null ? '–' : fmt1(tatData.avg_days)} d${tatIsCall ? ' (leads with an activity)' : ''} · click a band for the leads` : tatIsCall ? 'days from the first touch to the first activity on the lead or its interested courses' : 'days to the first payment, converted leads only'}
           actions={<Segmented size="xs" value={tat} onChange={setTat} options={[
             { value: 'created', label: 'Lead created → paid', title: 'days from the lead\'s creation day to its first valid payment day' },
             { value: 'touch', label: 'Last touch → paid', title: 'days from the latest touch on or before the payment to the payment day' },
-            { value: 'activity', label: 'First touch → first call', title: 'every lead of the selection: days from its earliest touch to its first call (Salesforce Task)' },
+            { value: 'activity', label: 'First touch → first activity', title: 'every lead of the selection: days from its earliest touch to the first activity (Task) on the Lead Master or one of its Interested Courses' },
           ]} />}>
           <HBars data={(tatData?.buckets ?? []).map((b) => ({ key: b.key, value: b.leads, secondary: tatData?.leads ? (b.leads / tatData.leads) * 100 : null }))} valueLabel={tatIsCall ? 'Leads' : 'Converted leads'} secondaryLabel="share"
             onClick={(key) => tatIsCall
-              ? open('leads', `Turnaround · ${key}`, 'tat_activity', key, key === 'no call' ? 'leads of the selection with no call on record' : `leads whose first call came ${key} after their first touch`)
+              ? open('leads', `Turnaround · ${key}`, 'tat_activity', key, key === 'no activity' ? 'leads of the selection with no activity (Task) on record' : key === 'activity before touch' ? 'leads whose first activity is older than their first touch' : `leads whose first activity (Task on the lead or its interested courses) came ${key} after their first touch`)
               : open('converted', `Turnaround · ${key}`, tat === 'created' ? 'tat_created' : 'tat_touch', key, tat === 'created' ? `converted leads whose first payment came ${key} after the lead was created` : `converted leads whose first payment came ${key} after their last touch`)} />
         </ChartCard>
       </div>

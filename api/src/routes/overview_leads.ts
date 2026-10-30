@@ -76,7 +76,7 @@ function dimCond(sql: Sql, q: Record<string, string>, f?: Filters, p?: Period | 
     return icIn(sql`btrim(ic.status__c) = ${value}`);
   }
   if (dim === 'tat_activity') {
-    // first touch -> first call band (Overview Turnaround card), evaluated once per lead of the selection
+    // first touch -> first activity band (Overview Turnaround card; activity = first Task on the LM / its ICs), evaluated once per lead of the selection
     const w = f ? flatWhere(sql, f, p ?? null) : sql`true`;
     return sql`t.lead_id IN (
       SELECT x.lead_id FROM (SELECT t.lead_id, min(t.touch_date) AS first_touch FROM analytics.mv_touch_flat t WHERE ${w} GROUP BY t.lead_id) x
