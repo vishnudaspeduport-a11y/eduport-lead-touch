@@ -71,6 +71,8 @@ export async function endSession(c: Context<AppEnv>, sql: Sql): Promise<void> {
 let internalToken: string | null = null;   // created lazily: random values are not allowed at module scope on Workers
 export const INTERNAL_TOKEN = () => (internalToken ??= crypto.randomUUID());
 export const INTERNAL_HEADER = 'x-lt-internal';
+/** with the internal token: the role the warm-up request runs as ('bde' = masked answers; anything else = analyst) */
+export const INTERNAL_ROLE_HEADER = 'x-lt-internal-role';
 
 const PUBLIC = new Set(['/api/auth/status', '/api/auth/login', '/api/auth/setup', '/api/health']);
 
@@ -87,7 +89,7 @@ export const authMiddleware = createMiddleware<AppEnv>(async (c, next) => {
     if (site && site !== 'same-origin' && site !== 'none') return c.json({ error: { code: 'forbidden', message: 'cross-site request blocked' } }, 403);
   }
   if (PUBLIC.has(new URL(c.req.url).pathname)) { await next(); return; }
-  if (c.req.header(INTERNAL_HEADER) === INTERNAL_TOKEN()) { c.set('user', { email: 'warm-up', role: 'analyst' }); await next(); return; }
+  if (c.req.header(INTERNAL_HEADER) === INTERNAL_TOKEN()) { c.set('user', { email: 'warm-up', role: c.req.header(INTERNAL_ROLE_HEADER) === 'bde' ? 'bde' : 'analyst' }); await next(); return; }
   // the deploy script and the sync job warm the cache as soon as they finish (a deploy empties it, a sync changes the data version):
   // the shared secret opens exactly one endpoint
   const warm = c.req.header('x-warm-secret');

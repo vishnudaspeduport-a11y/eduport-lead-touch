@@ -1,9 +1,10 @@
 import { Hono } from 'hono';
 import { ZodError } from 'zod';
 import type { AppEnv, Env } from './env';
-import { authMiddleware, INTERNAL_HEADER, INTERNAL_TOKEN } from './auth';
+import { authMiddleware, INTERNAL_HEADER, INTERNAL_ROLE_HEADER, INTERNAL_TOKEN } from './auth';
 import { forgetVersion, memStats } from './cache';
-import { getSql } from './db';
+import { getSql, withSql } from './db';
+import { savedQueryToApi } from './saved_filter';
 import { meta } from './routes/meta';
 import { filters } from './routes/filters';
 import { leads } from './routes/leads';
@@ -110,12 +111,36 @@ export function warmUrls(): string[] {
 }
 
 type FetchCtx = Parameters<typeof app.fetch>[2];
+type WarmRole = 'analyst' | 'bde';
+/** The default views plus, for every saved filter set ("Save filter" on the filter bar, app_auth.user_filters), the Overview and Converted
+ *  views that user lands on - so the first visit after a sync or a deploy is warm for them as well. A set saved by a bde account is warmed
+ *  as that role (masked answers are cached apart from full ones). */
+export async function warmTargets(env: Env, ctx: FetchCtx): Promise<{ url: string; role: WarmRole }[]> {
+  const out: { url: string; role: WarmRole }[] = warmUrls().map((url) => ({ url, role: 'analyst' }));
+  try {
+    const rows: { query: string; role: string | null }[] = await withSql(env, ctx ?? { waitUntil: () => undefined }, (sql) => sql<{ query: string; role: string | null }[]>`
+      SELECT f.query, u.role FROM app_auth.user_filters f
+      LEFT JOIN app_auth.users u ON lower(u.email) = f.email AND u.is_active
+      WHERE f.saved_at <= now()`);   // now(): Hyperdrive would otherwise serve a 60 s old answer
+    for (const r of rows) {
+      const p = savedQueryToApi(r.query);
+      if (!p) continue;
+      const role: WarmRole = r.role === 'bde' ? 'bde' : 'analyst';
+      const q = (extra: Record<string, string>) => new URLSearchParams({ ...p, ...extra }).toString();
+      out.push({ url: `/api/overview?${q({ stale_days: '5' })}`, role }, { url: `/api/converted?${q({ pm: 'all' })}`, role });
+    }
+  } catch (e) {
+    console.error('warm: saved filter sets not read', e instanceof Error ? e.message : e);
+  }
+  const seen = new Set<string>();
+  return out.filter((t) => { const k = `${t.role} ${t.url}`; if (seen.has(k)) return false; seen.add(k); return true; });
+}
 export async function warmCache(env: Env, ctx: FetchCtx): Promise<{ url: string; status: number; cache: string; ms: number }[]> {
   const out: { url: string; status: number; cache: string; ms: number }[] = [];
-  for (const url of warmUrls()) {
+  for (const { url, role } of await warmTargets(env, ctx)) {
     const t0 = Date.now();
     try {
-      const res = await app.fetch(new Request(`https://warm.internal${url}`, { headers: { [INTERNAL_HEADER]: INTERNAL_TOKEN(), accept: 'application/json' } }), env, ctx);
+      const res = await app.fetch(new Request(`https://warm.internal${url}`, { headers: { [INTERNAL_HEADER]: INTERNAL_TOKEN(), [INTERNAL_ROLE_HEADER]: role, accept: 'application/json' } }), env, ctx);
       await res.arrayBuffer();   // drain so the body is not kept open
       out.push({ url, status: res.status, cache: res.headers.get('X-LT-Cache') ?? '-', ms: Date.now() - t0 });
     } catch (e) {

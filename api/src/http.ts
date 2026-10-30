@@ -59,14 +59,33 @@ export async function handle<T>(c: Context<AppEnv>, fn: (x: Ctx) => Promise<T>, 
 }
 const inflight = new Map<string, Promise<string>>();
 
+/** How many statements of a fan-out run at the same time. The Overview fires two dozen; all at once on the two-core database they
+ *  only slow each other down (every statement 3-4x its solo time, temp files, parallel workers fighting for the same cores). */
+export const FANOUT_LIMIT = 6;
+/** Statements known to be heavy start first (longest-first keeps the tail short); the rest follow in call order. */
+const HEAVY = ['ic_status_revised', 'fees', 'conv_ay', 'leads_union', 'ic_course', 'tat', 'stage_react', 'stages_revised', 'call_reason', 'new_leads', 'ic_status', 'daily'];
+
 /**
- * Promise.all for a page's query fan-out that records how long each query took. Slow ones (> 3 s) are logged
- * ("slow queries" in the Worker logs); when one fails, every duration is attached to the error as queryTimes so the
- * 500 response names the statement that hit the timeout instead of just "internal error".
+ * Promise.all for a page's query fan-out that records how long each query took, running at most FANOUT_LIMIT statements at a time
+ * (postgres.js queries are lazy: nothing is sent until the query is awaited). Slow ones (> 2 s) are logged ("slow queries" in the
+ * Worker logs); when one fails, every duration is attached to the error as queryTimes so the 500 response names the statement that
+ * hit the timeout instead of just "internal error".
  */
-export async function timedAll<T extends readonly unknown[] | []>(names: readonly string[], qs: T): Promise<{ -readonly [P in keyof T]: Awaited<T[P]> }> {
+export async function timedAll<T extends readonly unknown[] | []>(names: readonly string[], qs: T, limit = FANOUT_LIMIT): Promise<{ -readonly [P in keyof T]: Awaited<T[P]> }> {
   const t0 = Date.now(); const times: Record<string, number> = {};
-  const settled = await Promise.allSettled((qs as readonly unknown[]).map((q, i) => Promise.resolve(q).finally(() => { times[names[i] ?? String(i)] = Date.now() - t0; })));
+  const rank = (i: number) => { const k = HEAVY.indexOf(names[i] ?? ''); return k < 0 ? HEAVY.length : k; };
+  const order = (qs as readonly unknown[]).map((_, i) => i).sort((a, b) => rank(a) - rank(b));
+  const settled: PromiseSettledResult<unknown>[] = new Array(qs.length);
+  let next = 0;
+  const worker = async () => {
+    while (next < order.length) {
+      const i = order[next++]!;
+      try { settled[i] = { status: 'fulfilled', value: await (qs as readonly unknown[])[i] }; }
+      catch (e) { settled[i] = { status: 'rejected', reason: e }; }
+      finally { times[names[i] ?? String(i)] = Date.now() - t0; }
+    }
+  };
+  await Promise.all(Array.from({ length: Math.max(1, Math.min(limit, order.length)) }, worker));
   // one line per fan-out whenever it was slow (any statement over 2 s): every duration, slowest first, so the Worker log shows where the time went
   if (Object.values(times).some((ms) => ms > 2000)) console.log('slow queries', JSON.stringify(Object.fromEntries(Object.entries(times).sort((x, y) => y[1] - x[1]))));
   const failed = settled.find((r): r is PromiseRejectedResult => r.status === 'rejected');

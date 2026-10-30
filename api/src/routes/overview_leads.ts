@@ -126,7 +126,7 @@ function metricHaving(sql: Sql, metric: Metric, p: Period, f?: Filters, q: Recor
       const days = Math.max(1, Math.min(365, Number.parseInt(q.stale_days ?? '5', 10) || 5));
       const stage = metric === 'stale_new' ? 'New' : 'Not Connected';
       return sql`max(t.lead_stage) = ${stage} AND max(t.lead_created_date) <= (now() AT TIME ZONE 'Asia/Kolkata')::date - ${days}::int
-        AND (SELECT max(t2.touch_at) FROM analytics.mv_touch_flat t2 WHERE t2.lead_id = t.lead_id) < now() - make_interval(days => ${days})`;
+        AND (SELECT x.last_touch_at FROM analytics.mv_lead_last_touch x WHERE x.lead_id = t.lead_id) < now() - make_interval(days => ${days})`;
     }
     case 'converted': return sql`bool_or(${conv})`;
     case 'first_touch': return sql`bool_or(t.tab_is_first_touch AND ${conv})`;
@@ -138,7 +138,7 @@ function metricHaving(sql: Sql, metric: Metric, p: Period, f?: Filters, q: Recor
     case 'sf_converted': return sql`bool_or(t.lead_sf_is_converted)`;
     case 'stage_conv_unpaid': return sql`max(t.lead_stage) = 'Converted' AND NOT bool_or(t.converted)`;
     case 'stage_react': return sql`max(t.lead_stage) IN ('Not Willing Now', 'Disqualified', 'Not Connected', 'P2 Completed')
-        AND (SELECT max(t2.touch_at) FROM analytics.mv_touch_flat t2 WHERE t2.lead_id = t.lead_id) > analytics.stage_since(t.lead_id, max(t.lead_stage), max(t.lead_created_date)::timestamptz)`;
+        AND (SELECT x.last_touch_at FROM analytics.mv_lead_last_touch x WHERE x.lead_id = t.lead_id) > analytics.stage_since(t.lead_id, max(t.lead_stage), max(t.lead_created_date)::timestamptz)`;
     case 'paid_other_stage': return sql`bool_or(${conv}) AND max(t.lead_stage) IS DISTINCT FROM 'Converted'`;
     case 'avg_alltime': case 'avg_window': return sql`bool_or(t.converted)`;
     case 'fee_paid': return sql`true`;   // the payment condition is part of the row selection (feeLeads)

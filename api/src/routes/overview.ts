@@ -193,8 +193,9 @@ overview.get('/overview', (c) =>
       // leads in the selection still in stage New, created more than N days ago and not touched in the last N days
       sql<{ stale_new: number; stale_new_untouched: number; new_total: number; stale_nc: number; stale_nc_untouched: number; nc_total: number }[]>`
         WITH n AS (
-          SELECT t.lead_id, max(t.lead_stage) AS stage, max(t.lead_created_date) AS created, (SELECT max(t2.touch_at) FROM analytics.mv_touch_flat t2 WHERE t2.lead_id = t.lead_id) AS last_touch
-          FROM analytics.mv_touch_flat t WHERE ${w} AND t.lead_stage IN ('New', 'Not Connected') GROUP BY t.lead_id),
+          SELECT t.lead_id, max(t.lead_stage) AS stage, max(t.lead_created_date) AS created, max(x.last_touch_at) AS last_touch
+          FROM analytics.mv_touch_flat t LEFT JOIN analytics.mv_lead_last_touch x ON x.lead_id = t.lead_id
+          WHERE ${w} AND t.lead_stage IN ('New', 'Not Connected') GROUP BY t.lead_id),
         s AS (SELECT stage, (created <= (now() AT TIME ZONE 'Asia/Kolkata')::date - ${staleDays}::int AND last_touch < now() - make_interval(days => ${staleDays})) AS stale,
                      (last_touch < created::timestamp AT TIME ZONE 'Asia/Kolkata' + interval '1 day') AS untouched FROM n)
         SELECT count(*) FILTER (WHERE stage = 'New' AND stale)::int AS stale_new, count(*) FILTER (WHERE stage = 'New' AND stale AND untouched)::int AS stale_new_untouched, count(*) FILTER (WHERE stage = 'New')::int AS new_total,
@@ -234,8 +235,9 @@ overview.get('/overview', (c) =>
       sql<{ stage: string; total: number; reactivated: number }[]>`
         WITH r AS (
           SELECT t.lead_id, max(t.lead_stage) AS stage, max(t.lead_created_date)::timestamptz AS created,
-                 (SELECT max(t2.touch_at) FROM analytics.mv_touch_flat t2 WHERE t2.lead_id = t.lead_id) AS last_touch
-          FROM analytics.mv_touch_flat t WHERE ${w} AND t.lead_stage IN ('Not Willing Now', 'Disqualified', 'Not Connected', 'P2 Completed') GROUP BY t.lead_id)
+                 max(x.last_touch_at) AS last_touch   -- the lead's all-time last touch, precomputed (analytics.mv_lead_last_touch, sql/044)
+          FROM analytics.mv_touch_flat t LEFT JOIN analytics.mv_lead_last_touch x ON x.lead_id = t.lead_id
+          WHERE ${w} AND t.lead_stage IN ('Not Willing Now', 'Disqualified', 'Not Connected', 'P2 Completed') GROUP BY t.lead_id)
         SELECT r.stage, count(*)::int AS total,
                count(*) FILTER (WHERE r.last_touch > COALESCE(ls.changed_at, GREATEST(r.created, '2026-03-01 00:00:00+00'::timestamptz)))::int AS reactivated
         FROM r LEFT JOIN salesforce.lead_stage ls ON ls.lead_id = r.lead_id AND ls.stage = r.stage
@@ -254,8 +256,9 @@ overview.get('/overview', (c) =>
       sql<{ key: string; leads: number; converted: number; revived: number }[]>`
         WITH r AS (
           SELECT t.lead_id, max(t.lead_stage) AS stage, max(t.lead_created_date)::timestamptz AS created, bool_or(${conv}) AS converted,
-                 (SELECT max(t2.touch_at) FROM analytics.mv_touch_flat t2 WHERE t2.lead_id = t.lead_id) AS last_touch
-          FROM analytics.mv_touch_flat t WHERE ${wx('lead_stage')} GROUP BY t.lead_id),
+                 max(x.last_touch_at) AS last_touch
+          FROM analytics.mv_touch_flat t LEFT JOIN analytics.mv_lead_last_touch x ON x.lead_id = t.lead_id
+          WHERE ${wx('lead_stage')} GROUP BY t.lead_id),
         x AS (
           SELECT r.stage, r.converted,
                  CASE WHEN r.stage IN ('Connected', 'Not Willing Now', 'Disqualified', 'Not Connected', 'P2 Completed')
@@ -294,14 +297,16 @@ overview.get('/overview', (c) =>
       // selection (own phone or alternative number). Proposed fee = fee - discount of the enrollments those payments belong to, each once.
       sql<{ fee_payers: number; fee_payments: number; fee_received: number; proposed_fee: number; fee_enrollments: number; fee_enrollments_unknown: number }[]>`
         WITH lk AS (SELECT DISTINCT t.lead_id FROM analytics.mv_touch_flat t WHERE ${w}),
-        -- leads of the selection -> their phone keys -> every app / Ujra account on those numbers (mv_user_phone, indexed) -> valid payments in the window
-        pk AS (SELECT DISTINCT m.phone_key AS pk FROM lk JOIN analytics.mv_lead_lite m ON m.lead_id = lk.lead_id WHERE m.phone_valid),
-        ok AS (SELECT DISTINCT up.user_id FROM pk JOIN analytics.mv_user_phone up ON up.phone_key = pk.pk),
+        -- payments first: the valid payments dated inside the window (a few thousand) are kept when one of the paying account's numbers
+        -- (mv_user_phone, own phone or alternative number) belongs to a lead of the selection. The former lead-first chain
+        -- (leads -> numbers -> accounts -> payments) built a 30k-account set before reading a single payment: 4.4 s vs 2.2 s alone.
         pay AS (
           SELECT hp.id, hp.user_id, hp.amount, hp.enrollment_id, hp.enrollment_fee, hp.enrollment_discount
-          FROM ok JOIN analytics.v_payment_all hp ON hp.user_id = ok.user_id
+          FROM analytics.v_payment_all hp
           WHERE hp.payment_method = 0 AND hp.deleted = false AND hp.is_success = true AND hp.payment_success = true
-            AND hp.payment_date BETWEEN ${feeWin.from} AND ${feeWin.to}),
+            AND hp.payment_date BETWEEN ${feeWin.from} AND ${feeWin.to}
+            AND EXISTS (SELECT 1 FROM analytics.mv_user_phone up JOIN analytics.mv_lead_lite m ON m.phone_key = up.phone_key AND m.phone_valid
+                        JOIN lk ON lk.lead_id = m.lead_id WHERE up.user_id = hp.user_id)),
         enr AS (
           SELECT DISTINCT ON (COALESCE(enrollment_id::text, 'p' || id::text)) enrollment_id, enrollment_fee, enrollment_discount
           FROM pay ORDER BY COALESCE(enrollment_id::text, 'p' || id::text))
@@ -315,7 +320,7 @@ overview.get('/overview', (c) =>
       // (salesforce.ic_status), else the IC's creation date / 1 March 2026.
       sql<{ key: string; leads: number; ics: number; revived: number }[]>`
         WITH lk AS (SELECT DISTINCT t.lead_id FROM analytics.mv_touch_flat t WHERE ${wx('ic_status')}),
-        lt AS (SELECT lk.lead_id, (SELECT max(t2.touch_at) FROM analytics.mv_touch_flat t2 WHERE t2.lead_id = lk.lead_id) AS last_touch FROM lk),
+        lt AS (SELECT lk.lead_id, x.last_touch_at AS last_touch FROM lk LEFT JOIN analytics.mv_lead_last_touch x ON x.lead_id = lk.lead_id),
         x AS (
           SELECT ic.lead_master__c AS lead_id, btrim(ic.status__c) AS status,
                  CASE WHEN btrim(ic.status__c) IN ${sql(IC_PARKED)}
@@ -340,18 +345,25 @@ overview.get('/overview', (c) =>
       // Academic-year split of the two conversion KPIs: the academic year of the course (core_syllabusstructure.academic_year, copied onto
       // app.core_batch) of the lead's LATEST valid payment THAT HAS one; Ujra bookings and old payments without a batch carry no year, so
       // a lead whose only payments are such = '(no academic year)'. The year written in a batch title is NOT used. Lookup on the lead's phone key.
+      // Only app payments can carry a batch, so the lookup reads home_payment through mv_user_phone (the app branch of v_valid_payment_x)
+      // once for the whole set of phone keys (DISTINCT ON) instead of a correlated subquery per converted lead (that form took ~15 s
+      // inside the fan-out; this one ~2 s).
       sql<{ kind: string; key: string; leads: number }[]>`
         WITH c AS (
-          SELECT t.lead_id, bool_or(${convFirst}) AS after_touch, bool_or(${convBefore}) AS before_win, max(t.converted_at) AS converted_at
+          SELECT t.lead_id, bool_or(${convFirst}) AS after_touch, bool_or(${convBefore}) AS before_win
           FROM analytics.mv_touch_flat t WHERE ${w} GROUP BY t.lead_id
           HAVING bool_or(${convFirst}) OR bool_or(${convBefore})),
-        a AS (
-          SELECT c.after_touch, c.before_win,
-                 COALESCE((SELECT NULLIF(btrim(b.academic_year), '')
-                           FROM analytics.v_valid_payment_x vp LEFT JOIN app.core_batch b ON b.id = vp.batch_id
-                           WHERE vp.phone_key = m.phone_key AND NULLIF(btrim(b.academic_year), '') IS NOT NULL
-                           ORDER BY vp.payment_date DESC, vp.payment_time DESC NULLS LAST, vp.payment_id DESC LIMIT 1), '(no academic year)') AS ay
-          FROM c JOIN analytics.mv_lead_lite m ON m.lead_id = c.lead_id)
+        cm AS (SELECT c.after_touch, c.before_win, m.phone_key FROM c JOIN analytics.mv_lead_lite m ON m.lead_id = c.lead_id),
+        pk AS (SELECT DISTINCT phone_key FROM cm WHERE phone_key IS NOT NULL),
+        ay AS (
+          SELECT DISTINCT ON (up.phone_key) up.phone_key, NULLIF(btrim(b.academic_year), '') AS ay
+          FROM pk JOIN analytics.mv_user_phone up ON up.phone_key = pk.phone_key
+          JOIN app.home_payment p ON p.user_id = up.user_id
+          JOIN app.core_batch b ON b.id = COALESCE(p.enrollment_batch_id, p.batch_id)
+          WHERE p.payment_method = 0 AND p.deleted = false AND p.is_success = true AND p.payment_success = true AND p.payment_date IS NOT NULL
+            AND NULLIF(btrim(b.academic_year), '') IS NOT NULL
+          ORDER BY up.phone_key, p.payment_date DESC, p.payment_time DESC NULLS LAST, p.id DESC),
+        a AS (SELECT cm.after_touch, cm.before_win, COALESCE(ay.ay, '(no academic year)') AS ay FROM cm LEFT JOIN ay ON ay.phone_key = cm.phone_key)
         SELECT 'after' AS kind, ay AS key, count(*)::int AS leads FROM a WHERE after_touch GROUP BY 2
         UNION ALL
         SELECT 'before', ay, count(*)::int FROM a WHERE before_win GROUP BY 2
