@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
 import type { Sql } from 'postgres';
 import type { AppEnv, Role } from '../env';
-import { handle, intParam, maskEmail, maskName, maskPhone, pct, csvStream } from '../http';
+import { handle, intParam, maskEmail, maskName, maskPhone, pct, csvStream, timedAll } from '../http';
 import { LIST_KEYS, parseFilters, resolvePeriods, type Filters, type Frag, type Period } from '../filters';
 import { shapeTat, tatBucket, type TatRow } from './overview';
 
@@ -101,7 +101,8 @@ converted.get('/converted', (c) =>
     const V = VALID(sql, pm);
     const R = payRestrict(sql, q);   // payments / revenue / course / grade / daily count only payments matching the grade or course selection
     const firstPay = pm === 'm0' ? sql`m.first_payment_date_m0` : sql`m.first_payment_date`;
-    const [[k], [pk], byStage, byPoint, bySource, byMedium, byCampaign, byStaff, byCourse, byGrade, daily, grades, tatRows] = await Promise.all([
+    const [[k], [pk], byStage, byPoint, bySource, byMedium, byCampaign, byStaff, byCourse, byGrade, daily, grades, tatRows] = await timedAll(
+      ['kpis', 'payments', 'stage', 'touch_point', 'source', 'medium', 'campaign', 'staff', 'course', 'grade', 'daily', 'grades', 'tat'], [
       sql<{ users: number; new_users: number; no_touch: number; no_lead: number; revenue: number; touches: number }[]>`
         SELECT count(*)::int AS users, count(*) FILTER (WHERE ${pm === 'm0' ? sql`m.first_payment_date_m0` : sql`m.first_payment_date`} BETWEEN ${p.from} AND ${p.to})::int AS new_users,
                count(*) FILTER (WHERE m.last_touch_id IS NULL)::int AS no_touch, count(*) FILTER (WHERE m.no_lead)::int AS no_lead,

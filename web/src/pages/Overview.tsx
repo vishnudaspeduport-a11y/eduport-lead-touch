@@ -23,13 +23,12 @@ interface OverviewResponse {
     stale_nc: number; stale_nc_untouched: number; nc_total: number;
     stage_react: number; stage_react_total: number; stage_react_by: { stage: string; total: number; reactivated: number }[];
     new_leads: number; new_leads_touched: number;
+    yet_new: number; yet_new_already: number; yet_new_revised: number; yet_new_by: { stage: string; leads: number; revised: number }[];
     proposed_fee: number; fee_received: number; fee_payers: number; fee_payments: number; fee_enrollments: number; fee_enrollments_unknown: number; fee_window: { from: string; to: string };
   };
   stages: { key: string; leads: number; converted: number }[];
-  stages_revised: { key: string; leads: number; converted: number; revived: number }[];
   tat: Record<'created' | 'touch' | 'activity', { leads: number; avg_days: number | null; median_days: number | null; buckets: { key: string; leads: number }[] }>;
   ic_status: { key: string; leads: number; ics: number }[];
-  ic_status_revised: { key: string; leads: number; ics: number; revived: number }[];
   ic_course: DimRow[];
   touch_point: DimRow[]; source: DimRow[]; class_raw: DimRow[]; reason: DimRow[]; lm_reason: DimRow[]; medium: DimRow[]; campaign: DimRow[]; staff: DimRow[];
   daily: { d: string; touches: number; leads: number; converted: number }[];
@@ -94,8 +93,6 @@ export default function Overview() {
     { stage: 'New', metric: 'stale_new', total: k.new_total, stale: k.stale_new, share: k.new_total ? (k.stale_new / k.new_total) * 100 : null, untouched: k.stale_new_untouched },
     { stage: 'Not Connected', metric: 'stale_not_connected', total: k.nc_total, stale: k.stale_nc, share: k.nc_total ? (k.stale_nc / k.nc_total) * 100 : null, untouched: k.stale_nc_untouched },
   ] : [];
-  const revived = d?.stages_revised?.find((s) => s.key === 'New')?.revived ?? 0;
-  const revivedIc = d?.ic_status_revised?.find((s) => s.key === 'New')?.revived ?? 0;
   const open = (metric: DrillMetric, title: string, dim?: string, value?: string, subtitle?: string) => setDrill({ metric, title, dim, value, subtitle, summary: !dim });
   // academic-year split under a conversion KPI: the three latest years, the rest folded into "other" (sorted by year, latest first)
   // click = the lead list of that KPI restricted to the academic year ('other' = every year not shown)
@@ -160,24 +157,33 @@ export default function Overview() {
         </>}
       </div>
 
-      <div className="grid gap-4 xl:grid-cols-2">
+      <div className="grid gap-4 xl:grid-cols-3">
+        <ChartCard title="Yet to connect (New)" tone="tone-violet" subtitle="leads in New plus leads parked in another stage with no Lead Stage or IC status decision after their last touch in the selection · click a bar for the leads"
+          loading={q.isLoading} error={q.error} rows={k?.yet_new_by ?? []} height={240} help={def.yet_new}>
+          {k && (
+            <div className="flex h-full flex-col">
+              <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
+                <button className="text-3xl font-extrabold tracking-tight hover:text-accent" title="click for the leads"
+                  onClick={() => open('revised_new', 'Yet to connect (New)', undefined, undefined, 'leads in stage New, plus leads in another stage with no Lead Stage or IC status decision after their last touch in the selection')}>{fmtInt(k.yet_new)}</button>
+                <button className="rounded px-1 text-xs text-ink-3 hover:bg-tone hover:text-ink" title="Lead Stage is New, no IC status decision after the last touch in the selection · click for the leads"
+                  onClick={() => setDrill({ metric: 'revised_new', title: 'Yet to connect · already New', summary: true, extra: { scope: 'new' }, subtitle: 'leads in stage New with no IC status decision after their last touch in the selection' })}>already New <b className="text-ink">{fmtInt(k.yet_new_already)}</b></button>
+                <button className="rounded px-1 text-xs text-ink-3 hover:bg-tone hover:text-ink" title="parked in another stage, touched again, no Lead Stage or IC status decision since · click for the leads"
+                  onClick={() => setDrill({ metric: 'revised_new', title: 'Yet to connect · revised to New', summary: true, extra: { scope: 'revised' }, subtitle: 'leads in a stage other than New / Converted with no Lead Stage or IC status decision after their last touch in the selection' })}>revised to New <b className="text-ink">{fmtInt(k.yet_new_revised)}</b></button>
+              </div>
+              <div className="mt-2 min-h-0 flex-1">
+                <HBars colorful data={k.yet_new_by.filter((r) => r.revised > 0).map((r) => ({ key: r.stage, value: r.revised, secondary: r.leads }))} valueLabel="Yet to connect" secondaryLabel="Leads in the stage" secondaryFormat={fmtInt}
+                  onClick={(key) => open('revised_new', `Yet to connect · ${key}`, 'lead_stage', key, key === 'New' ? 'leads in stage New with no IC status decision after their last touch in the selection' : `leads parked in ${key} with no Lead Stage or IC status decision after their last touch in the selection`)} />
+              </div>
+            </div>
+          )}
+        </ChartCard>
         <ChartCard title="Lead funnel · LM stage" tone="tone-brand" subtitle="Total leads by current Lead Stage · click a slice to filter" loading={q.isLoading} error={q.error} rows={d?.stages ?? []} height={240}
           help="Current Lead Stage of the distinct leads that have a touch in the window.">
           <Donut data={(d?.stages ?? []).map((s) => ({ key: s.key, value: s.leads, secondary: s.converted, selected: (f.lists.lead_stage ?? []).includes(s.key) }))} valueLabel="Total leads" secondaryLabel="Converted" centerLabel="leads" onClick={(key) => toggleValue('lead_stage', key)} />
         </ChartCard>
-        <ChartCard title="Revised Lead funnel · LM stage" tone="tone-violet" subtitle={`the latest decision after the lead's last touch decides: a later Lead Stage change keeps the stage, a later IC status change shows that status; no decision after the touch = New for Connected / closed stages${revived ? ` · ${fmtInt(revived)} relabelled` : ''} · click a slice for the leads`} loading={q.isLoading} error={q.error} rows={d?.stages_revised ?? []} height={240}
-          help={def.stages_revised}>
-          <Donut data={(d?.stages_revised ?? []).map((s) => ({ key: s.key, value: s.leads, secondary: s.converted }))} valueLabel="Total leads" secondaryLabel="Converted" centerLabel="leads"
-            onClick={(key) => open('leads', `Revised funnel · ${key}`, 'revised_stage', key, key === 'New' ? 'leads in stage New, plus leads in Connected or a closed stage touched again with no later stage or IC status decision' : `leads whose latest decision after their last touch is ${key}, or who sit in ${key} with no touch after it`)} />
-        </ChartCard>
         <ChartCard title="Lead funnel · IC status" tone="tone-pink" subtitle="Total leads by Interested Course status · click a bar to filter (IC status)" loading={q.isLoading} error={q.error} rows={d?.ic_status ?? []} height={240}
           help="Interested Course status for the leads touched in the window, blank status excluded. A lead with several interested courses appears under each status.">
           <HBars colorful data={(d?.ic_status ?? []).map((s) => ({ key: s.key, value: s.leads, secondary: s.ics }))} valueLabel="Total leads" secondaryLabel="Interested courses" secondaryFormat={fmtInt} onClick={(key) => toggleValue('ic_status', key)} />
-        </ChartCard>
-        <ChartCard title="Revised Lead funnel · IC status" tone="tone-violet" subtitle={`the latest decision after the lead's last touch decides: a later IC status change keeps the status, a later Lead Stage change shows that stage; no decision after the touch = New for Not Interested / May Buy Later${revivedIc ? ` · ${fmtInt(revivedIc)} relabelled` : ''} · click a bar for the leads`} loading={q.isLoading} error={q.error} rows={d?.ic_status_revised ?? []} height={240}
-          help={def.ic_status_revised}>
-          <HBars colorful data={(d?.ic_status_revised ?? []).map((s) => ({ key: s.key, value: s.leads, secondary: s.ics }))} valueLabel="Total leads" secondaryLabel="Interested courses" secondaryFormat={fmtInt}
-            onClick={(key) => open('leads', `Revised IC funnel · ${key}`, 'revised_ic_status', key, key === 'New' ? 'leads with an interested course in New, plus leads whose Not Interested / May Buy Later course was touched again with no later status or stage decision' : `leads with an interested course whose latest decision after the last touch is ${key}, or that sits in ${key} with no touch after it`)} />
         </ChartCard>
       </div>
 

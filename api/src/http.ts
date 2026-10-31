@@ -36,28 +36,43 @@ export async function handle<T>(c: Context<AppEnv>, fn: (x: Ctx) => Promise<T>, 
     const mask = user.role === 'viewer' || user.role === 'bde' ? 'masked' : 'full';   // masked roles never read an answer computed for a full one (and vice versa)
     if (edge === 'version') key = await cacheKey({ version: await dataVersion(c.env, c.executionCtx), build, mask, path: c.req.path, query: q });
     else { ttl = edge.ttl; key = await cacheKey({ version: `ttl${edge.ttl}`, build, mask, path: c.req.path, query: q, user: edge.perUser ? String(user.id ?? user.email) : undefined }); }
-    if (!wantsFresh(c.req.raw, q)) {
-      const hit = await cacheGet(c.env, key);
-      if (hit) return new Response(hit.body, { status: 200, headers: { ...headers, 'Content-Type': 'application/json; charset=UTF-8', 'X-LT-Cache': `hit-${hit.layer}` } });
-    }
   }
 
   const json = (body: string, tag: string) => new Response(body, { status: 200, headers: { ...headers, 'Content-Type': 'application/json; charset=UTF-8', 'X-LT-Cache': tag } });
   // single flight: a second identical request while the first is still computing (the warm-up and the first visitor, two users on the
-  // same view) waits for that answer instead of running the same fan-out again on the two-core database
+  // same view) waits for that answer instead of running the same fan-out again on the two-core database. The entry is registered
+  // synchronously as soon as the key is known - the cache lookup runs inside the shared work - because with the lookup before the
+  // check-and-set, two requests arriving together both missed the map and both computed (no join was ever logged before 2026-10-31).
+  // The computing request is kept alive with waitUntil: when its browser gives up (a reload while the page is loading), the runtime
+  // would otherwise cancel that invocation together with its database sockets and timers, the shared promise would never settle, and
+  // every request that joined it would hang until the browser's own 3-minute limit (seen 2026-10-31: 180 s "canceled" Converted
+  // requests, no 504, while the same view took 12 s elsewhere). A joiner also stops waiting after JOIN_TIMEOUT_MS and computes itself.
   const running = key ? inflight.get(key) : undefined;
-  if (running) return json(await running, 'hit-inflight');
-  const work = (async () => {
+  if (running && key) {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const joined = await Promise.race([running.then((r) => r), new Promise<null>((res) => { timer = setTimeout(() => res(null), JOIN_TIMEOUT_MS); })]).finally(() => { if (timer !== undefined) clearTimeout(timer); });
+    if (joined) return json(joined.body, 'hit-inflight');
+    if (inflight.get(key) === running) inflight.delete(key);   // the leader is gone: compute the answer here
+  }
+  const work = (async (): Promise<Answer> => {
+    if (key && !wantsFresh(c.req.raw, q)) {
+      const hit = await cacheGet(c.env, key);
+      if (hit) return { body: hit.body, tag: `hit-${hit.layer}` };
+    }
     const t0 = Date.now();
     const data = await withSql(c.env, c.executionCtx, (sql) => fn({ sql, f, periods, q, role: user.role }));
     const body = JSON.stringify({ data, meta: { period: periods.current, previous: periods.previous, basis: f.basis, tookMs: Date.now() - t0, cachedAt: key ? new Date().toISOString() : undefined, build: key ? build : undefined } });
     if (key) cachePut(c.env, c.executionCtx, key, body, ttl);
-    return body;
+    return { body, tag: key ? 'miss' : 'bypass' };
   })();
-  if (key) { inflight.set(key, work); work.catch(() => undefined).finally(() => inflight.delete(key)); }
-  return json(await work, key ? 'miss' : 'bypass');
+  if (key) { inflight.set(key, work); const done = work.catch(() => undefined).finally(() => { if (inflight.get(key) === work) inflight.delete(key); }); c.executionCtx.waitUntil(done); }
+  const r = await work;
+  return json(r.body, r.tag);
 }
-const inflight = new Map<string, Promise<string>>();
+type Answer = { body: string; tag: string };
+const inflight = new Map<string, Promise<Answer>>();
+/** How long a request waits for another request's in-flight answer before computing its own. */
+export const JOIN_TIMEOUT_MS = 60_000;
 
 /** How many statements of a fan-out run at the same time. The Overview fires two dozen; all at once on the two-core database they
  *  only slow each other down (every statement 3-4x its solo time, temp files, parallel workers fighting for the same cores). */
@@ -67,7 +82,7 @@ export const FANOUT_LIMIT = 6;
  *  (seen 2026-10-31: an Overview request ran 211 s until the browser cancelled it while the same view took 11 s elsewhere). */
 export const STATEMENT_TIMEOUT_MS = 100_000;
 /** Statements known to be heavy start first (longest-first keeps the tail short); the rest follow in call order. */
-const HEAVY = ['ic_status_revised', 'fees', 'conv_ay', 'leads_union', 'ic_course', 'tat', 'stage_react', 'stages_revised', 'call_reason', 'new_leads', 'ic_status', 'daily'];
+const HEAVY = ['fees', 'conv_ay', 'leads_union', 'ic_course', 'tat', 'stage_react', 'revised_new', 'call_reason', 'new_leads', 'ic_status', 'daily'];
 
 /**
  * Promise.all for a page's query fan-out that records how long each query took, running at most FANOUT_LIMIT statements at a time

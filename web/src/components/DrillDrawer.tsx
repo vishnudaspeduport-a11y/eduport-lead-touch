@@ -9,7 +9,7 @@ import { ErrorNote, Icon, Skeleton, useDebounce } from './ui';
 import { useExportGate } from '../lib/exportGate';
 import { useAuth, canDownload } from '../lib/auth';
 
-export type DrillMetric = 'leads' | 'touches' | 'converted' | 'first_touch' | 'last_touch' | 'stale_new' | 'stale_not_connected' | 'converted_first' | 'converted_before' | 'sf_converted' | 'stage_conv_unpaid' | 'paid_other_stage' | 'stage_react' | 'avg_alltime' | 'avg_window' | 'new_leads' | 'fee_paid';
+export type DrillMetric = 'leads' | 'touches' | 'converted' | 'first_touch' | 'last_touch' | 'stale_new' | 'stale_not_connected' | 'converted_first' | 'converted_before' | 'sf_converted' | 'stage_conv_unpaid' | 'paid_other_stage' | 'stage_react' | 'revised_new' | 'avg_alltime' | 'avg_window' | 'new_leads' | 'fee_paid';
 export interface Drill {
   metric: DrillMetric; title: string; subtitle?: string; dim?: string; value?: string;
   /** alternative list endpoint (default /overview/leads) */
@@ -18,11 +18,12 @@ export interface Drill {
   summary?: boolean;
 }
 
-const EXTRA_LABEL: Record<string, string> = { academic_year: 'Academic year', touched: 'Touched yet?', revised_stage: 'Revised stage', revised_ic_status: 'Revised IC status', ic_course: 'Interested course', tat_created: 'Lead created → paid', tat_touch: 'Last touch → paid', tat_activity: 'First touch → first activity', call_reason: 'Last call reason', grade: 'Purchased grade', course: 'Purchased course', owner: 'Owner', ic_status: 'IC status', lm_reason: 'LM reason', class_group: 'Lead class', lead_stage: 'Lead stage', lead_source: 'Lead source', touch_point: 'Touch point', source: 'Source', medium: 'Medium', district: 'District' };
+const EXTRA_LABEL: Record<string, string> = { academic_year: 'Academic year', touched: 'Touched yet?', ic_course: 'Interested course', tat_created: 'Lead created → paid', tat_touch: 'Last touch → paid', tat_activity: 'First touch → first activity', call_reason: 'Last call reason', grade: 'Purchased grade', course: 'Purchased course', owner: 'Owner', ic_status: 'IC status', lm_reason: 'LM reason', class_group: 'Lead class', lead_stage: 'Lead stage', lead_source: 'Lead source', touch_point: 'Touch point', source: 'Source', medium: 'Medium', district: 'District' };
 
 const METRIC_LABEL: Record<DrillMetric, string> = {
   leads: 'leads touched in the window', touches: 'leads touched in the window (with their touch counts)', converted: 'converted leads (valid payment on/after a touch)', first_touch: 'converted leads whose selected first touch is in the selection', stale_new: 'leads still in stage New, created more than 5 days ago and not touched in the last 5 days', stale_not_connected: 'leads still in stage Not Connected, created more than 5 days ago and not touched in the last 5 days', last_touch: 'leads whose last valid touch (latest touch on/before their last payment) is in the selection',
   converted_first: 'leads whose first payment came after a touch',
+  revised_new: 'leads yet to connect: in stage New, or in another stage with no Lead Stage or IC status decision after their last touch in the selection (revised to New)',
   converted_before: 'leads already converted before the window started (first payment before the window)',
   sf_converted: 'leads flagged Is_Converted__c in Salesforce', stage_conv_unpaid: 'leads in stage Converted with no valid payment on their phone (any date)', paid_other_stage: 'leads with a valid payment (Total converted rule) whose stage is not Converted', stage_react: 'leads in Not Willing Now / Disqualified / Not Connected / P2 Completed that received a new touch after that stage was set', avg_alltime: 'leads with a valid payment (all touches, no date filter)', avg_window: 'leads with a valid payment touched in the window',
   new_leads: 'Salesforce leads created inside the date range, touched or not',

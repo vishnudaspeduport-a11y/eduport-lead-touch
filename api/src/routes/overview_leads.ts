@@ -19,7 +19,7 @@ import { paymentPeriod } from '../filters';
 export const overviewLeads = new Hono<AppEnv>();
 
 type Rec = Record<string, unknown>;
-const METRICS = ['leads', 'touches', 'converted', 'first_touch', 'last_touch', 'stale_new', 'stale_not_connected', 'converted_first', 'converted_before', 'sf_converted', 'stage_conv_unpaid', 'paid_other_stage', 'stage_react', 'avg_alltime', 'avg_window', 'fee_paid'] as const;
+const METRICS = ['leads', 'touches', 'converted', 'first_touch', 'last_touch', 'stale_new', 'stale_not_connected', 'converted_first', 'converted_before', 'sf_converted', 'stage_conv_unpaid', 'paid_other_stage', 'stage_react', 'revised_new', 'avg_alltime', 'avg_window', 'fee_paid'] as const;
 type Metric = (typeof METRICS)[number];
 
 const SORTABLE: Record<string, string> = {
@@ -54,19 +54,10 @@ function dimCond(sql: Sql, q: Record<string, string>, f?: Filters, p?: Period | 
       : sql`(t.converted_at - (SELECT max(t2.touch_date) FROM analytics.mv_touch_flat t2 WHERE t2.lead_id = t.lead_id AND t2.is_pre_conversion))`;
     return sql`(t.converted_at IS NOT NULL AND ${tatBucket(sql, days)} = ${value})`;
   }
-  if (dim === 'revised_stage') {
-    // Revised LM funnel slice: the precomputed per-lead verdict (analytics.mv_lead_decision, sql/045), the same key the Overview card groups by
-    if (value === '(null)') return sql`(t.lead_stage IS NULL AND NOT EXISTS (SELECT 1 FROM analytics.mv_lead_decision d WHERE d.lead_id = t.lead_id AND d.revised_key IS NOT NULL))`;
-    return sql`EXISTS (SELECT 1 FROM analytics.mv_lead_decision d WHERE d.lead_id = t.lead_id AND d.revised_key = ${value})`;
-  }
   if (dim === 'ic_status') {
     return sql`t.lead_id IN (SELECT ic.lead_master__c FROM salesforce.interested_course__c ic WHERE NOT ic.isdeleted AND btrim(ic.status__c) = ${value})`;
   }
   if (dim === 'ic_course') return icCourseIn(sql, 't', [value]);
-  if (dim === 'revised_ic_status') {
-    // Revised IC funnel slice: the precomputed per-course verdict (analytics.mv_ic_decision, sql/045), any course of the lead with that key
-    return sql`EXISTS (SELECT 1 FROM analytics.mv_ic_decision ic WHERE ic.lead_id = t.lead_id AND ic.revised_key = ${value})`;
-  }
   if (dim === 'tat_activity') {
     // first touch -> first activity band (Overview Turnaround card; activity = first Task on the LM / its ICs on or after that touch, any later
     // date), evaluated once per lead of the selection
@@ -133,6 +124,15 @@ function metricHaving(sql: Sql, metric: Metric, p: Period, f?: Filters, q: Recor
     case 'stage_react': return sql`max(t.lead_stage) IN ('Not Willing Now', 'Disqualified', 'Not Connected', 'P2 Completed')
         AND (SELECT x.last_touch_at FROM analytics.mv_lead_last_touch x WHERE x.lead_id = t.lead_id) > analytics.stage_since(t.lead_id, max(t.lead_stage), max(t.lead_created_date)::timestamptz)`;
     case 'paid_other_stage': return sql`bool_or(${conv}) AND max(t.lead_stage) IS DISTINCT FROM 'Converted'`;
+    // Yet to connect (the Overview "yet_new" KPI): not Converted, no IC status change after the lead's last touch in the selection, and either
+    // still in New (scope=new) or in another stage with no Lead Stage change after that touch (scope=revised); no scope = both
+    case 'revised_new': {
+      const scope = q.scope === 'new' ? sql`max(t.lead_stage) = 'New'`
+        : q.scope === 'revised' ? sql`max(t.lead_stage) IS DISTINCT FROM 'New' AND NOT COALESCE((SELECT d.lm_since FROM analytics.mv_lead_decision d WHERE d.lead_id = t.lead_id) > max(t.touch_at), false)`
+        : sql`(max(t.lead_stage) = 'New' OR NOT COALESCE((SELECT d.lm_since FROM analytics.mv_lead_decision d WHERE d.lead_id = t.lead_id) > max(t.touch_at), false))`;
+      return sql`max(t.lead_stage) IS DISTINCT FROM 'Converted' AND ${scope}
+        AND NOT EXISTS (SELECT 1 FROM analytics.mv_ic_decision i WHERE i.lead_id = t.lead_id AND i.ic_since > max(t.touch_at))`;
+    }
     case 'avg_alltime': case 'avg_window': return sql`bool_or(t.converted)`;
     case 'fee_paid': return sql`true`;   // the payment condition is part of the row selection (feeLeads)
     default: return sql`true`;
