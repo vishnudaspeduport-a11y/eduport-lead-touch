@@ -275,7 +275,9 @@ async function syncIcStatusHistory(s: SfSession): Promise<void> {
 }
 
 const CALLS_KEY = 'Lead_Calls';
-interface CallAgg { lead_id: string; calls: number; first_call_at: string; last_call_at: string; last_reason: string | null; last_call_status: string | null; last_owner_id: string | null; last_subject: string | null; last_comment: string | null; _synced_at: Date }
+interface CallAgg { lead_id: string; calls: number; first_call_at: string; last_call_at: string; last_reason: string | null; last_call_status: string | null; last_owner_id: string | null; last_subject: string | null; last_comment: string | null; call_days: string[]; _synced_at: Date }
+/** IST calendar day of a Salesforce timestamp (the dashboard's day boundary) */
+const istDay = (iso: string) => new Date(Date.parse(iso) + 5.5 * 3600 * 1000).toISOString().slice(0, 10);
 async function syncCallSummary(s: SfSession): Promise<void> {
   const since = await getState(CALLS_KEY);
   const floor = process.env.CALLS_SINCE || process.env.LEAD_SINCE || '2026-03-01T00:00:00Z';   // repo variable CALLS_SINCE (2026-05-01)
@@ -288,9 +290,11 @@ async function syncCallSummary(s: SfSession): Promise<void> {
     if (!buf.size) return;
     const rows = [...buf.values()];
     await sql`
-      INSERT INTO salesforce.lead_calls ${sql(rows as unknown as Record<string, unknown>[], 'lead_id', 'calls', 'first_call_at', 'last_call_at', 'last_reason', 'last_call_status', 'last_owner_id', 'last_subject', 'last_comment', '_synced_at')}
+      INSERT INTO salesforce.lead_calls ${sql(rows as unknown as Record<string, unknown>[], 'lead_id', 'calls', 'first_call_at', 'last_call_at', 'last_reason', 'last_call_status', 'last_owner_id', 'last_subject', 'last_comment', 'call_days', '_synced_at')}
       ON CONFLICT (lead_id) DO UPDATE SET
         calls = salesforce.lead_calls.calls + EXCLUDED.calls,
+        -- the activity days of the lead (sql/046): the known days plus the new ones, distinct and sorted
+        call_days = (SELECT array_agg(d ORDER BY d) FROM (SELECT DISTINCT unnest(COALESCE(salesforce.lead_calls.call_days, '{}'::date[]) || EXCLUDED.call_days) AS d) u),
         first_call_at = LEAST(salesforce.lead_calls.first_call_at, EXCLUDED.first_call_at),
         last_reason = CASE WHEN EXCLUDED.last_call_at >= salesforce.lead_calls.last_call_at THEN EXCLUDED.last_reason ELSE salesforce.lead_calls.last_reason END,
         last_call_status = CASE WHEN EXCLUDED.last_call_at >= salesforce.lead_calls.last_call_at THEN EXCLUDED.last_call_status ELSE salesforce.lead_calls.last_call_status END,
@@ -313,9 +317,10 @@ async function syncCallSummary(s: SfSession): Promise<void> {
         const cur = buf.get(lead);
         const reason = rec.Reason__c == null ? null : String(rec.Reason__c).replace(/^[\s\u2060\u00a0]+/, '').trim();   // some picklist values carry invisible leading chars
         const comment = rec.Activity_Comments__c == null ? null : String(rec.Activity_Comments__c).trim().slice(0, 255) || null;
-        if (!cur) buf.set(lead, { lead_id: lead, calls: 1, first_call_at: at, last_call_at: at, last_reason: reason, last_call_status: rec.Call_Status__c == null ? null : String(rec.Call_Status__c), last_owner_id: rec.OwnerId == null ? null : String(rec.OwnerId), last_subject: rec.Subject == null ? null : String(rec.Subject), last_comment: comment, _synced_at: new Date() });
+        if (!cur) buf.set(lead, { lead_id: lead, calls: 1, first_call_at: at, last_call_at: at, last_reason: reason, last_call_status: rec.Call_Status__c == null ? null : String(rec.Call_Status__c), last_owner_id: rec.OwnerId == null ? null : String(rec.OwnerId), last_subject: rec.Subject == null ? null : String(rec.Subject), last_comment: comment, call_days: [istDay(at)], _synced_at: new Date() });
         else {
           cur.calls++;
+          const day = istDay(at); if (!cur.call_days.includes(day)) cur.call_days.push(day);
           if (at < cur.first_call_at) cur.first_call_at = at;
           if (at >= cur.last_call_at) { cur.last_call_at = at; cur.last_reason = reason; cur.last_call_status = rec.Call_Status__c == null ? null : String(rec.Call_Status__c); cur.last_owner_id = rec.OwnerId == null ? null : String(rec.OwnerId); cur.last_subject = rec.Subject == null ? null : String(rec.Subject); cur.last_comment = comment; }
         }

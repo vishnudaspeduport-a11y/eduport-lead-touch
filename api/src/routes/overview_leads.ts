@@ -3,7 +3,7 @@ import type { Sql } from 'postgres';
 import type { AppEnv, Role } from '../env';
 import { handle, intParam, maskEmail, maskName, maskPhone, csvStream } from '../http';
 import { parseFilters, resolvePeriods, icCourseIn, type Filters, type Frag, type Period } from '../filters';
-import { flatWhere, FLAT_COLS, convCond, convFirstCond, tatBucket, activityBucket, IC_PARKED } from './overview';
+import { flatWhere, FLAT_COLS, convCond, convFirstCond, tatBucket, activityBucket, activityDays } from './overview';
 import { paymentPeriod } from '../filters';
 
 /**
@@ -55,33 +55,26 @@ function dimCond(sql: Sql, q: Record<string, string>, f?: Filters, p?: Period | 
     return sql`(t.converted_at IS NOT NULL AND ${tatBucket(sql, days)} = ${value})`;
   }
   if (dim === 'revised_stage') {
-    // Revised funnel slice: leads in these stages touched after the stage change count as New; the rest keep their stage
-    const closed = ['Connected', 'Not Willing Now', 'Disqualified', 'Not Connected', 'P2 Completed'];
-    const react = sql`EXISTS (SELECT 1 FROM analytics.mv_touch_flat t3 WHERE t3.lead_id = t.lead_id AND t3.touch_at > analytics.stage_since(t.lead_id, t.lead_stage, t.lead_created_date::timestamptz))`;
-    if (value === 'New') return sql`(t.lead_stage = 'New' OR (t.lead_stage IN ${sql(closed)} AND ${react}))`;
-    if (closed.includes(value)) return sql`(t.lead_stage = ${value} AND NOT ${react})`;
-    return value === '(null)' ? sql`t.lead_stage IS NULL` : sql`t.lead_stage = ${value}`;
+    // Revised LM funnel slice: the precomputed per-lead verdict (analytics.mv_lead_decision, sql/045), the same key the Overview card groups by
+    if (value === '(null)') return sql`(t.lead_stage IS NULL AND NOT EXISTS (SELECT 1 FROM analytics.mv_lead_decision d WHERE d.lead_id = t.lead_id AND d.revised_key IS NOT NULL))`;
+    return sql`EXISTS (SELECT 1 FROM analytics.mv_lead_decision d WHERE d.lead_id = t.lead_id AND d.revised_key = ${value})`;
   }
   if (dim === 'ic_status') {
     return sql`t.lead_id IN (SELECT ic.lead_master__c FROM salesforce.interested_course__c ic WHERE NOT ic.isdeleted AND btrim(ic.status__c) = ${value})`;
   }
   if (dim === 'ic_course') return icCourseIn(sql, 't', [value]);
   if (dim === 'revised_ic_status') {
-    // Revised IC funnel slice: a parked IC (Not Interested / May Buy Later) whose lead was touched after the status change counts as New
-    const lastTouch = sql`(SELECT max(t3.touch_at) FROM analytics.mv_touch_flat t3 WHERE t3.lead_id = t.lead_id)`;
-    const since = sql`COALESCE((SELECT h.changed_at FROM salesforce.ic_status h WHERE h.ic_id = ic.id AND h.status = btrim(ic.status__c)), GREATEST(ic.createddate, '2026-03-01 00:00:00+00'::timestamptz))`;
-    const icIn = (cond: Frag) => sql`EXISTS (SELECT 1 FROM salesforce.interested_course__c ic WHERE ic.lead_master__c = t.lead_id AND ic.isdeleted = false AND ${cond})`;
-    if (value === 'New') return sql`(${icIn(sql`btrim(ic.status__c) = 'New'`)} OR ${icIn(sql`btrim(ic.status__c) IN ${sql(IC_PARKED)} AND ${lastTouch} > ${since}`)})`;
-    if (IC_PARKED.includes(value)) return icIn(sql`btrim(ic.status__c) = ${value} AND NOT (${lastTouch} > ${since})`);
-    return icIn(sql`btrim(ic.status__c) = ${value}`);
+    // Revised IC funnel slice: the precomputed per-course verdict (analytics.mv_ic_decision, sql/045), any course of the lead with that key
+    return sql`EXISTS (SELECT 1 FROM analytics.mv_ic_decision ic WHERE ic.lead_id = t.lead_id AND ic.revised_key = ${value})`;
   }
   if (dim === 'tat_activity') {
-    // first touch -> first activity band (Overview Turnaround card; activity = first Task on the LM / its ICs), evaluated once per lead of the selection
+    // first touch -> first activity band (Overview Turnaround card; activity = first Task on the LM / its ICs on or after that touch, any later
+    // date), evaluated once per lead of the selection
     const w = f ? flatWhere(sql, f, p ?? null) : sql`true`;
     return sql`t.lead_id IN (
       SELECT x.lead_id FROM (SELECT t.lead_id, min(t.touch_date) AS first_touch FROM analytics.mv_touch_flat t WHERE ${w} GROUP BY t.lead_id) x
       LEFT JOIN salesforce.lead_calls lc ON lc.lead_id = x.lead_id
-      WHERE ${activityBucket(sql, sql`(analytics.ist_date(lc.first_call_at) - x.first_touch)::int`)} = ${value})`;
+      WHERE ${activityBucket(sql, activityDays(sql, sql`x.first_touch`))} = ${value})`;
   }
   if (dim === 'academic_year') {
     // academic year of the course of the lead's LATEST valid payment (same lookup as the Overview's conv_ay split); value = a year such as 2026-27,

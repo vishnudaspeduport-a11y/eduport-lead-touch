@@ -28,6 +28,12 @@ export const FLAT_COLS: Partial<Record<(typeof LIST_KEYS)[number], string>> = {
  *  payment-date window is switched on - a valid payment dated inside that window and on/after the touch day. */
 /** IC statuses that count as "parked": a later touch on the lead revives the interested course (Revised IC funnel) */
 export const IC_PARKED = ['Not Interested', 'May Buy Later'];
+/** Lead stages a lead can be moved out of by the revised rule (the lead is parked there; a later touch means it is active again) */
+export const LM_PARKED = ['Connected', 'Not Willing Now', 'Disqualified', 'Not Connected', 'P2 Completed'];
+// Revised funnels: the latest status decision AFTER the lead's last touch decides, on either object (Lead Stage or Interested Course status);
+// with no decision after the touch, a parked lead / course counts as New. The verdict depends only on all-time facts, so it is precomputed per
+// touched lead (analytics.mv_lead_decision.revised_key) and per interested course (analytics.mv_ic_decision.revised_key) - rule and
+// moments documented in sql/045_revised_decisions.sql; the Overview cards and their drill-downs only join on those keys.
 
 export function convCond(sql: Sql, f: Filters): Frag {
   const pp = paymentPeriod(f);
@@ -96,13 +102,18 @@ export function tatBucket(sql: Sql, days: Frag): Frag {
                 WHEN ${days} <= 14 THEN '8–14 d' WHEN ${days} <= 30 THEN '15–30 d' ELSE '31+ d' END`;
 }
 export const TAT_BUCKETS = ['before lead created', 'same day', '1–3 d', '4–7 d', '8–14 d', '15–30 d', '31+ d', 'no prior touch'];
-/** First touch -> first activity: the first Task on the Lead Master or one of its Interested Courses (the Salesforce "Activity" timeline;
- *  salesforce.lead_calls.first_call_at, Tasks since CALLS_SINCE). Same bands as the payment measures, other edge labels. */
+/** First touch -> first activity: from the lead's earliest touch inside the selection to its first activity (a Task on the Lead Master or
+ *  one of its Interested Courses, the Salesforce "Activity" timeline) ON OR AFTER that touch, on any later date
+ *  (salesforce.lead_calls.call_days, sql/046). Earlier activity does not count; no later activity at all = 'no activity'. */
 export function activityBucket(sql: Sql, days: Frag): Frag {
-  return sql`CASE WHEN ${days} IS NULL THEN 'no activity' WHEN ${days} < 0 THEN 'activity before touch' WHEN ${days} = 0 THEN 'same day' WHEN ${days} <= 3 THEN '1–3 d' WHEN ${days} <= 7 THEN '4–7 d'
+  return sql`CASE WHEN ${days} IS NULL THEN 'no activity' WHEN ${days} = 0 THEN 'same day' WHEN ${days} <= 3 THEN '1–3 d' WHEN ${days} <= 7 THEN '4–7 d'
                 WHEN ${days} <= 14 THEN '8–14 d' WHEN ${days} <= 30 THEN '15–30 d' ELSE '31+ d' END`;
 }
-export const ACTIVITY_BUCKETS = ['activity before touch', 'same day', '1–3 d', '4–7 d', '8–14 d', '15–30 d', '31+ d', 'no activity'];
+export const ACTIVITY_BUCKETS = ['same day', '1–3 d', '4–7 d', '8–14 d', '15–30 d', '31+ d', 'no activity'];
+/** days from the lead's first touch (`firstTouch`, a date) to its first activity day on/after it (NULL = none) */
+export function activityDays(sql: Sql, firstTouch: Frag): Frag {
+  return sql`((SELECT min(d) FROM unnest(lc.call_days) AS d WHERE d >= ${firstTouch}) - ${firstTouch})::int`;
+}
 export interface TatRow { kind: string; key: string; leads: number; avg_days: number | null; median_days: number | null }
 export interface TatShape { leads: number; avg_days: number | null; median_days: number | null; buckets: { key: string; leads: number }[] }
 /** Rows of the turnaround statement (one per kind x band plus a kind x '_all' total) -> the chart shape for one kind */
@@ -110,7 +121,7 @@ export function shapeTat(rows: TatRow[], kind: 'created' | 'touch' | 'activity')
   const all = rows.find((r) => r.kind === kind && r.key === '_all');
   const names = kind === 'activity' ? ACTIVITY_BUCKETS : TAT_BUCKETS;
   const buckets = names.map((key) => ({ key, leads: rows.find((r) => r.kind === kind && r.key === key)?.leads ?? 0 }))
-    .filter((b) => (b.key !== 'before lead created' && b.key !== 'no prior touch' && b.key !== 'activity before touch') || b.leads > 0);
+    .filter((b) => (b.key !== 'before lead created' && b.key !== 'no prior touch') || b.leads > 0);
   return { leads: all?.leads ?? 0, avg_days: all?.avg_days ?? null, median_days: all?.median_days ?? null, buckets };
 }
 
@@ -249,24 +260,13 @@ overview.get('/overview', (c) =>
         SELECT count(*)::int AS new_leads,
                count(*) FILTER (WHERE EXISTS (SELECT 1 FROM analytics.mv_touch_flat t WHERE t.lead_id = l.lead_id))::int AS new_leads_touched
         FROM analytics.mv_lead_lite l WHERE ${newLeadWhere(sql, f, periods.current)}`,   // narrow materialized copy (sql/035): the count scans a fraction of the lead table
-      // Revised funnel: a lead in Connected, Not Willing Now, Disqualified, Not Connected or P2 Completed that was touched AFTER the stage change
-      // counts under New (it is active again); every other lead keeps its stage. Stage moment = the Salesforce field-history row of the latest
-      // change into the current stage (salesforce.lead_stage, joined once instead of calling analytics.stage_since per lead), else the creation
-      // date / 1 March 2026 - the same rule as stage_since.
+      // Revised LM funnel: the precomputed verdict per lead (mv_lead_decision, sql/045); revived = leads whose bucket differs from their stage
       sql<{ key: string; leads: number; converted: number; revived: number }[]>`
-        WITH r AS (
-          SELECT t.lead_id, max(t.lead_stage) AS stage, max(t.lead_created_date)::timestamptz AS created, bool_or(${conv}) AS converted,
-                 max(x.last_touch_at) AS last_touch
-          FROM analytics.mv_touch_flat t LEFT JOIN analytics.mv_lead_last_touch x ON x.lead_id = t.lead_id
-          WHERE ${wx('lead_stage')} GROUP BY t.lead_id),
-        x AS (
-          SELECT r.stage, r.converted,
-                 CASE WHEN r.stage IN ('Connected', 'Not Willing Now', 'Disqualified', 'Not Connected', 'P2 Completed')
-                       AND r.last_touch > COALESCE(ls.changed_at, GREATEST(r.created, '2026-03-01 00:00:00+00'::timestamptz))
-                      THEN 'New' ELSE r.stage END AS key
-          FROM r LEFT JOIN salesforce.lead_stage ls ON ls.lead_id = r.lead_id AND ls.stage = r.stage)
-        SELECT key, count(*)::int AS leads, count(*) FILTER (WHERE converted)::int AS converted, count(*) FILTER (WHERE key IS DISTINCT FROM stage)::int AS revived
-        FROM x GROUP BY key ORDER BY leads DESC`,
+        WITH r AS (SELECT t.lead_id, max(t.lead_stage) AS stage, bool_or(${conv}) AS converted FROM analytics.mv_touch_flat t WHERE ${wx('lead_stage')} GROUP BY t.lead_id)
+        SELECT COALESCE(d.revised_key, r.stage) AS key, count(*)::int AS leads, count(*) FILTER (WHERE r.converted)::int AS converted,
+               count(*) FILTER (WHERE COALESCE(d.revised_key, r.stage) IS DISTINCT FROM r.stage)::int AS revived
+        FROM r LEFT JOIN analytics.mv_lead_decision d ON d.lead_id = r.lead_id
+        GROUP BY 1 ORDER BY leads DESC`,
       // Turnaround time of the converted leads in the selection: lead created -> first valid payment day, and latest touch on/before that day -> payment day
       sql<{ kind: string; key: string; leads: number; avg_days: number | null; median_days: number | null }[]>`
         WITH c AS (
@@ -276,9 +276,10 @@ overview.get('/overview', (c) =>
         d AS (SELECT 'created' AS kind, (paid - created)::int AS days FROM c
               UNION ALL SELECT 'touch', (paid - last_touch)::int FROM c),
         -- first touch -> first activity, for EVERY lead of the selection (touch = the lead's earliest touch among the selection's touch rows;
-        -- activity = the lead's first Task on the Lead Master or its Interested Courses, salesforce.lead_calls); no Task -> days NULL ('no activity')
+        -- activity = the lead's first Task on the Lead Master or its Interested Courses ON OR AFTER that touch, any later date,
+        -- salesforce.lead_calls.call_days); none -> days NULL ('no activity')
         a AS (
-          SELECT x.lead_id, (analytics.ist_date(lc.first_call_at) - x.first_touch)::int AS days
+          SELECT x.lead_id, ${activityDays(sql, sql`x.first_touch`)} AS days
           FROM (SELECT t.lead_id, min(t.touch_date) AS first_touch FROM analytics.mv_touch_flat t WHERE ${w} GROUP BY t.lead_id) x
           LEFT JOIN salesforce.lead_calls lc ON lc.lead_id = x.lead_id)
         SELECT kind, ${tatBucket(sql, sql`days`)} AS key, count(*)::int AS leads, NULL::float8 AS avg_days, NULL::float8 AS median_days FROM d GROUP BY 1, 2
@@ -315,22 +316,13 @@ overview.get('/overview', (c) =>
                (SELECT COALESCE(sum(enrollment_fee - COALESCE(enrollment_discount, 0)), 0) FROM enr)::float8 AS proposed_fee,
                (SELECT count(*) FROM enr WHERE enrollment_fee IS NOT NULL)::int AS fee_enrollments,
                (SELECT count(*) FROM enr WHERE enrollment_fee IS NULL)::int AS fee_enrollments_unknown`,
-      // Revised IC funnel: an interested course in Not Interested / May Buy Later whose lead was touched AFTER the status change counts as New
-      // (the lead is active again); every other IC keeps its status. Status moment = latest field-history change into the current status
-      // (salesforce.ic_status), else the IC's creation date / 1 March 2026.
+      // Revised IC funnel: the precomputed verdict per interested course (mv_ic_decision, sql/045); revived = leads whose bucket differs from the status
       sql<{ key: string; leads: number; ics: number; revived: number }[]>`
-        WITH lk AS (SELECT DISTINCT t.lead_id FROM analytics.mv_touch_flat t WHERE ${wx('ic_status')}),
-        lt AS (SELECT lk.lead_id, x.last_touch_at AS last_touch FROM lk LEFT JOIN analytics.mv_lead_last_touch x ON x.lead_id = lk.lead_id),
-        x AS (
-          SELECT ic.lead_master__c AS lead_id, btrim(ic.status__c) AS status,
-                 CASE WHEN btrim(ic.status__c) IN ${sql(IC_PARKED)}
-                       AND lt.last_touch > COALESCE(h.changed_at, GREATEST(ic.createddate, '2026-03-01 00:00:00+00'::timestamptz))
-                      THEN 'New' ELSE btrim(ic.status__c) END AS key
-          FROM lt JOIN salesforce.interested_course__c ic ON ic.lead_master__c = lt.lead_id AND ic.isdeleted = false
-          LEFT JOIN salesforce.ic_status h ON h.ic_id = ic.id AND h.status = btrim(ic.status__c)
-          WHERE NULLIF(btrim(ic.status__c), '') IS NOT NULL)
-        SELECT key, count(DISTINCT lead_id)::int AS leads, count(*)::int AS ics, count(DISTINCT lead_id) FILTER (WHERE key IS DISTINCT FROM status)::int AS revived
-        FROM x GROUP BY key ORDER BY leads DESC`,
+        WITH lk AS (SELECT DISTINCT t.lead_id FROM analytics.mv_touch_flat t WHERE ${wx('ic_status')})
+        SELECT ic.revised_key AS key, count(DISTINCT ic.lead_id)::int AS leads, count(*)::int AS ics,
+               count(DISTINCT ic.lead_id) FILTER (WHERE ic.revised_key IS DISTINCT FROM ic.status)::int AS revived
+        FROM lk JOIN analytics.mv_ic_decision ic ON ic.lead_id = lk.lead_id
+        GROUP BY 1 ORDER BY leads DESC`,
       // Interested course: the leads of the selection by the course name on their Interested Course records (a lead with several appears under each)
       sql<DimRow[]>`
         WITH lk AS (
@@ -415,10 +407,10 @@ overview.get('/overview', (c) =>
           : 'Distinct leads in the selection that have ANY valid payment (payment_method 0, not deleted, is_success, payment_success) dated on/after one of their touch days. Payments are matched to leads on the phone number (last 10 digits): the own phone of the paying app account, or its alternative number.',
         proposed_fee: 'Proposed fee = fee minus discount of the enrollments that received a payment inside the date range (the payment-date window when it is switched on), each enrollment counted once. Only payments of the app accounts linked to the leads in the selection (own phone or alternative number), valid and payment_method 0. For Ujra (Integrated) bookings the proposed fee is course + registration + material fee, each net of discount, concession, scholarship and special request. It is the agreed price, so it is larger than the fee received while instalments are still open.',
         fee_received: 'Fee received = sum of the payment amounts dated inside the same date range, for the same leads and accounts (valid payments, payment_method 0).',
-        tat: 'Turnaround time of the converted leads in the selection (Total converted rule), in calendar days. "Lead created → paid": from the day the lead was created to the day of its FIRST valid payment; "before lead created" = the phone already had a payment before the lead existed. "Last touch → paid": from the latest lead touch on or before that payment day to the payment day; "no prior touch" = the first payment came before any touch (the lead counts as converted because a later payment followed a touch). Median = half the leads were faster. Click a band to list those leads. "First touch → first activity": for EVERY lead of the selection, from the day of its earliest touch (among the selection\'s touches) to the day of its first activity - the first Task in the Activity timeline of the Lead Master or of one of its Interested Courses (Follow Up, Ready To Pay, calls ... ; Tasks are read since May 2026); "no activity" = no Task on record; "activity before touch" = the first Task is older than the first touch. Average and median count only leads with an activity.',
+        tat: 'Turnaround time of the converted leads in the selection (Total converted rule), in calendar days. "Lead created → paid": from the day the lead was created to the day of its FIRST valid payment; "before lead created" = the phone already had a payment before the lead existed. "Last touch → paid": from the latest lead touch on or before that payment day to the payment day; "no prior touch" = the first payment came before any touch (the lead counts as converted because a later payment followed a touch). Median = half the leads were faster. Click a band to list those leads. "First touch → first activity": for EVERY lead of the selection, from the day of its earliest touch inside the selection to the day of its first activity ON OR AFTER that touch, on any later date - an activity is a Task in the Activity timeline of the Lead Master or of one of its Interested Courses (Follow Up, Ready To Pay, calls ...; Tasks are read since May 2026). Activity before the touch is ignored; "no activity" = no Task on or after the touch; "31+ d" = the first later Task came more than 30 days after the touch. Average and median count only leads with an activity.',
         ic_course: 'The leads of the selection grouped by the course name on their Salesforce Interested Course records (interest, not purchase). A lead with several interested courses appears under each. Total leads = distinct leads with that course; touches = those leads\' touches in the window; converted = the dashboard conversion rule. Click a row to filter every page by that course; the filter bar has the same list under "Interested course". What was actually bought is on the Converted page (Purchased course).',
-        ic_status_revised: 'Same leads and interested courses as the IC-status funnel, but an interested course in Not Interested or May Buy Later whose lead was touched again AFTER the status change counts as New (the lead is active again). Follow Up is an active status, so a later touch is expected there and it is not moved. The status moment is the latest Salesforce field-history change into the current status (history from 1 March 2026); without one, the later of the IC creation date and 1 March 2026. "moved to New" = leads moved by this rule.',
-        stages_revised: 'Same leads as the Lead funnel, but a lead in Connected, Not Willing Now, Disqualified, Not Connected or P2 Completed that received a lead touch AFTER it entered that stage is counted under New (it is active again). Leads with no touch after the stage change stay in their stage. The stage moment comes from the Salesforce field-history log; leads with no logged change since 1 March 2026 use their creation date, or 1 March 2026 if older.',
+        ic_status_revised: 'Same leads and interested courses as the IC-status funnel, relabelled by the latest status decision made AFTER the lead\'s last touch, on either object: a Lead Stage change later than the course\'s status change puts the course under that Lead Stage; a course status change later than the Lead Stage change keeps the course under its status. With no decision after the last touch, a course parked in Not Interested or May Buy Later counts as New (the lead is active again) and every other course keeps its status. Status and stage moments come from the Salesforce field-history log (from 1 March 2026); without a logged change, the creation date or 1 March 2026 if older. "relabelled" = leads whose bucket differs from their course status.',
+        stages_revised: 'Same leads as the Lead funnel, relabelled by the latest status decision made AFTER the lead\'s last touch, on either object: a Lead Stage change later than any Interested Course status change keeps the lead in that stage; an Interested Course status change later than the Lead Stage change puts the lead under that IC status (for example Not Interested). With no decision after the last touch, a lead in Connected, Not Willing Now, Disqualified, Not Connected or P2 Completed counts as New (it is active again) and every other lead keeps its stage; Converted leads always stay in Converted. Stage and status moments come from the Salesforce field-history log (from 1 March 2026); without a logged change, the creation date or 1 March 2026 if older. "relabelled" = leads whose bucket differs from their Lead Stage.',
         new_leads: 'Salesforce leads created (IST) inside the date range, whether or not they have a touch yet - the only figure on this page that includes leads without a touch. Deleted leads are excluded; duplicates are excluded unless toggled on. Lead filters (class, lead source, stage, LM reason, owner …) apply to the lead itself; touch filters (touch point, source, campaign, medium, staff) keep only leads with at least one such touch on any date. "With a touch" = at least one lead touch on record, any date.',
         leads_basis: f.basis === 'created' ? 'Main window = LEAD CREATED date: Total leads = only the leads created in the range (touched or not); the cards use all touches of those leads, any date.' : 'Main window = TOUCH date: Total leads = leads created in the range plus leads with a touch dated in the range; the cards use the touches dated in the range.',
         converted_first: 'Leads of the selection (created or touched in the range, per the basis) whose FIRST valid payment (app or Ujra, matched by phone or alternative number) is on/after one of their touches and not before the window start (the payment window start when the Payment date filter is on). A lead that had already paid before the window is in "Converted before the window" instead.',
