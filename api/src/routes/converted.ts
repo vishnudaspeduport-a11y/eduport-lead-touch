@@ -107,8 +107,11 @@ converted.get('/converted', (c) =>
                count(*) FILTER (WHERE m.last_touch_id IS NULL)::int AS no_touch, count(*) FILTER (WHERE m.no_lead)::int AS no_lead,
                COALESCE(sum(m.revenue), 0)::float8 AS revenue, COALESCE(sum(m.touches_before_payment), 0)::int AS touches
         FROM analytics.mv_payer m WHERE ${w}`,
-      sql<{ payments_all: number; revenue_all: number }[]>`
-        SELECT count(*)::int AS payments_all, COALESCE(sum(hp.amount), 0)::float8 AS revenue_all
+      // sales = courses paid for: one per enrollment (app) / booking (Ujra, enrollment_id = -booking_id) with a payment in the window; a payment
+      // without an enrollment counts as its own sale. With "Method 0" this is the Metabase "Total Sales - 1st payment" unit (first payments only).
+      sql<{ payments_all: number; revenue_all: number; sales: number }[]>`
+        SELECT count(*)::int AS payments_all, COALESCE(sum(hp.amount), 0)::float8 AS revenue_all,
+               count(DISTINCT COALESCE(hp.enrollment_id::text, 'p' || hp.id::text))::int AS sales
         FROM analytics.v_payment_all hp LEFT JOIN app.core_batch b ON b.id = COALESCE(hp.enrollment_batch_id, hp.batch_id) WHERE ${V} AND ${R} AND hp.payment_date BETWEEN ${p.from} AND ${p.to}
           AND hp.user_id IN (SELECT m.user_id FROM analytics.mv_payer m WHERE ${w})`,
       byDim(sql, wx('lead_stage'), 'lead_stage', p), byDim(sql, wx('touch_point'), 'last_touch_point', p), byDim(sql, wx('source'), 'last_touch_source', p), byDim(sql, wx('medium'), 'last_touch_medium', p),
@@ -156,6 +159,11 @@ converted.get('/converted', (c) =>
           : pm === 'm1'
             ? 'Paying users with a valid payment of payment_method 1 (gateway EMI instalments; every such row carries an emi_id) dated in the window.'
             : 'Distinct paying app users with ANY valid payment (any payment_method; not deleted, is_success, payment_success) dated in the window. Switch to "Method 0" to count payment_method 0 only, as the Overview does.',
+        sales: pm === 'm0'
+          ? 'Courses sold: one per enrollment (app) or booking (Ujra) with a Method 0 payment - the first payment of that course - dated in the window, made by a user of the selection. The same unit as Metabase "Total Sales - 1st payment" (which additionally requires a sales person). A user buying two courses counts twice; an instalment on an older course does not count.'
+          : pm === 'm1'
+            ? 'Courses with a Method 1 payment (an instalment) dated in the window, one per enrollment or booking.'
+            : 'Courses with any valid payment dated in the window, one per enrollment (app) or booking (Ujra): new sales and courses receiving an instalment alike. Switch to "Method 0" for sales only.',
         new_users: 'Paying users whose FIRST ever valid payment is inside the window (new customers).',
         tat: 'Turnaround time of the paying users in the selection, in calendar days, measured to the user\'s FIRST valid payment day (first method-0 payment in M0 mode). "Lead created → paid": from the creation day of the user\'s Salesforce lead (the most recent lead on the phone) to that payment day; users with no lead are left out; "before lead created" = the lead was created after the first payment. "Last touch → paid": from the latest lead touch on or before that payment day to the payment day; "no prior touch" = no touch before the first payment. Median = half the users were faster.',
         no_touch: 'Users with no lead touch on/before their payment: no Salesforce lead on that phone, or all touches came after the payment. Shown as "No Touch Before Payment" in the tables.',
@@ -166,7 +174,7 @@ converted.get('/converted', (c) =>
         grade: 'Grade of the course that was bought (batch of the payment\x27s enrollment), not the class recorded on the lead.',
         stage: 'Lead stage of the user\'s most recently created Salesforce lead (one lead per user).',
         revenue: 'Sum of payment amounts of the users in the row (all their valid payments, any method, any date).',
-        pm: 'Payment method: "All" counts every successful payment; "Method 0" counts payment_method 0 only, the rule the Overview uses; "Method 1" is the rest (gateway EMI instalments). In the user list, course / grade / payments / revenue cover the payments inside the selected dates; the all-time columns cover every payment of the user.',
+        pm: 'Payment method: "All" counts every successful payment; "Method 0" counts payment_method 0 only (the first payment of a course; for Ujra the booking payment), the rule the Overview uses; "Method 1" is the rest (gateway EMI instalments). In the user list, course / grade / payments / revenue cover the payments inside the selected dates; the all-time columns cover every payment of the user.',
       },
     };
   }),

@@ -12,7 +12,7 @@ import { DrillDrawer, type Drill } from '../components/DrillDrawer';
 interface Dim { key: string; users: number; touches: number; revenue: number; new_users: number; share_pct: number | null }
 interface Resp {
   period: { from: string; to: string };
-  kpis: { users: number; new_users: number; no_touch: number; no_lead: number; payments_all: number; revenue_all: number; touches: number; no_touch_pct: number | null; no_lead_pct: number | null; };
+  kpis: { users: number; new_users: number; no_touch: number; no_lead: number; payments_all: number; revenue_all: number; sales: number; touches: number; no_touch_pct: number | null; no_lead_pct: number | null; };
   by_stage: Dim[]; by_last_touch_point: Dim[]; by_last_source: Dim[]; by_last_medium: Dim[]; by_last_campaign: Dim[]; by_last_staff: Dim[]; by_course: Dim[]; by_grade: Dim[];
   daily: { d: string; users: number; payments: number; revenue: number }[];
   tat: Record<'created' | 'touch', { leads: number; avg_days: number | null; median_days: number | null; buckets: { key: string; leads: number }[] }>;
@@ -116,7 +116,7 @@ export default function Converted() {
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 xl:grid-cols-5">
         {q.isLoading && Array.from({ length: 6 }).map((_, i) => <Skeleton key={i} className="h-[92px]" />)}
         {k && <>
-          <Kpi tone="tone-orange" icon={<Icon.Check />} title="Converted (users)" value={fmtInt(k.users)} sub={`${fmtInt(k.payments_all)} payments in the window`} def={def.users} onClick={() => open('Converted users')} />
+          <Kpi tone="tone-orange" icon={<Icon.Check />} title={pm === 'm0' ? 'Sales (courses)' : 'Courses paid'} value={fmtInt(k.sales)} sub={`${fmtInt(k.users)} users · ${fmtInt(k.payments_all)} payments in the window`} def={def.sales} onClick={() => open('Converted users')} />
           <Kpi tone="tone-green" icon={<Icon.Spark />} title="New customers" value={fmtInt(k.new_users)} sub={`${fmtPct(k.users ? Math.round((k.new_users / k.users) * 10000) / 100 : null)} first ever payment in window`} def={def.new_users} />
           <Kpi tone="tone-violet" icon={<Icon.Avg />} title="Revenue (window)" value={fmtINR(k.revenue_all)} sub="payment amounts dated in the window" def={def.revenue} />
           <Kpi tone="tone-pink" icon={<Icon.Touch />} title="No touch before payment" value={fmtInt(k.no_touch)} sub={`${fmtPct(k.no_touch_pct)} of users`} def={def.no_touch} onClick={() => open('No touch before payment', 'last_touch_point', 'No Touch Before Payment')} />
