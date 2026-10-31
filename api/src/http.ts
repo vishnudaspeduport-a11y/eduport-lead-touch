@@ -88,7 +88,7 @@ export async function timedAll<T extends readonly unknown[] | []>(names: readonl
       const deadline = new Promise<never>((_, rej) => { timer = setTimeout(() => rej(Object.assign(new Error(`The statement "${names[i] ?? i}" did not answer within ${STATEMENT_TIMEOUT_MS / 1000} s; please retry`), { status: 504 })), STATEMENT_TIMEOUT_MS); });
       try { settled[i] = { status: 'fulfilled', value: await Promise.race([(qs as readonly unknown[])[i], deadline]) }; }
       catch (e) { settled[i] = { status: 'rejected', reason: e }; }
-      finally { clearTimeout(timer); times[names[i] ?? String(i)] = Date.now() - t0; }
+      finally { if (timer !== undefined) clearTimeout(timer); times[names[i] ?? String(i)] = Date.now() - t0; }
     }
   };
   await Promise.all(Array.from({ length: Math.max(1, Math.min(limit, order.length)) }, worker));
