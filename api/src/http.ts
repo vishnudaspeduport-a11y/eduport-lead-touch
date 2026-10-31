@@ -62,6 +62,10 @@ const inflight = new Map<string, Promise<string>>();
 /** How many statements of a fan-out run at the same time. The Overview fires two dozen; all at once on the two-core database they
  *  only slow each other down (every statement 3-4x its solo time, temp files, parallel workers fighting for the same cores). */
 export const FANOUT_LIMIT = 6;
+/** A statement that has not answered after this long is given up: a dead pooled connection (Hyperdrive right after a deploy) otherwise
+ *  hangs the whole fan-out - and, through the single-flight map, every later request for the same view - with no error at all
+ *  (seen 2026-10-31: an Overview request ran 211 s until the browser cancelled it while the same view took 11 s elsewhere). */
+export const STATEMENT_TIMEOUT_MS = 100_000;
 /** Statements known to be heavy start first (longest-first keeps the tail short); the rest follow in call order. */
 const HEAVY = ['ic_status_revised', 'fees', 'conv_ay', 'leads_union', 'ic_course', 'tat', 'stage_react', 'stages_revised', 'call_reason', 'new_leads', 'ic_status', 'daily'];
 
@@ -80,9 +84,11 @@ export async function timedAll<T extends readonly unknown[] | []>(names: readonl
   const worker = async () => {
     while (next < order.length) {
       const i = order[next++]!;
-      try { settled[i] = { status: 'fulfilled', value: await (qs as readonly unknown[])[i] }; }
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      const deadline = new Promise<never>((_, rej) => { timer = setTimeout(() => rej(Object.assign(new Error(`The statement "${names[i] ?? i}" did not answer within ${STATEMENT_TIMEOUT_MS / 1000} s; please retry`), { status: 504 })), STATEMENT_TIMEOUT_MS); });
+      try { settled[i] = { status: 'fulfilled', value: await Promise.race([(qs as readonly unknown[])[i], deadline]) }; }
       catch (e) { settled[i] = { status: 'rejected', reason: e }; }
-      finally { times[names[i] ?? String(i)] = Date.now() - t0; }
+      finally { clearTimeout(timer); times[names[i] ?? String(i)] = Date.now() - t0; }
     }
   };
   await Promise.all(Array.from({ length: Math.max(1, Math.min(limit, order.length)) }, worker));

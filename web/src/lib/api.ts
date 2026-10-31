@@ -21,8 +21,14 @@ export function onAuthError(fn: (status: 401 | 403, message: string) => void) { 
 /** Kept for call sites that spread it; the session is an HttpOnly cookie now, so nothing to add. */
 export async function authHeaders(): Promise<Record<string, string>> { return {}; }
 
+export const FETCH_TIMEOUT_MS = 180_000;
 export async function apiFetch<T>(path: string, params: Params = {}): Promise<Envelope<T>> {
-  const res = await fetch(`/api${path}${qs(params)}`, { headers: { accept: 'application/json' }, credentials: 'same-origin' });
+  const ctl = new AbortController();
+  const timer = setTimeout(() => ctl.abort(), FETCH_TIMEOUT_MS);
+  let res: Response;
+  try { res = await fetch(`/api${path}${qs(params)}`, { headers: { accept: 'application/json' }, credentials: 'same-origin', signal: ctl.signal }); }
+  catch (e) { throw new ApiError(0, ctl.signal.aborted ? `No answer within ${FETCH_TIMEOUT_MS / 1000} s - please retry` : (e as Error).message); }
+  finally { clearTimeout(timer); }
   const body = (await res.json().catch(() => ({}))) as Envelope<T> & { error?: { message: string; issues?: unknown } };
   if (res.status === 401 || res.status === 403) authListeners.forEach((l) => l(res.status as 401 | 403, body.error?.message ?? res.statusText));
   if (!res.ok) throw new ApiError(res.status, body.error?.message ?? res.statusText, body.error?.issues);
