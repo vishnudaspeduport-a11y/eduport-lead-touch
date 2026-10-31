@@ -109,9 +109,11 @@ converted.get('/converted', (c) =>
         FROM analytics.mv_payer m WHERE ${w}`,
       // sales = courses paid for: one per enrollment (app) / booking (Ujra, enrollment_id = -booking_id) with a payment in the window; a payment
       // without an enrollment counts as its own sale. With "Method 0" this is the Metabase "Total Sales - 1st payment" unit (first payments only).
-      sql<{ payments_all: number; revenue_all: number; sales: number }[]>`
+      sql<{ payments_all: number; revenue_all: number; sales: number; sales_app: number; sales_ujra: number }[]>`
         SELECT count(*)::int AS payments_all, COALESCE(sum(hp.amount), 0)::float8 AS revenue_all,
-               count(DISTINCT COALESCE(hp.enrollment_id::text, 'p' || hp.id::text))::int AS sales
+               count(DISTINCT COALESCE(hp.enrollment_id::text, 'p' || hp.id::text))::int AS sales,
+               count(DISTINCT COALESCE(hp.enrollment_id::text, 'p' || hp.id::text)) FILTER (WHERE hp.source = 'app')::int AS sales_app,
+               count(DISTINCT COALESCE(hp.enrollment_id::text, 'p' || hp.id::text)) FILTER (WHERE hp.source = 'ujra')::int AS sales_ujra
         FROM analytics.v_payment_all hp LEFT JOIN app.core_batch b ON b.id = COALESCE(hp.enrollment_batch_id, hp.batch_id) WHERE ${V} AND ${R} AND hp.payment_date BETWEEN ${p.from} AND ${p.to}
           AND hp.user_id IN (SELECT m.user_id FROM analytics.mv_payer m WHERE ${w})`,
       byDim(sql, wx('lead_stage'), 'lead_stage', p), byDim(sql, wx('touch_point'), 'last_touch_point', p), byDim(sql, wx('source'), 'last_touch_source', p), byDim(sql, wx('medium'), 'last_touch_medium', p),
